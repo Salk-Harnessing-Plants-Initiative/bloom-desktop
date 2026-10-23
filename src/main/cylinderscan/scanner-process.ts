@@ -262,6 +262,8 @@ export class ScannerProcess extends EventEmitter {
         accession_name: metadata.accession_name,
         plant_age_days: metadata.plant_age_days,
         wave_number: metadata.wave_number,
+        calculated_plant_age_days: metadata.calculated_plant_age_days,
+        plant_age_change_reason: metadata.plant_age_change_reason,
 
         // Scan parameters — store relative path (pilot compatible)
         path: relativeScanPath,

@@ -33,6 +33,12 @@ export interface ScanMetadata {
   /** Wave number for this scan (typically 1-4 for multiple time points) */
   wave_number: number;
 
+  /** Age calculated from the wave's sowing date, when it has one (#407) */
+  calculated_plant_age_days?: number;
+
+  /** Why the operator changed the age from the calculated one */
+  plant_age_change_reason?: string;
+
   /** Relative scan directory path (e.g., "2026-03-04/PLANT-001/uuid"), pilot-compatible */
   scan_path?: string;
 }

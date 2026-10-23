@@ -6,7 +6,13 @@
  * Integrates PlantBarcodeInput for barcode validation and autocomplete.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type ReactNode,
+} from 'react';
 import { ExperimentChooser } from '../renderer/components/ExperimentChooser';
 import { PhenotyperChooser } from '../renderer/components/PhenotyperChooser';
 import { PlantBarcodeInput } from './PlantBarcodeInput';
@@ -33,6 +39,12 @@ export interface MetadataFormProps {
   errors?: Partial<Record<keyof ScanMetadata, string>>;
   /** Callback when barcode validation state changes */
   onBarcodeValidationChange?: (isValid: boolean, error?: string) => void;
+  /** The age is calculated from the wave's sowing date and can't be typed (#407) */
+  plantAgeReadOnly?: boolean;
+  /** Shown under the plant age, e.g. where it came from */
+  plantAgeNote?: ReactNode;
+  /** Shown under the wave number, e.g. the box asking for its sowing date */
+  waveNote?: ReactNode;
 }
 
 export function MetadataForm({
@@ -41,6 +53,9 @@ export function MetadataForm({
   disabled = false,
   errors = {},
   onBarcodeValidationChange,
+  plantAgeReadOnly = false,
+  plantAgeNote,
+  waveNote,
 }: MetadataFormProps) {
   // State for experiment's accession ID (fetched when experiment changes)
   const [experimentAccessionId, setExperimentAccessionId] = useState<
@@ -193,6 +208,7 @@ export function MetadataForm({
         {errors.waveNumber && (
           <p className={errorClassName}>{errors.waveNumber}</p>
         )}
+        {waveNote}
       </div>
 
       {/* Plant Age (Days) */}
@@ -208,9 +224,11 @@ export function MetadataForm({
           value={values.plantAgeDays}
           onChange={(e) => handleFieldChange('plantAgeDays', e.target.value)}
           disabled={disabled}
+          readOnly={plantAgeReadOnly}
           className={inputClassName}
           placeholder="e.g., 14"
         />
+        {plantAgeNote}
         {errors.plantAgeDays && (
           <p className={errorClassName}>{errors.plantAgeDays}</p>
         )}

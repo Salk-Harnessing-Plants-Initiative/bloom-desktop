@@ -1,0 +1,121 @@
+import { describe, it, expect } from 'vitest';
+import {
+  checkNewWave,
+  isIsoDate,
+  plantAgeDays,
+  sowingDateChangeError,
+  sowingDateError,
+  toIsoDate,
+} from '../../src/utils/sowing-date';
+
+const today = new Date(2026, 2, 10, 15, 30); // 10 Mar 2026, mid-afternoon
+
+describe('dates', () => {
+  it('accepts only real YYYY-MM-DD calendar dates', () => {
+    expect(isIsoDate('2026-03-01')).toBe(true);
+    for (const bad of [
+      '2026-02-30',
+      '2026-3-1',
+      '01/03/2026',
+      '',
+      null,
+      20260301,
+    ]) {
+      expect(isIsoDate(bad)).toBe(false);
+    }
+  });
+
+  it('formats a local date', () => {
+    expect(toIsoDate(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
+  });
+});
+
+describe('plantAgeDays', () => {
+  it('counts calendar days from sowing, whatever the time of day', () => {
+    expect(plantAgeDays('2026-03-01', today)).toBe(9);
+    expect(plantAgeDays('2026-03-10', new Date(2026, 2, 10, 0, 1))).toBe(0);
+    expect(plantAgeDays('2025-11-26', new Date(2026, 2, 1, 10))).toBe(95);
+  });
+
+  it('is negative before sowing', () => {
+    expect(plantAgeDays('2026-03-11', today)).toBe(-1);
+  });
+});
+
+describe('sowingDateError', () => {
+  it('refuses a missing or future date and accepts today', () => {
+    expect(sowingDateError('', today)).toBe('Enter the sowing date.');
+    expect(sowingDateError('2026-03-11', today)).toMatch(/future/);
+    expect(sowingDateError('2026-03-10', today)).toBeNull();
+  });
+});
+
+describe('checkNewWave', () => {
+  const wave1 = { wave_number: 1, sowing_date: '2025-11-26' };
+
+  it('accepts the next wave sown after the earlier one', () => {
+    expect(checkNewWave(2, '2026-02-20', [wave1], today)).toEqual({
+      error: null,
+      noteNeeded: null,
+      waveConfirmNeeded: null,
+    });
+  });
+
+  it('needs a note for a wave sown on or before an earlier wave', () => {
+    for (const date of ['2025-11-26', '2025-11-20']) {
+      expect(checkNewWave(2, date, [wave1], today).noteNeeded).toMatch(
+        /^Wave 1 was sown on .+, so wave 2 would be sown on or before it\. Add a note/
+      );
+    }
+  });
+
+  it('needs a note for an earlier wave sown on or after a later one', () => {
+    const wave3 = { wave_number: 3, sowing_date: '2026-01-10' };
+    expect(
+      checkNewWave(2, '2026-01-15', [wave1, wave3], today).noteNeeded
+    ).toMatch(/^Wave 3 was sown .+ on or after it/);
+  });
+
+  it('needs a confirmation for a wave number that skips ahead', () => {
+    expect(
+      checkNewWave(5, '2026-02-20', [wave1], today).waveConfirmNeeded
+    ).toBe(
+      'The highest wave of this experiment so far is 1. Is this really wave 5?'
+    );
+    expect(checkNewWave(3, '2026-02-20', [], today).waveConfirmNeeded).toMatch(
+      /first wave\. Is it really wave 3\?/
+    );
+    for (const first of [0, 1]) {
+      expect(
+        checkNewWave(first, '2026-02-20', [], today).waveConfirmNeeded
+      ).toBeNull();
+    }
+  });
+
+  it('reports a future date as an error before anything else', () => {
+    const check = checkNewWave(5, '2026-04-01', [wave1], today);
+    expect(check.error).toMatch(/future/);
+    expect(check.noteNeeded).toBeNull();
+  });
+});
+
+describe('sowingDateChangeError', () => {
+  it('needs a reason only once the wave has scans', () => {
+    expect(sowingDateChangeError('2026-03-02', '', false, today)).toBeNull();
+    expect(sowingDateChangeError('2026-03-02', '  ', true, today)).toMatch(
+      /give a reason/
+    );
+    expect(
+      sowingDateChangeError('2026-03-02', 'Typo: sown on the 2nd', true, today)
+    ).toBeNull();
+  });
+
+  it('refuses a future date and an over-long reason', () => {
+    expect(sowingDateChangeError('2026-04-01', 'x', true, today)).toMatch(
+      /future/
+    );
+    expect(
+      sowingDateChangeError('2026-03-02', 'x'.repeat(501), true, today)
+    ).toMatch(/under 500/);
+  });
+});

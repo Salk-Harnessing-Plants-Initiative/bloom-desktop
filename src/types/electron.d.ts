@@ -61,6 +61,11 @@ import {
   QRVerifyPlatesResult,
 } from './graviscan';
 import type {
+  CylinderWaveCreateInput,
+  CylinderWaveDateChangeInput,
+  CylinderWaveInfo,
+} from './cylinder-wave';
+import type {
   GraviScanCreateInput,
   graviscansCreate,
   graviscansGetMaxWaveNumber,
@@ -397,6 +402,18 @@ export interface DatabaseAPI {
     listGraviMetadata: (
       experimentId: string
     ) => ReturnType<typeof listGraviMetadata>;
+  };
+  /** CylinderScan waves and their sowing dates (#407). */
+  cylinderWaves: {
+    list: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<CylinderWaveInfo[]>>;
+    create: (
+      input: CylinderWaveCreateInput
+    ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
+    changeSowingDate: (
+      input: CylinderWaveDateChangeInput
+    ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
   };
   scans: {
     /**

@@ -28,19 +28,20 @@ model Scientist {
 }
 
 model Experiment {
-  id                    String                     @id @default(uuid())
+  id                    String                        @id @default(uuid())
   name                  String
   species               String
   scientist_id          String?
   accession_id          String?
-  experiment_type       String                     @default("cylinderscan")
-  accession             Accessions?                @relation("AccessionToExperiment", fields: [accession_id], references: [id])
-  scientist             Scientist?                 @relation(fields: [scientist_id], references: [id])
+  experiment_type       String                        @default("cylinderscan")
+  accession             Accessions?                   @relation("AccessionToExperiment", fields: [accession_id], references: [id])
+  scientist             Scientist?                    @relation(fields: [scientist_id], references: [id])
   scans                 Scan[]
   graviScans            GraviScan[]
   graviSessions         GraviScanSession[]
   graviPlateAssignments GraviScanPlateAssignment[]
   graviWaveMetadata     GraviExperimentWaveMetadata[]
+  cylinderWaves         CylinderWave[]
 }
 
 model Accessions {
@@ -62,27 +63,31 @@ model PlantAccessionMappings {
 }
 
 model Scan {
-  id              String     @id @default(uuid())
-  experiment_id   String
-  phenotyper_id   String
-  scanner_name    String
-  plant_id        String
-  accession_name  String?
-  path            String
-  capture_date    DateTime   @default(now())
-  num_frames      Int
-  exposure_time   Int
-  gain            Float
-  brightness      Float
-  contrast        Float
-  gamma           Float
-  seconds_per_rot Float
-  wave_number     Int
-  plant_age_days  Int
-  deleted         Boolean    @default(false)
-  images          Image[]
-  phenotyper      Phenotyper @relation(fields: [phenotyper_id], references: [id])
-  experiment      Experiment @relation(fields: [experiment_id], references: [id])
+  id                        String     @id @default(uuid())
+  experiment_id             String
+  phenotyper_id             String
+  scanner_name              String
+  plant_id                  String
+  accession_name            String?
+  path                      String
+  capture_date              DateTime   @default(now())
+  num_frames                Int
+  exposure_time             Int
+  gain                      Float
+  brightness                Float
+  contrast                  Float
+  gamma                     Float
+  seconds_per_rot           Float
+  wave_number               Int
+  plant_age_days            Int
+  deleted                   Boolean    @default(false)
+  // Set when the age came from the wave's sowing date (#407): the calculated age, and the
+  // operator's reason when the age used (plant_age_days) differs from it.
+  calculated_plant_age_days Int?
+  plant_age_change_reason   String?
+  images                    Image[]
+  phenotyper                Phenotyper @relation(fields: [phenotyper_id], references: [id])
+  experiment                Experiment @relation(fields: [experiment_id], references: [id])
 
   // Performance indexes (non-breaking additions)
   @@index([experiment_id])
@@ -193,7 +198,7 @@ model GraviScanPlateAssignment {
   // this column existed, this table held one shared row per position
   // across every wave, which caused real stale-cross-wave-data and
   // silent-override-loss bugs (see the GraviScan Tier 4 OpenSpec change).
-  wave_number             Int       @default(0)
+  wave_number            Int       @default(0)
 
   experiment Experiment   @relation(fields: [experiment_id], references: [id])
   scanner    GraviScanner @relation(fields: [scanner_id], references: [id])
@@ -299,4 +304,39 @@ model GraviExperimentWaveMetadata {
   @@unique([experiment_id, wave_number])
   @@index([experiment_id])
   @@index([accession_id])
+}
+
+// A CylinderScan wave's sowing date, from which Capture Scan calculates the plant age.
+// `sowing_date` is a local calendar date, "YYYY-MM-DD".
+model CylinderWave {
+  id                   String   @id @default(uuid())
+  experiment_id        String
+  wave_number          Int
+  sowing_date          String
+  // Why the date is on or before an earlier wave's sowing date, when it is.
+  note                 String?
+  set_by_phenotyper_id String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  experiment Experiment                     @relation(fields: [experiment_id], references: [id], onDelete: Cascade)
+  changes    CylinderWaveSowingDateChange[]
+
+  @@unique([experiment_id, wave_number])
+  @@index([experiment_id])
+}
+
+// Every change to a wave's sowing date. Saved scans keep the age they were saved with.
+model CylinderWaveSowingDateChange {
+  id                       String   @id @default(uuid())
+  wave_id                  String
+  old_sowing_date          String
+  new_sowing_date          String
+  reason                   String?
+  changed_by_phenotyper_id String?
+  changedAt                DateTime @default(now())
+
+  wave CylinderWave @relation(fields: [wave_id], references: [id], onDelete: Cascade)
+
+  @@index([wave_id])
 }

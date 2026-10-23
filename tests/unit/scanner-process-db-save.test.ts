@@ -155,6 +155,29 @@ describe('ScannerProcess — database save outcome (#392)', () => {
     expect(completeEvents[0].db_saved).toBe(true);
   });
 
+  it('saves the calculated age and the reason for a changed age on the scan row (#407)', async () => {
+    mockScanCreate.mockResolvedValue({ id: 'scan-124' });
+    const settings = buildSettings(outputDir, true);
+    settings.metadata = {
+      ...settings.metadata!,
+      plant_age_days: 13,
+      calculated_plant_age_days: 14,
+      plant_age_change_reason: 'Experiment was sown later',
+    };
+    await scanner.initialize(settings);
+
+    await scanner.scan();
+
+    expect(mockScanCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        phenotyper_id: 'user-001',
+        plant_age_days: 13,
+        calculated_plant_age_days: 14,
+        plant_age_change_reason: 'Experiment was sown later',
+      }),
+    });
+  });
+
   it('leaves db_saved undefined when no metadata was provided (no save attempted)', async () => {
     await scanner.initialize(buildSettings(outputDir, false));
 

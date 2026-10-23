@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Capture Scan calculates the plant age from each wave's sowing date instead of asking the operator to type it ([#407](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/407), [#408](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/408)).
+  - **Setting the date:** the first time a wave is used, Capture Scan asks when it was sown, and Start Scan waits until the date is saved. A future date is refused. A date on or before an earlier wave's needs a note. A wave number that skips ahead (wave 5 when the highest so far is 1) must be confirmed.
+  - **Under the wave number:** once set, the sowing date is shown with who set it and when. Until the wave's first scan it can be edited there; the edit is recorded, and the editor becomes the new "set by".
+  - **The age:** shown read-only. For a plant that really is a different age, **Change age** takes the age to use and a reason. They apply to that scan only, and the scan saves the age used, the calculated age and the reason.
+  - **The Experiments page** lists each CylinderScan experiment's waves with their sowing dates. A date can be changed freely until the wave's first scan, then only with a reason. Every change is recorded, and saved scans keep the age they were saved with.
+
 ### Changed
 
 - Station deploys show their progress: each stage (download, station checks, backup, install, database upgrade, test upload, Bloom check, rollback) is a timed, collapsible section of the run's log, long waits log a "still waiting" line every minute, and the job summary has a row per stage with its result and time. The installer's own log is copied into the deploy log, and the test upload is looked up in Bloom afterwards (plant, experiment, scans and images) and reported as **Found in Bloom**.

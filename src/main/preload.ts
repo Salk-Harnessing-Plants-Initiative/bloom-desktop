@@ -44,6 +44,10 @@ import type {
 } from '../types/database';
 // eslint-disable-next-line import/no-unresolved
 import type { GraviWedgeEvent } from '../types/graviscan';
+import type {
+  CylinderWaveCreateInput,
+  CylinderWaveDateChangeInput,
+} from '../types/cylinder-wave';
 
 /**
  * Python backend API exposed to renderer
@@ -212,6 +216,14 @@ const databaseAPI: DatabaseAPI = {
       ),
     listGraviMetadata: (experimentId: string) =>
       ipcRenderer.invoke('db:experiments:listGraviMetadata', experimentId),
+  },
+  cylinderWaves: {
+    list: (experimentId: string) =>
+      ipcRenderer.invoke('db:cylinderWaves:list', experimentId),
+    create: (input: CylinderWaveCreateInput) =>
+      ipcRenderer.invoke('db:cylinderWaves:create', input),
+    changeSowingDate: (input: CylinderWaveDateChangeInput) =>
+      ipcRenderer.invoke('db:cylinderWaves:changeSowingDate', input),
   },
   scans: {
     list: (filters?: ScanFilters | PaginatedScanFilters) =>

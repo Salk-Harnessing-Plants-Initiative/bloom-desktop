@@ -30,6 +30,11 @@ import {
   validateWaveNumber,
   validatePlantAgeDays,
 } from '../utils/metadata-validation';
+import { useWaveSowingDate } from './hooks/useWaveSowingDate';
+import { WaveSowingDatePanel } from './components/WaveSowingDatePanel';
+import { PlantAgeNote } from './components/PlantAgeNote';
+import { WaveSowingDateInfo } from './components/WaveSowingDateInfo';
+import { usePhenotyperName } from './hooks/usePhenotyperName';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -90,6 +95,28 @@ export function CaptureScan() {
   const [duplicateScanWarning, setDuplicateScanWarning] = useState<
     string | null
   >(null);
+
+  // The plant age comes from the wave's sowing date (#407).
+  const sowing = useWaveSowingDate(
+    metadata.experimentId,
+    metadata.waveNumber,
+    metadata.plantQrCode,
+    metadata.phenotyper
+  );
+  const phenotyperName = usePhenotyperName(metadata.phenotyper);
+  const { ageToUse, needsSowingDate, setChange: setAgeChange } = sowing;
+  // The scan listeners are registered once: reach the latest reload through a ref.
+  const reloadWavesRef = useRef(sowing.reload);
+  reloadWavesRef.current = sowing.reload;
+  useEffect(() => {
+    // A wave without a sowing date has no age yet: don't show a previous one.
+    const next =
+      ageToUse !== null ? String(ageToUse) : needsSowingDate ? '' : null;
+    if (next === null) return;
+    setMetadata((prev) =>
+      prev.plantAgeDays === next ? prev : { ...prev, plantAgeDays: next }
+    );
+  }, [ageToUse, needsSowingDate]);
 
   // Handle barcode validation changes from MetadataForm
   const handleBarcodeValidationChange = useCallback(
@@ -416,6 +443,11 @@ export function CaptureScan() {
           setTimeout(() => setShowSuccessMessage(false), 5000);
         }
 
+        // A changed age was for this scan only.
+        setAgeChange(null);
+        // The wave now has a scan: its sowing date can no longer be edited here.
+        void reloadWavesRef.current();
+
         // Reset metadata for next scan (optional)
         // For now, keep the same experiment/phenotyper but increment plant
       } else {
@@ -485,7 +517,9 @@ export function CaptureScan() {
     cameraConfigured &&
     !isScanning &&
     !barcodeValidationError &&
-    !duplicateScanWarning;
+    !duplicateScanWarning &&
+    !sowing.loading &&
+    !sowing.needsSowingDate;
 
   // Start scan handler
   const handleStartScan = async () => {
@@ -533,6 +567,8 @@ export function CaptureScan() {
           accession_name: metadata.accessionName || undefined,
           plant_age_days: parseInt(metadata.plantAgeDays, 10),
           wave_number: parseInt(metadata.waveNumber, 10),
+          calculated_plant_age_days: sowing.calculatedAge ?? undefined,
+          plant_age_change_reason: sowing.change?.reason,
           scan_path: relativePath,
         },
       });
@@ -675,6 +711,39 @@ export function CaptureScan() {
                 disabled={isScanning}
                 errors={errors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
+                waveNote={
+                  sowing.needsSowingDate && sowing.waveNumber !== null ? (
+                    <WaveSowingDatePanel
+                      key={`${metadata.experimentId}-${sowing.waveNumber}`}
+                      waveNumber={sowing.waveNumber}
+                      waves={sowing.waves}
+                      phenotyperId={metadata.phenotyper}
+                      onSave={sowing.saveWave}
+                      disabled={isScanning}
+                    />
+                  ) : sowing.wave ? (
+                    <WaveSowingDateInfo
+                      key={sowing.wave.id}
+                      wave={sowing.wave}
+                      waves={sowing.waves}
+                      onChangeDate={sowing.changeDate}
+                      disabled={isScanning}
+                    />
+                  ) : undefined
+                }
+                plantAgeReadOnly={sowing.wave !== null}
+                plantAgeNote={
+                  sowing.wave && sowing.calculatedAge !== null ? (
+                    <PlantAgeNote
+                      wave={sowing.wave}
+                      calculatedAge={sowing.calculatedAge}
+                      change={sowing.change}
+                      onChange={sowing.setChange}
+                      phenotyperName={phenotyperName ?? undefined}
+                      disabled={isScanning}
+                    />
+                  ) : undefined
+                }
               />
 
               {/* Duplicate Scan Warning */}
@@ -798,6 +867,12 @@ export function CaptureScan() {
                       Camera not configured
                     </p>
                   )}
+                {sowing.needsSowingDate && (
+                  <p className="text-sm text-red-600 mt-2">
+                    Save wave {sowing.waveNumber}&apos;s sowing date above to
+                    start the scan
+                  </p>
+                )}
               </div>
             </div>
           </div>

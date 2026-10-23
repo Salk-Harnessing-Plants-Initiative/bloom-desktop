@@ -19,6 +19,7 @@ import {
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { CaptureScan } from '../../src/renderer/CaptureScan';
+import { toIsoDate } from '../../src/utils/sowing-date';
 
 // Mocks for window.electron APIs
 const mockConfigGet = vi.fn();
@@ -126,6 +127,25 @@ beforeEach(() => {
       checkIdleReset: vi.fn().mockResolvedValue(false),
     },
     database: {
+      cylinderWaves: {
+        // Wave 1 sown 14 days ago, so the calculated age matches the tests' 14.
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              id: 'wave-1',
+              wave_number: 1,
+              sowing_date: toIsoDate(new Date(Date.now() - 14 * 86_400_000)),
+              note: null,
+              set_by_name: 'Demo Phenotyper',
+              set_at: '2026-01-02T09:00:00.000Z',
+              scanCount: 0,
+            },
+          ],
+        }),
+        create: vi.fn(),
+        changeSowingDate: vi.fn(),
+      },
       scans: {
         getRecent: mockGetRecentScans,
         checkDuplicate: mockCheckDuplicate,
@@ -891,5 +911,78 @@ describe('CaptureScan duplicate-scan check', () => {
     expect(clearIntervalSpy).toHaveBeenCalledWith(duplicateCheckIntervalId);
     setIntervalSpy.mockRestore();
     clearIntervalSpy.mockRestore();
+  });
+});
+
+describe('CaptureScan plant age from the sowing date (#407)', () => {
+  const wavesList = () =>
+    window.electron.database.cylinderWaves.list as ReturnType<typeof vi.fn>;
+  const scanMetadata = () => mockScannerInitialize.mock.calls[0][0].metadata;
+
+  it('saves the age calculated from the wave sowing date, read-only', async () => {
+    await fillFormAndStartScan();
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(scanMetadata()).toMatchObject({
+      plant_age_days: 14,
+      wave_number: 1,
+      calculated_plant_age_days: 14,
+      plant_age_change_reason: undefined,
+    });
+    expect(screen.getByLabelText(/Plant Age/)).toHaveAttribute('readonly');
+    expect(screen.getByTestId('plant-age-note')).toHaveTextContent(
+      "Calculated from wave 1's sowing date"
+    );
+    expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
+      'set by Demo Phenotyper'
+    );
+  });
+
+  it('asks for a new wave sowing date and keeps Start Scan disabled until it is saved', async () => {
+    wavesList().mockResolvedValue({ success: true, data: [] });
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+
+    expect(
+      await screen.findByTestId('wave-sowing-date-panel')
+    ).toHaveTextContent('Please set the sowing date for wave 1.');
+    expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
+    expect(
+      screen.getByText(/Save wave 1's sowing date above to start the scan/)
+    ).toBeInTheDocument();
+    // The session's age (14) isn't shown for a wave with no sowing date.
+    expect(screen.getByLabelText(/Plant Age/)).toHaveValue('');
+  });
+
+  it('saves a changed age with the calculated age and the reason', async () => {
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    fireEvent.click(await screen.findByTestId('change-age'));
+    fireEvent.change(screen.getByTestId('change-age-input'), {
+      target: { value: '13' },
+    });
+    fireEvent.change(screen.getByTestId('change-age-reason'), {
+      target: { value: 'Experiment was sown later' },
+    });
+    fireEvent.click(screen.getByTestId('change-age-confirm'));
+
+    const startButton = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(scanMetadata()).toMatchObject({
+      plant_age_days: 13,
+      calculated_plant_age_days: 14,
+      plant_age_change_reason: 'Experiment was sown later',
+    });
   });
 });

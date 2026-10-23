@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ExperimentForm } from './components/ExperimentForm';
+import { CylinderWaveDates } from './components/CylinderWaveDates';
 import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
 
 interface Scientist {
@@ -241,8 +242,10 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
                 <div className="flex justify-between items-center">
                   <span>{getExperimentDisplay(experiment)}</span>
                 </div>
-                {experiment.experiment_type === 'graviscan' && (
+                {experiment.experiment_type === 'graviscan' ? (
                   <ExperimentWaveLinks experimentId={experiment.id} />
+                ) : (
+                  <CylinderWaveDates experimentId={experiment.id} />
                 )}
               </li>
             ))}
