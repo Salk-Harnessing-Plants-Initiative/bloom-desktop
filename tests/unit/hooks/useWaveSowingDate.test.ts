@@ -3,7 +3,13 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { useWaveSowingDate } from '../../../src/renderer/hooks/useWaveSowingDate';
 import { toIsoDate } from '../../../src/utils/sowing-date';
 
-const daysAgo = (n: number) => toIsoDate(new Date(Date.now() - n * 86_400_000));
+/** Local "YYYY-MM-DD" `n` days ago, by calendar arithmetic so DST can't shift it. */
+const daysAgo = (n: number) => {
+  const now = new Date();
+  return toIsoDate(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() - n)
+  );
+};
 const wave = (n: number, sownDaysAgo: number) => ({
   id: `w${n}`,
   wave_number: n,
@@ -32,7 +38,7 @@ describe('useWaveSowingDate', () => {
 
   it('calculates the age from the entered wave sowing date', async () => {
     const { result } = renderHook(() =>
-      useWaveSowingDate('exp', '1', 'Daisy_1')
+      useWaveSowingDate('exp', '1', 'Sorghum_1')
     );
     expect(result.current.loading).toBe(true);
     await waitFor(() => expect(result.current.wave?.wave_number).toBe(1));
@@ -44,7 +50,7 @@ describe('useWaveSowingDate', () => {
 
   it('asks for the sowing date of a wave that has none', async () => {
     const { result } = renderHook(() =>
-      useWaveSowingDate('exp', '2', 'Daisy_1')
+      useWaveSowingDate('exp', '2', 'Sorghum_1')
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.needsSowingDate).toBe(true);
@@ -62,7 +68,7 @@ describe('useWaveSowingDate', () => {
     const { result, rerender } = renderHook(
       (props) => useWaveSowingDate(...props),
       {
-        initialProps: ['exp', '1', 'Daisy_1'] as [string, string, string],
+        initialProps: ['exp', '1', 'Sorghum_1'] as [string, string, string],
       }
     );
     await waitFor(() => expect(result.current.calculatedAge).toBe(9));
@@ -70,7 +76,7 @@ describe('useWaveSowingDate', () => {
       result.current.setChange({ age: 8, reason: 'Experiment was sown later' })
     );
     expect(result.current.ageToUse).toBe(8);
-    rerender(['exp', '1', 'Daisy_2']);
+    rerender(['exp', '1', 'Sorghum_2']);
     await waitFor(() => expect(result.current.change).toBeNull());
     expect(result.current.ageToUse).toBe(9);
   });
@@ -79,7 +85,7 @@ describe('useWaveSowingDate', () => {
     const { result, rerender } = renderHook(
       (props) => useWaveSowingDate(...props),
       {
-        initialProps: ['exp', '1', 'Daisy_1', 'ph-1'] as [
+        initialProps: ['exp', '1', 'Sorghum_1', 'ph-1'] as [
           string,
           string,
           string,
@@ -91,13 +97,36 @@ describe('useWaveSowingDate', () => {
     act(() =>
       result.current.setChange({ age: 8, reason: 'Experiment was sown later' })
     );
-    rerender(['exp', '1', 'Daisy_1', 'ph-2']);
+    rerender(['exp', '1', 'Sorghum_1', 'ph-2']);
     await waitFor(() => expect(result.current.change).toBeNull());
+  });
+
+  it('drops a changed age when the experiment or the wave changes', async () => {
+    list.mockResolvedValue({ success: true, data: [wave(1, 9), wave(2, 5)] });
+    const { result, rerender } = renderHook(
+      (props) => useWaveSowingDate(...props),
+      {
+        initialProps: ['exp', '1', 'Sorghum_1'] as [string, string, string],
+      }
+    );
+    await waitFor(() => expect(result.current.calculatedAge).toBe(9));
+    const changed = { age: 8, reason: 'Experiment was sown later' };
+
+    act(() => result.current.setChange(changed));
+    rerender(['exp', '2', 'Sorghum_1']);
+    await waitFor(() => expect(result.current.calculatedAge).toBe(5));
+    expect(result.current.change).toBeNull();
+    expect(result.current.ageToUse).toBe(5);
+
+    act(() => result.current.setChange(changed));
+    rerender(['exp-2', '2', 'Sorghum_1']);
+    await waitFor(() => expect(list).toHaveBeenCalledWith('exp-2'));
+    expect(result.current.change).toBeNull();
   });
 
   it('saves a new wave for the entered experiment and wave, then reloads', async () => {
     const { result } = renderHook(() =>
-      useWaveSowingDate('exp', '2', 'Daisy_1')
+      useWaveSowingDate('exp', '2', 'Sorghum_1')
     );
     await waitFor(() => expect(result.current.needsSowingDate).toBe(true));
     list.mockResolvedValue({ success: true, data: [wave(1, 9), wave(2, 3)] });
@@ -122,7 +151,7 @@ describe('useWaveSowingDate', () => {
     (global.window as any).electron.database.cylinderWaves.changeSowingDate =
       changeSowingDate;
     const { result } = renderHook(() =>
-      useWaveSowingDate('exp', '1', 'Daisy_1', 'ph-1')
+      useWaveSowingDate('exp', '1', 'Sorghum_1', 'ph-1')
     );
     await waitFor(() => expect(result.current.wave).not.toBeNull());
     list.mockClear();
@@ -140,7 +169,7 @@ describe('useWaveSowingDate', () => {
 
   it('reloads the waves on request', async () => {
     const { result } = renderHook(() =>
-      useWaveSowingDate('exp', '1', 'Daisy_1')
+      useWaveSowingDate('exp', '1', 'Sorghum_1')
     );
     await waitFor(() => expect(result.current.wave).not.toBeNull());
     list.mockClear();

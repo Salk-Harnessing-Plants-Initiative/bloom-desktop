@@ -86,6 +86,12 @@ describe('CylinderWaveDates', () => {
     expect(await screen.findByText('database is locked')).toBeInTheDocument();
   });
 
+  it('shows the error when loading the waves throws', async () => {
+    list.mockRejectedValue(new Error('IPC timed out'));
+    render(<CylinderWaveDates experimentId="exp" />);
+    expect(await screen.findByText('IPC timed out')).toBeInTheDocument();
+  });
+
   it('shows nothing for an experiment without waves', async () => {
     list.mockResolvedValue({ success: true, data: [] });
     const { container } = render(<CylinderWaveDates experimentId="exp" />);

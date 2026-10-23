@@ -27,6 +27,14 @@ vi.mock('../../../src/components/Streamer', () => ({
 import type { ScanResult } from '../../../src/types/scanner';
 import { toIsoDate } from '../../../src/utils/sowing-date';
 
+/** Local "YYYY-MM-DD" `days` ago, by calendar arithmetic so DST can't shift it. */
+const sownDaysAgo = (days: number) => {
+  const now = new Date();
+  return toIsoDate(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() - days)
+  );
+};
+
 const PLANT_BARCODE = 'PLANT-001';
 const OUTPUT_PATH = '/scans/2026-10-12/PLANT-001/uuid-1';
 const SUCCESS_TEXT = 'Scan completed successfully!';
@@ -74,7 +82,7 @@ beforeEach(() => {
             {
               id: 'wave-1',
               wave_number: 1,
-              sowing_date: toIsoDate(new Date(Date.now() - 14 * 86_400_000)),
+              sowing_date: sownDaysAgo(14),
               note: null,
               set_by_name: 'Demo Phenotyper',
               set_at: '2026-01-02T09:00:00.000Z',

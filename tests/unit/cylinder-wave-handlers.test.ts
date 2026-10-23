@@ -121,6 +121,33 @@ describe('listWaves', () => {
     const { db } = fakeDb([]);
     expect((await listWaves({ db, now }, ' ')).success).toBe(false);
   });
+
+  it("asks for the waves in order, and counts only the wave's live scans", async () => {
+    // The fake sorts and filters by itself, so check what the real queries ask for.
+    const { db, raw } = fakeDb([{ ...wave1 }], { 1: 72 });
+    await listWaves({ db, now }, 'exp');
+    expect(raw.cylinderWave.findMany).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp' },
+      orderBy: { wave_number: 'asc' },
+    });
+    expect(raw.scan.count).toHaveBeenCalledWith({
+      where: { experiment_id: 'exp', wave_number: 1, deleted: false },
+    });
+    expect(raw.cylinderWaveSowingDateChange.findMany).toHaveBeenCalledWith({
+      where: { wave_id: { in: ['w1'] } },
+      orderBy: { changedAt: 'asc' },
+    });
+  });
+
+  it('returns a database error instead of throwing', async () => {
+    const { db, raw } = fakeDb([{ ...wave1 }]);
+    raw.scan.count.mockRejectedValue(new Error('database is locked'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await listWaves({ db, now }, 'exp')).toEqual({
+      success: false,
+      error: 'database is locked',
+    });
+  });
 });
 
 describe('listWaves: the change log', () => {
@@ -442,6 +469,34 @@ describe('changeSowingDate', () => {
       { phenotyperId: 'ph-1', waveId: 'w2', sowingDate: '2025-11-01' }
     );
     expect(result.error).toMatch(/^Wave 1 was sown/);
+  });
+
+  it('returns the error when the change cannot be saved', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    fake.raw.$transaction.mockRejectedValue(new Error('database is locked'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(
+      await changeSowingDate(
+        { db: fake.db, now },
+        { phenotyperId: 'ph-1', waveId: 'w1', sowingDate: '2025-11-27' }
+      )
+    ).toEqual({ success: false, error: 'database is locked' });
+    expect(fake.rows[0].sowing_date).toBe('2025-11-26');
+  });
+
+  it('returns a database error from looking up the wave instead of throwing', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    fake.raw.cylinderWave.findUnique.mockRejectedValue(
+      new Error('disk I/O error')
+    );
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(
+      await changeSowingDate(
+        { db: fake.db, now },
+        { phenotyperId: 'ph-1', waveId: 'w1', sowingDate: '2025-11-27' }
+      )
+    ).toEqual({ success: false, error: 'disk I/O error' });
+    expect(fake.raw.$transaction).not.toHaveBeenCalled();
   });
 
   it('refuses an unknown wave, the same date and a future date', async () => {
