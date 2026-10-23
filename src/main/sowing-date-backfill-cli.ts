@@ -19,7 +19,7 @@ import {
 
 const EXIT_OK = 0;
 const EXIT_FAILED = 1;
-const TITLE = 'Bloom Desktop: sowing dates';
+const TITLE = 'Bloom Desktop: start dates';
 
 function show(type: 'info' | 'error', message: string): void {
   console.log(`[SowingDateBackfill] ${message}`);
@@ -53,7 +53,7 @@ export async function startSowingDateBackfill(
   } catch (error) {
     show(
       'error',
-      `Couldn't work out the sowing dates: ${
+      `Couldn't work out the start dates: ${
         error instanceof Error ? error.message : 'Unknown error'
       }`
     );

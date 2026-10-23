@@ -23,6 +23,7 @@ import {
   earlierScansDisagree,
 } from '../../utils/sowing-date-backfill';
 import type { DatabaseResponse } from '../../types/database';
+import { StartDateInfo } from './StartDateInfo';
 
 export interface WaveSowingDatePanelProps {
   waveNumber: number;
@@ -91,7 +92,7 @@ export function WaveSowingDatePanel({
         phenotyperId,
       });
       if (!result.success)
-        setSaveError(result.error ?? 'Could not save the sowing date.');
+        setSaveError(result.error ?? 'Could not save the start date.');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -105,7 +106,8 @@ export function WaveSowingDatePanel({
       data-testid="wave-sowing-date-panel"
     >
       <p className="font-medium text-green-800">
-        Please set the sowing date for wave {waveNumber}.
+        Please set the start date for wave {waveNumber}.
+        <StartDateInfo />
       </p>
       {hasEarlierScans && (
         <div
@@ -126,7 +128,7 @@ export function WaveSowingDatePanel({
       )}
       <input
         type="date"
-        aria-label="Sowing date"
+        aria-label="Start date"
         value={sowingDate}
         max={toIsoDate(new Date())}
         onChange={(e) => setSowingDate(e.target.value)}
@@ -179,7 +181,7 @@ export function WaveSowingDatePanel({
         className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50"
         data-testid="sowing-date-save"
       >
-        Save sowing date
+        Save start date
       </button>
     </div>
   );

@@ -132,9 +132,9 @@ Adding more stations needs no code change: steps 1–6 and 8 for each.
 
 If the test upload reports that it wrote no result while the runner runs as a service, the app may not be able to start in the service's session on that station. Run the runner from the lab account's desktop instead (`run.cmd` at sign-in) and tell the maintainers.
 
-## Sowing dates for experiments scanned before the update
+## Start dates for experiments scanned before the update
 
-The version that calculates plant age from each wave's sowing date needs a sowing date for every wave. Waves scanned before that update have none. Their scans already say when the wave was sown: each scan's date minus the age typed for it. Run this **once by hand** on each scanner PC after installing that version. Running it again changes nothing, because waves that already have a date are never touched.
+The version that calculates plant age from each wave's start date (the day the age counts from, as day 0) needs a start date for every wave. Waves scanned before that update have none. Their scans already imply it: each scan's date minus the age typed for it. Run this **once by hand** on each scanner PC after installing that version. Running it again changes nothing, because waves that already have a date are never touched.
 
 1. Close Bloom Desktop; the command refuses to run while it's open.
 2. In a Command Prompt, preview what it would do. Nothing is changed:

@@ -12,7 +12,7 @@ export function SowingDateLoadError({ error }: { error: string }) {
       data-testid="sowing-date-load-error"
     >
       <p className="font-medium text-red-800">
-        Couldn&apos;t load the sowing dates. Close Bloom Desktop and open it
+        Couldn&apos;t load the start dates. Close Bloom Desktop and open it
         again.
       </p>
       <p className="text-red-700">

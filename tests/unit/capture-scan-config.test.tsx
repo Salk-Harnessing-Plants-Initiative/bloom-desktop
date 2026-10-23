@@ -948,7 +948,7 @@ describe('CaptureScan plant age from the sowing date (#407)', () => {
     });
     expect(screen.getByLabelText(/Plant Age/)).toHaveAttribute('readonly');
     expect(screen.getByTestId('plant-age-note')).toHaveTextContent(
-      "Calculated from wave 1's sowing date"
+      "Calculated from wave 1's start date"
     );
     expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
       'set by Demo Phenotyper'
@@ -966,10 +966,10 @@ describe('CaptureScan plant age from the sowing date (#407)', () => {
 
     expect(
       await screen.findByTestId('wave-sowing-date-panel')
-    ).toHaveTextContent('Please set the sowing date for wave 1.');
+    ).toHaveTextContent('Please set the start date for wave 1.');
     expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
     expect(
-      screen.getByText(/Save wave 1's sowing date above to start the scan/)
+      screen.getByText(/Save wave 1's start date above to start the scan/)
     ).toBeInTheDocument();
     // The session's age (14) isn't shown for a wave with no sowing date.
     expect(screen.getByLabelText(/Plant Age/)).toHaveValue('');
@@ -1117,7 +1117,7 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
     expect(startButton).toBeDisabled();
     expect(
       screen.getByText(
-        'Save or cancel the sowing date change above to start the scan'
+        'Save or cancel the start date change above to start the scan'
       )
     ).toBeInTheDocument();
   });
@@ -1159,7 +1159,7 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
     });
     fireEvent.click(screen.getByTestId('change-age-confirm'));
     expect(screen.getByTestId('sowing-date-edit-locked')).toHaveTextContent(
-      'To edit the sowing date instead, click Use calculated age.'
+      'To edit the start date instead, click Use calculated age.'
     );
 
     fireEvent.click(screen.getByText('Use calculated age'));
@@ -1181,7 +1181,7 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
     fireEvent.click(screen.getByTestId('sowing-date-edit'));
     // While the date box is open, the age can't be changed.
     expect(screen.getByTestId('change-age-locked')).toHaveTextContent(
-      'Finish or cancel the sowing date change first.'
+      'Finish or cancel the start date change first.'
     );
     // Wave 1 was really sown a day later: 13 days ago.
     (waves.list as ReturnType<typeof vi.fn>).mockResolvedValue({
@@ -1199,7 +1199,7 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
         },
       ],
     });
-    fireEvent.change(screen.getByLabelText('Sowing date'), {
+    fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: sownDaysAgo(13) },
     });
     await act(async () => {
@@ -1211,7 +1211,7 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
     );
     expect(screen.queryByTestId('change-age')).not.toBeInTheDocument();
     expect(screen.getByTestId('change-age-locked')).toHaveTextContent(
-      'The sowing date was changed, so the age was recalculated.'
+      'The start date was changed, so the age was recalculated.'
     );
 
     await waitFor(() => expect(startButton).not.toBeDisabled());
@@ -1249,7 +1249,7 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
 
     const error = await screen.findByTestId('sowing-date-load-error');
     expect(error).toHaveTextContent(
-      "Couldn't load the sowing dates. Close Bloom Desktop and open it again."
+      "Couldn't load the start dates. Close Bloom Desktop and open it again."
     );
     expect(error).toHaveTextContent('Details: database is locked');
     expect(

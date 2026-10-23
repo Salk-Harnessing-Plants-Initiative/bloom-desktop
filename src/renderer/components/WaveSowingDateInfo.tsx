@@ -15,6 +15,7 @@ import {
 } from '../../utils/sowing-date';
 import type { CylinderWaveInfo } from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
+import { StartDateInfo } from './StartDateInfo';
 
 export interface WaveSowingDateInfoProps {
   wave: CylinderWaveInfo;
@@ -98,7 +99,7 @@ export function WaveSowingDateInfo({
     try {
       const result = await onChangeDate(sowingDate, reason.trim() || undefined);
       if (result.success) setEditing(false);
-      else setSaveError(result.error ?? 'Could not change the sowing date.');
+      else setSaveError(result.error ?? 'Could not change the start date.');
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -112,7 +113,8 @@ export function WaveSowingDateInfo({
       data-testid="wave-sowing-date-info"
     >
       <p>
-        Sowing date: {formatSowingDate(wave.sowing_date)}
+        Start date
+        <StartDateInfo />: {formatSowingDate(wave.sowing_date)}
         {wave.set_by_name
           ? ` · set by ${wave.set_by_name} on ${formatSetAt(wave.set_at)}`
           : ` (set on ${formatSetAt(wave.set_at)})`}
@@ -152,7 +154,7 @@ export function WaveSowingDateInfo({
         >
           <input
             type="date"
-            aria-label="Sowing date"
+            aria-label="Start date"
             value={sowingDate}
             max={toIsoDate(new Date())}
             onChange={(e) => setSowingDate(e.target.value)}
@@ -205,7 +207,7 @@ export function WaveSowingDateInfo({
               className="px-3 py-1.5 rounded-md bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50"
               data-testid="sowing-date-edit-save"
             >
-              Save sowing date
+              Save start date
             </button>
             <button
               type="button"

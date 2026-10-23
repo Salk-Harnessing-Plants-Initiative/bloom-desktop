@@ -100,9 +100,9 @@ export function sowingDateError(
   sowingDate: string,
   today: Date
 ): string | null {
-  if (!isIsoDate(sowingDate)) return 'Enter the sowing date.';
+  if (!isIsoDate(sowingDate)) return 'Enter the start date.';
   if (plantAgeDays(sowingDate, today) < 0) {
-    return "The sowing date can't be in the future.";
+    return "The start date can't be in the future.";
   }
   return null;
 }
@@ -177,8 +177,8 @@ function waveConflict(
   const when =
     conflict.wave_number < waveNumber ? 'on or before' : 'on or after';
   return (
-    `Wave ${conflict.wave_number} was sown on ${formatSowingDate(conflict.sowing_date)}, ` +
-    `so wave ${waveNumber} would be sown ${when} it.`
+    `Wave ${conflict.wave_number}'s start date is ${formatSowingDate(conflict.sowing_date)}, ` +
+    `so wave ${waveNumber} would start ${when} it.`
   );
 }
 
@@ -212,7 +212,7 @@ export function checkSowingDateChange(
   const reason = change.reason.trim();
   const error =
     change.newDate === change.currentDate
-      ? 'That is already the sowing date.'
+      ? 'That is already the start date.'
       : sowingDateError(change.newDate, today);
   const found = error
     ? null

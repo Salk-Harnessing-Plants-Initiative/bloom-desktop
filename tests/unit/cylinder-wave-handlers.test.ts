@@ -245,7 +245,7 @@ describe('createWave', () => {
   it('refuses a future date', async () => {
     expect(await create({ sowingDate: '2026-03-11' })).toEqual({
       success: false,
-      error: "The sowing date can't be in the future.",
+      error: "The start date can't be in the future.",
     });
     expect(fake.raw.cylinderWave.create).not.toHaveBeenCalled();
   });
@@ -273,7 +273,7 @@ describe('createWave', () => {
 
   it('refuses a wave that already has a sowing date', async () => {
     expect((await create({ waveNumber: 1 })).error).toBe(
-      'Wave 1 already has a sowing date.'
+      'Wave 1 already has a start date.'
     );
   });
 
@@ -325,7 +325,7 @@ describe('createWave and earlier scans (#407)', () => {
     });
     expect(without.success).toBe(false);
     expect(without.error).toMatch(
-      /^Earlier scans in wave 2 \(100\) point to sowing on .+ Add a note saying why this date is different\.$/
+      /^Earlier scans in wave 2 \(100\) point to a start date of .+ Add a note saying why this date is different\.$/
     );
     expect(
       (
@@ -487,7 +487,7 @@ describe('changeSowingDate', () => {
       { db: fake.db, now },
       { phenotyperId: 'ph-1', waveId: 'w2', sowingDate: '2025-11-01' }
     );
-    expect(result.error).toMatch(/^Wave 1 was sown/);
+    expect(result.error).toMatch(/^Wave 1's start date is/);
   });
 
   it('returns the error when the change cannot be saved', async () => {
@@ -538,7 +538,7 @@ describe('changeSowingDate', () => {
           sowingDate: '2025-11-26',
         })
       ).error
-    ).toBe('That is already the sowing date.');
+    ).toBe('That is already the start date.');
     expect(
       (
         await changeSowingDate(deps, {

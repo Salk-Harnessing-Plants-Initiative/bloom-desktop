@@ -123,7 +123,7 @@ export function describeEarlierScans(
       (c) =>
         `${formatSowingDate(c.date)} (${c.count} ${c.count === 1 ? 'scan' : 'scans'})`
     );
-  return `Earlier scans in wave ${waveNumber} (${plan.scanCount}) point to sowing on ${shown.join(' or ')}.`;
+  return `Earlier scans in wave ${waveNumber} (${plan.scanCount}) point to a start date of ${shown.join(' or ')}.`;
 }
 
 /** Why a date far from what the earlier scans point to needs a note. */

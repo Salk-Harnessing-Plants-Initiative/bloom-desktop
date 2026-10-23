@@ -56,9 +56,11 @@ describe('CylinderWaveDates', () => {
   it('lists each wave with its current sowing date and scan count', async () => {
     render(<CylinderWaveDates experimentId="exp" />);
     expect(
-      await screen.findByText(/Wave 1: sown .+ \(72 scans\)/)
+      await screen.findByText(/Wave 1: start date .+ \(72 scans\)/)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Wave 2: sown .+ \(1 scan\)/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Wave 2: start date .+ \(1 scan\)/)
+    ).toBeInTheDocument();
     expect(list).toHaveBeenCalledWith('exp');
   });
 
@@ -78,7 +80,7 @@ describe('CylinderWaveDates', () => {
 
   it('has no way to change a date here', async () => {
     render(<CylinderWaveDates experimentId="exp" />);
-    await screen.findByText(/Wave 1: sown/);
+    await screen.findByText(/Wave 1: start date/);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 

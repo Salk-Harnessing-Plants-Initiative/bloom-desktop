@@ -139,7 +139,7 @@ describe('summarizeSowingDateBackfill', () => {
     );
     const text = summarizeSowingDateBackfill(report, reportPath);
     expect(text).toContain(
-      'Would set the sowing date of 1 wave(s) from their earlier scans.'
+      'Would set the start date of 1 wave(s) from their earlier scans.'
     );
     expect(text).toContain(
       '  Sorghum_GWAS_Group1, wave 1: 2026-10-09 (10 of 10 scans)'
@@ -168,7 +168,7 @@ describe('summarizeSowingDateBackfill', () => {
       '/logs/r.json'
     );
     expect(text).toBe(
-      'Every wave with scans already has a sowing date. Nothing to do.\n\nReport: /logs/r.json'
+      'Every wave with scans already has a start date. Nothing to do.\n\nReport: /logs/r.json'
     );
   });
 });

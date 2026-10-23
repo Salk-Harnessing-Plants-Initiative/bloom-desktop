@@ -69,7 +69,7 @@ describe('plantAgeDays', () => {
 
 describe('sowingDateError', () => {
   it('refuses a missing or future date and accepts today', () => {
-    expect(sowingDateError('', today)).toBe('Enter the sowing date.');
+    expect(sowingDateError('', today)).toBe('Enter the start date.');
     expect(sowingDateError('2026-03-11', today)).toMatch(/future/);
     expect(sowingDateError('2026-03-10', today)).toBeNull();
   });
@@ -89,7 +89,7 @@ describe('checkNewWave', () => {
   it('needs a note for a wave sown on or before an earlier wave', () => {
     for (const date of ['2025-11-26', '2025-11-20']) {
       expect(checkNewWave(2, date, [wave1], today).noteNeeded).toMatch(
-        /^Wave 1 was sown on .+, so wave 2 would be sown on or before it\. Add a note/
+        /^Wave 1's start date is .+, so wave 2 would start on or before it\. Add a note/
       );
     }
   });
@@ -98,7 +98,7 @@ describe('checkNewWave', () => {
     const wave3 = { wave_number: 3, sowing_date: '2026-01-10' };
     expect(
       checkNewWave(2, '2026-01-15', [wave1, wave3], today).noteNeeded
-    ).toMatch(/^Wave 3 was sown .+ on or after it/);
+    ).toMatch(/^Wave 3's start date is .+ on or after it/);
   });
 
   it('needs a confirmation for a wave number that skips ahead', () => {
@@ -173,7 +173,7 @@ describe('checkSowingDateChange', () => {
   it('asks for a reason, not a note, when the date conflicts with another wave', () => {
     const check = checkSowingDateChange(change('2026-02-19'), [wave1], today);
     expect(check.conflict).toMatch(
-      /^Wave 1 was sown on .+, so wave 2 would be sown on or before it\. Give a reason for the change\.$/
+      /^Wave 1's start date is .+, so wave 2 would start on or before it\. Give a reason for the change\.$/
     );
     expect(check.reasonNeeded).toBe(true);
     expect(check.saveError).toBe(check.conflict);
@@ -181,7 +181,7 @@ describe('checkSowingDateChange', () => {
 
   it('refuses the same date, a future date and an over-long reason', () => {
     expect(checkSowingDateChange(change('2026-03-01'), [], today).error).toBe(
-      'That is already the sowing date.'
+      'That is already the start date.'
     );
     expect(
       checkSowingDateChange(change('2026-04-01', 'x', true), [], today)

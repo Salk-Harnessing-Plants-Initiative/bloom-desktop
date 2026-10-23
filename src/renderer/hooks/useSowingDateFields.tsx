@@ -19,11 +19,11 @@ import { PlantAgeNote } from '../components/PlantAgeNote';
 import { SowingDateLoadError } from '../components/SowingDateLoadError';
 
 const ONE_CHANGE_AGE_CHANGED =
-  'The age was changed for this scan. To edit the sowing date instead, click Use calculated age.';
+  'The age was changed for this scan. To edit the start date instead, click Use calculated age.';
 const FINISH_AGE_CHANGE = 'Finish or cancel the age change first.';
 const ONE_CHANGE_DATE_CHANGED =
-  'The sowing date was changed, so the age was recalculated. The age can be changed on the next scan.';
-const FINISH_DATE_CHANGE = 'Finish or cancel the sowing date change first.';
+  'The start date was changed, so the age was recalculated. The age can be changed on the next scan.';
+const FINISH_DATE_CHANGE = 'Finish or cancel the start date change first.';
 
 export interface SowingDateFieldsInput {
   experimentId: string;
@@ -78,13 +78,13 @@ export function useSowingDateFields(
   const startScanHold = sowing.loadError
     ? 'Restart Bloom Desktop to start the scan'
     : sowing.needsSowingDate
-      ? `Save wave ${sowing.waveNumber}'s sowing date above to start the scan`
+      ? `Save wave ${sowing.waveNumber}'s start date above to start the scan`
       : isScanning
         ? null
         : ageBoxOpen
           ? 'Use the new age or cancel the age change above to start the scan'
           : dateBoxOpen
-            ? 'Save or cancel the sowing date change above to start the scan'
+            ? 'Save or cancel the start date change above to start the scan'
             : null;
 
   const waveNote = sowing.loadError ? (

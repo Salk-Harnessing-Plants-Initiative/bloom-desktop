@@ -105,7 +105,7 @@ export function PlantAgeNote({
         </div>
       ) : (
         <p>
-          Calculated from wave {wave.wave_number}&apos;s sowing date (
+          Calculated from wave {wave.wave_number}&apos;s start date (
           {formatSowingDate(wave.sowing_date)}).{' '}
           {lockedMessage ? (
             <span className="text-amber-800" data-testid="change-age-locked">

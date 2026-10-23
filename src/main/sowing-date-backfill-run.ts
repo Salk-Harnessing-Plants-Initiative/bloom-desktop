@@ -86,7 +86,7 @@ export function summarizeSowingDateBackfill(
 ): string {
   const verb = report.dryRun ? 'Would set' : 'Set';
   const lines = [
-    `${verb} the sowing date of ${report.set.length} wave(s) from their earlier scans.`,
+    `${verb} the start date of ${report.set.length} wave(s) from their earlier scans.`,
     ...report.set.map(
       (w) =>
         `  ${w.experiment}, wave ${w.wave_number}: ${w.sowingDate} (${w.agreeing} of ${w.scanCount} scans)`
@@ -106,7 +106,7 @@ export function summarizeSowingDateBackfill(
     lines.splice(
       0,
       lines.length,
-      'Every wave with scans already has a sowing date. Nothing to do.'
+      'Every wave with scans already has a start date. Nothing to do.'
     );
   }
   lines.push('', `Report: ${reportPath}`);
