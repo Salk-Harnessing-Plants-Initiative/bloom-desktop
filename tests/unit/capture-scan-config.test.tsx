@@ -1045,4 +1045,30 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
     expect(screen.getByTestId('change-age-input')).toHaveValue('');
     expect(screen.getByTestId('change-age-reason')).toHaveValue('');
   });
+
+  it('tells the operator to restart when the sowing dates cannot be loaded', async () => {
+    (
+      window.electron.database.cylinderWaves.list as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ success: false, error: 'database is locked' });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+
+    const error = await screen.findByTestId('sowing-date-load-error');
+    expect(error).toHaveTextContent(
+      "Couldn't load the sowing dates. Close Bloom Desktop and open it again."
+    );
+    expect(error).toHaveTextContent('Details: database is locked');
+    expect(
+      screen.queryByTestId('wave-sowing-date-panel')
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
+    expect(
+      screen.getByText('Restart Bloom Desktop to start the scan')
+    ).toBeInTheDocument();
+  });
 });

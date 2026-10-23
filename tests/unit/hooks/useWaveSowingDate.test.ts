@@ -150,13 +150,49 @@ describe('useWaveSowingDate', () => {
     expect(list).toHaveBeenCalledTimes(1);
   });
 
-  it('asks for the sowing date when the waves cannot be loaded', async () => {
+  it('reports a failed load instead of asking for a sowing date', async () => {
     list.mockRejectedValue(new Error('ipc failed'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const { result } = renderHook(() =>
-      useWaveSowingDate('exp', '1', 'Daisy_1')
+      useWaveSowingDate('exp', '1', 'Sorghum_1')
     );
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.needsSowingDate).toBe(true);
+    expect(result.current.loadError).toBe('ipc failed');
+    expect(result.current.needsSowingDate).toBe(false);
+    expect(result.current.wave).toBeNull();
+  });
+
+  it('reports an error result from the database too', async () => {
+    list.mockResolvedValue({ success: false, error: 'database is locked' });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() =>
+      useWaveSowingDate('exp', '1', 'Sorghum_1')
+    );
+    await waitFor(() =>
+      expect(result.current.loadError).toBe('database is locked')
+    );
+    expect(result.current.needsSowingDate).toBe(false);
+  });
+
+  it("ignores an answer for an experiment that's no longer chosen", async () => {
+    let answerA: (value: unknown) => void = () => {};
+    list.mockImplementation((id: string) =>
+      id === 'exp-A'
+        ? new Promise((resolve) => {
+            answerA = resolve;
+          })
+        : Promise.resolve({ success: true, data: [wave(1, 3)] })
+    );
+    const { result, rerender } = renderHook(
+      (id: string) => useWaveSowingDate(id, '1', 'Sorghum_1'),
+      { initialProps: 'exp-A' }
+    );
+    rerender('exp-B');
+    await waitFor(() => expect(result.current.calculatedAge).toBe(3));
+    await act(async () => {
+      answerA({ success: true, data: [wave(1, 9)] });
+    });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.calculatedAge).toBe(3);
   });
 });

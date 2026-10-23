@@ -33,6 +33,7 @@ import {
 import { useWaveSowingDate } from './hooks/useWaveSowingDate';
 import { WaveSowingDatePanel } from './components/WaveSowingDatePanel';
 import { PlantAgeNote } from './components/PlantAgeNote';
+import { SowingDateLoadError } from './components/SowingDateLoadError';
 import { WaveSowingDateInfo } from './components/WaveSowingDateInfo';
 import { usePhenotyperName } from './hooks/usePhenotyperName';
 
@@ -523,6 +524,7 @@ export function CaptureScan() {
     !barcodeValidationError &&
     !duplicateScanWarning &&
     !sowing.loading &&
+    !sowing.loadError &&
     !sowing.needsSowingDate &&
     !ageBoxOpen &&
     !dateBoxOpen;
@@ -718,7 +720,9 @@ export function CaptureScan() {
                 errors={errors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
                 waveNote={
-                  sowing.needsSowingDate && sowing.waveNumber !== null ? (
+                  sowing.loadError ? (
+                    <SowingDateLoadError error={sowing.loadError} />
+                  ) : sowing.needsSowingDate && sowing.waveNumber !== null ? (
                     <WaveSowingDatePanel
                       key={`${metadata.experimentId}-${sowing.waveNumber}`}
                       waveNumber={sowing.waveNumber}
@@ -884,6 +888,11 @@ export function CaptureScan() {
                       Camera not configured
                     </p>
                   )}
+                {sowing.loadError && (
+                  <p className="text-sm text-red-600 mt-2">
+                    Restart Bloom Desktop to start the scan
+                  </p>
+                )}
                 {(ageBoxOpen || dateBoxOpen) && !isScanning && (
                   <p className="text-sm text-red-600 mt-2">
                     {ageBoxOpen

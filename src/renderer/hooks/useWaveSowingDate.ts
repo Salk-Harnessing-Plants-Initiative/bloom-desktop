@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { validateWaveNumber } from '../../utils/metadata-validation';
 import { plantAgeDays } from '../../utils/sowing-date';
 import type {
@@ -24,6 +24,8 @@ export interface UseWaveSowingDateResult {
   needsSowingDate: boolean;
   /** Still looking up the experiment's waves: scanning waits for the answer. */
   loading: boolean;
+  /** The waves couldn't be read: scanning waits, and the operator is told to restart. */
+  loadError: string | null;
   /** Calendar days from the wave's sowing date to today. */
   calculatedAge: number | null;
   /** The age the operator changed for this scan, if any. */
@@ -56,22 +58,34 @@ export function useWaveSowingDate(
 ): UseWaveSowingDateResult {
   const [waves, setWaves] = useState<CylinderWaveInfo[]>([]);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [change, setChange] = useState<PlantAgeChange | null>(null);
+  // Only the latest request's answer is used: an older one (e.g. for the
+  // experiment chosen before this one) is ignored.
+  const latestRequest = useRef(0);
 
   const load = useCallback(async (id: string) => {
+    const request = ++latestRequest.current;
+    let rows: CylinderWaveInfo[] = [];
+    let error: string | null = null;
     try {
       const result = await window.electron.database.cylinderWaves.list(id);
-      setWaves(result.success && result.data ? result.data : []);
-    } catch (error) {
-      console.error('[useWaveSowingDate] list() failed:', error);
-      setWaves([]);
+      if (result.success && result.data) rows = result.data;
+      else error = result.error ?? 'Unknown error';
+    } catch (thrown) {
+      error = thrown instanceof Error ? thrown.message : 'Unknown error';
     }
+    if (request !== latestRequest.current) return;
+    if (error) console.error('[useWaveSowingDate] list() failed:', error);
+    setWaves(rows);
+    setLoadError(error);
     setLoadedFor(id);
   }, []);
 
   useEffect(() => {
     setWaves([]);
     setLoadedFor(null);
+    setLoadError(null);
     if (experimentId) void load(experimentId);
   }, [experimentId, load]);
 
@@ -134,8 +148,10 @@ export function useWaveSowingDate(
     waves,
     wave,
     waveNumber,
-    needsSowingDate: ready && !loading && wave === null,
+    // A failed read isn't "no sowing date": the operator is told to restart instead.
+    needsSowingDate: ready && !loading && !loadError && wave === null,
     loading,
+    loadError: ready ? loadError : null,
     calculatedAge,
     change,
     ageToUse: change ? change.age : calculatedAge,
