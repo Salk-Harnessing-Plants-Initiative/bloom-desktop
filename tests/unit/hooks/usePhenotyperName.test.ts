@@ -30,4 +30,24 @@ describe('usePhenotyperName', () => {
     await waitFor(() => expect(list).toHaveBeenCalled());
     expect(unknown.current).toBeNull();
   });
+
+  it('returns null, and logs, when the phenotypers cannot be loaded', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    list.mockRejectedValue(new Error('database is locked'));
+    const { result } = renderHook(() => usePhenotyperName('ph-1'));
+    await waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        '[usePhenotyperName] list() failed:',
+        expect.any(Error)
+      )
+    );
+    expect(result.current).toBeNull();
+  });
+
+  it('returns null when the list is refused', async () => {
+    list.mockResolvedValue({ success: false, error: 'database is locked' });
+    const { result } = renderHook(() => usePhenotyperName('ph-1'));
+    await waitFor(() => expect(list).toHaveBeenCalled());
+    expect(result.current).toBeNull();
+  });
 });

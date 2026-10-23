@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   checkNewWave,
   isIsoDate,
@@ -39,6 +39,29 @@ describe('plantAgeDays', () => {
 
   it('is negative before sowing', () => {
     expect(plantAgeDays('2026-03-11', today)).toBe(-1);
+  });
+
+  describe('across a daylight-saving change', () => {
+    const originalTz = process.env.TZ;
+    afterEach(() => {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    });
+
+    it('still counts whole days (a 23- or 25-hour day is one day)', (ctx) => {
+      process.env.TZ = 'America/Los_Angeles';
+      // Skip where the runtime can't switch time zones mid-process.
+      if (
+        new Date(2026, 0, 1).getTimezoneOffset() ===
+        new Date(2026, 6, 1).getTimezoneOffset()
+      ) {
+        ctx.skip();
+      }
+      // Clocks go forward on 8 Mar 2026: 1 to 10 Mar is 9 days less an hour.
+      expect(plantAgeDays('2026-03-01', new Date(2026, 2, 10, 0, 30))).toBe(9);
+      // Clocks go back on 1 Nov 2026: 31 Oct to 2 Nov is 2 days and an hour.
+      expect(plantAgeDays('2026-10-31', new Date(2026, 10, 2, 23, 30))).toBe(2);
+    });
   });
 });
 

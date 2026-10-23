@@ -137,6 +137,26 @@ describe('WaveSowingDateInfo', () => {
     expect(await screen.findByText('database is locked')).toBeInTheDocument();
   });
 
+  it('shows the error when saving the change throws', async () => {
+    const onChange = vi.fn().mockRejectedValue(new Error('IPC timed out'));
+    render(
+      <WaveSowingDateInfo
+        wave={wave2}
+        waves={[wave1, wave2]}
+        onChangeDate={onChange}
+        phenotyperChosen
+      />
+    );
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    fireEvent.change(screen.getByLabelText('Sowing date'), {
+      target: { value: '2026-02-19' },
+    });
+    fireEvent.click(screen.getByTestId('sowing-date-edit-save'));
+    expect(await screen.findByText('IPC timed out')).toBeInTheDocument();
+    // The box stays open so the operator can try again or cancel.
+    expect(screen.getByTestId('sowing-date-edit-save')).toBeInTheDocument();
+  });
+
   it('greys out everything inside an open Edit box while scanning', () => {
     const onChangeDate = vi.fn();
     const { rerender } = render(

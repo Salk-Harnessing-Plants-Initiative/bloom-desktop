@@ -9,7 +9,13 @@ import { WaveSowingDatePanel } from '../../../src/renderer/components/WaveSowing
 import { PlantAgeNote } from '../../../src/renderer/components/PlantAgeNote';
 import { toIsoDate } from '../../../src/utils/sowing-date';
 
-const daysAgo = (n: number) => toIsoDate(new Date(Date.now() - n * 86_400_000));
+/** Local "YYYY-MM-DD" `n` days ago, by calendar arithmetic so DST can't shift it. */
+const daysAgo = (n: number) => {
+  const now = new Date();
+  return toIsoDate(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() - n)
+  );
+};
 const wave1 = { wave_number: 1, sowing_date: daysAgo(90) };
 
 function renderPanel(waveNumber = 2, waves = [wave1]) {
@@ -70,7 +76,7 @@ describe('WaveSowingDatePanel', () => {
 
   it('refuses a future date', () => {
     const { setDate, save } = renderPanel();
-    setDate(toIsoDate(new Date(Date.now() + 2 * 86_400_000)));
+    setDate(daysAgo(-2));
     expect(
       screen.getByText("The sowing date can't be in the future.")
     ).toBeInTheDocument();
