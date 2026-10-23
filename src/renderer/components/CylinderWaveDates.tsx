@@ -79,7 +79,7 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
                 data-testid={`wave-date-log-${wave.wave_number}`}
               >
                 {wave.changes.map((change) => (
-                  <ChangeLogEntry key={change.changed_at} change={change} />
+                  <ChangeLogEntry key={change.id} change={change} />
                 ))}
               </ul>
             )}

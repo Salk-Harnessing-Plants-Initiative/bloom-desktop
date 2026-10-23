@@ -154,7 +154,7 @@ export interface ScannerAPI {
    */
   initialize: (
     settings: ScannerSettings
-  ) => Promise<{ success: boolean; initialized: boolean }>;
+  ) => Promise<{ success: boolean; initialized: boolean; error?: string }>;
 
   /**
    * Cleanup scanner resources.

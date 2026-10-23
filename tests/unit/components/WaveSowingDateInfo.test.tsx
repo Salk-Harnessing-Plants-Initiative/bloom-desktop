@@ -53,7 +53,7 @@ describe('WaveSowingDateInfo', () => {
     expect(
       screen.getByTestId('sowing-date-edit-scans-warning')
     ).toHaveTextContent(
-      '3 scans in wave 2 were saved with ages from this date. They are not changed: only new scans use the new date.'
+      '3 scans in wave 2 are already saved. They keep the ages they were saved with: only new scans use the new date.'
     );
     fireEvent.change(screen.getByLabelText('Sowing date'), {
       target: { value: '2026-02-19' },

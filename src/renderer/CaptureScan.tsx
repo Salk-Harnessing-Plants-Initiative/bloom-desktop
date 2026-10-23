@@ -30,20 +30,7 @@ import {
   validateWaveNumber,
   validatePlantAgeDays,
 } from '../utils/metadata-validation';
-import { useWaveSowingDate } from './hooks/useWaveSowingDate';
-import { WaveSowingDatePanel } from './components/WaveSowingDatePanel';
-import { PlantAgeNote } from './components/PlantAgeNote';
-import { SowingDateLoadError } from './components/SowingDateLoadError';
-import { WaveSowingDateInfo } from './components/WaveSowingDateInfo';
-import { usePhenotyperName } from './hooks/usePhenotyperName';
-
-// Only one of the two, the sowing date or the plant age, can be changed per scan (#407).
-const ONE_CHANGE_AGE_CHANGED =
-  'The age was changed for this scan. To edit the sowing date instead, click Use calculated age.';
-const FINISH_AGE_CHANGE = 'Finish or cancel the age change first.';
-const ONE_CHANGE_DATE_CHANGED =
-  'The sowing date was changed, so the age was recalculated. The age can be changed on the next scan.';
-const FINISH_DATE_CHANGE = 'Finish or cancel the sowing date change first.';
+import { useSowingDateFields } from './hooks/useSowingDateFields';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -106,30 +93,17 @@ export function CaptureScan() {
   >(null);
 
   // The plant age comes from the wave's sowing date (#407).
-  const sowing = useWaveSowingDate(
-    metadata.experimentId,
-    metadata.waveNumber,
-    metadata.plantQrCode,
-    metadata.phenotyper
-  );
-  const phenotyperName = usePhenotyperName(metadata.phenotyper);
-  const { ageToUse, needsSowingDate, clearForNextScan } = sowing;
-  // An open Change age or sowing-date Edit box must be finished or cancelled before
-  // scanning, so what the form shows is what the scan saves.
-  const [ageBoxOpen, setAgeBoxOpen] = useState(false);
-  const [dateBoxOpen, setDateBoxOpen] = useState(false);
+  const setPlantAgeDays = useCallback((age: string) => {
+    setMetadata((prev) =>
+      prev.plantAgeDays === age ? prev : { ...prev, plantAgeDays: age }
+    );
+  }, []);
+  const { sowing, holdsStartScan, startScanHold, waveNote, plantAgeNote } =
+    useSowingDateFields(metadata, setPlantAgeDays, isScanning);
+  const { clearForNextScan } = sowing;
   // The scan listeners are registered once: reach the latest reload through a ref.
   const reloadWavesRef = useRef(sowing.reload);
   reloadWavesRef.current = sowing.reload;
-  useEffect(() => {
-    // A wave without a sowing date has no age yet: don't show a previous one.
-    const next =
-      ageToUse !== null ? String(ageToUse) : needsSowingDate ? '' : null;
-    if (next === null) return;
-    setMetadata((prev) =>
-      prev.plantAgeDays === next ? prev : { ...prev, plantAgeDays: next }
-    );
-  }, [ageToUse, needsSowingDate]);
 
   // Handle barcode validation changes from MetadataForm
   const handleBarcodeValidationChange = useCallback(
@@ -531,11 +505,7 @@ export function CaptureScan() {
     !isScanning &&
     !barcodeValidationError &&
     !duplicateScanWarning &&
-    !sowing.loading &&
-    !sowing.loadError &&
-    !sowing.needsSowingDate &&
-    !ageBoxOpen &&
-    !dateBoxOpen;
+    !holdsStartScan;
 
   // Start scan handler
   const handleStartScan = async () => {
@@ -566,7 +536,7 @@ export function CaptureScan() {
       const numFrames = scanNumFrames ?? 72;
       const secondsPerRot = scanSecondsPerRot ?? 7.0;
 
-      await window.electron.scanner.initialize({
+      const init = await window.electron.scanner.initialize({
         camera: cameraSettings,
         daq: {
           ...DEFAULT_DAQ_SETTINGS,
@@ -588,6 +558,10 @@ export function CaptureScan() {
           scan_path: relativePath,
         },
       });
+      // Don't scan when the scanner refused to start (e.g. a bad plant age).
+      if (init?.success === false) {
+        throw new Error(init.error ?? 'The scanner could not start.');
+      }
 
       // Start scan
       await window.electron.scanner.scan();
@@ -727,67 +701,9 @@ export function CaptureScan() {
                 disabled={isScanning}
                 errors={errors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
-                waveNote={
-                  sowing.loadError ? (
-                    <SowingDateLoadError error={sowing.loadError} />
-                  ) : sowing.needsSowingDate && sowing.waveNumber !== null ? (
-                    <WaveSowingDatePanel
-                      key={`${metadata.experimentId}-${sowing.waveNumber}`}
-                      waveNumber={sowing.waveNumber}
-                      waves={sowing.waves}
-                      phenotyperId={metadata.phenotyper}
-                      earlier={sowing.earlier}
-                      onSave={sowing.saveWave}
-                      disabled={isScanning}
-                    />
-                  ) : sowing.wave ? (
-                    <WaveSowingDateInfo
-                      key={sowing.wave.id}
-                      wave={sowing.wave}
-                      waves={sowing.waves}
-                      onChangeDate={sowing.changeDate}
-                      phenotyperChosen={metadata.phenotyper !== ''}
-                      onOpenChange={setDateBoxOpen}
-                      lockedMessage={
-                        sowing.change
-                          ? ONE_CHANGE_AGE_CHANGED
-                          : ageBoxOpen
-                            ? FINISH_AGE_CHANGE
-                            : null
-                      }
-                      disabled={isScanning}
-                    />
-                  ) : undefined
-                }
+                waveNote={waveNote}
                 plantAgeReadOnly={sowing.wave !== null}
-                plantAgeNote={
-                  sowing.wave && sowing.calculatedAge !== null ? (
-                    <PlantAgeNote
-                      // A new plant, wave, experiment or phenotyper starts with the box
-                      // closed and empty: a half-typed age never carries over.
-                      key={[
-                        metadata.experimentId,
-                        sowing.wave.id,
-                        metadata.plantQrCode,
-                        metadata.phenotyper,
-                      ].join('|')}
-                      wave={sowing.wave}
-                      calculatedAge={sowing.calculatedAge}
-                      change={sowing.change}
-                      onChange={sowing.setChange}
-                      phenotyperName={phenotyperName ?? undefined}
-                      onOpenChange={setAgeBoxOpen}
-                      lockedMessage={
-                        sowing.dateChanged
-                          ? ONE_CHANGE_DATE_CHANGED
-                          : dateBoxOpen
-                            ? FINISH_DATE_CHANGE
-                            : null
-                      }
-                      disabled={isScanning}
-                    />
-                  ) : undefined
-                }
+                plantAgeNote={plantAgeNote}
               />
 
               {/* Duplicate Scan Warning */}
@@ -911,23 +827,8 @@ export function CaptureScan() {
                       Camera not configured
                     </p>
                   )}
-                {sowing.loadError && (
-                  <p className="text-sm text-red-600 mt-2">
-                    Restart Bloom Desktop to start the scan
-                  </p>
-                )}
-                {(ageBoxOpen || dateBoxOpen) && !isScanning && (
-                  <p className="text-sm text-red-600 mt-2">
-                    {ageBoxOpen
-                      ? 'Use the new age or cancel the age change above to start the scan'
-                      : 'Save or cancel the sowing date change above to start the scan'}
-                  </p>
-                )}
-                {sowing.needsSowingDate && (
-                  <p className="text-sm text-red-600 mt-2">
-                    Save wave {sowing.waveNumber}&apos;s sowing date above to
-                    start the scan
-                  </p>
+                {startScanHold && (
+                  <p className="text-sm text-red-600 mt-2">{startScanHold}</p>
                 )}
               </div>
             </div>

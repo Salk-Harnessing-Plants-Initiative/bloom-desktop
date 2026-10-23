@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import {
   MAX_REASON_LENGTH,
-  checkNewWave,
+  checkSowingDateChange,
   formatSowingDate,
   toIsoDate,
   type WaveSowingDate,
@@ -63,18 +63,28 @@ export function WaveSowingDateInfo({
   const hasScans = wave.scanCount > 0;
 
   const others = waves.filter((w) => w.wave_number !== wave.wave_number);
+  // The same rules the main process applies when saving.
   const check =
     editing && sowingDate !== wave.sowing_date
-      ? checkNewWave(wave.wave_number, sowingDate, others, new Date())
+      ? checkSowingDateChange(
+          {
+            waveNumber: wave.wave_number,
+            currentDate: wave.sowing_date,
+            newDate: sowingDate,
+            reason,
+            waveHasScans: hasScans,
+          },
+          others,
+          new Date()
+        )
       : null;
-  const reasonNeeded = hasScans || Boolean(check?.noteNeeded);
+  const reasonNeeded = hasScans || Boolean(check?.reasonNeeded);
   const canSave =
     !disabled &&
     !saving &&
     phenotyperChosen &&
     check !== null &&
-    !check.error &&
-    (!reasonNeeded || reason.trim() !== '');
+    !check.saveError;
 
   const open = () => {
     setSowingDate(wave.sowing_date);
@@ -155,10 +165,9 @@ export function WaveSowingDateInfo({
               data-testid="sowing-date-edit-scans-warning"
             >
               <p>
-                {wave.scanCount} {wave.scanCount === 1 ? 'scan' : 'scans'} in
-                wave {wave.wave_number} {wave.scanCount === 1 ? 'was' : 'were'}{' '}
-                saved with ages from this date. They are not changed: only new
-                scans use the new date.
+                {wave.scanCount === 1
+                  ? `1 scan in wave ${wave.wave_number} is already saved. It keeps the age it was saved with: only new scans use the new date.`
+                  : `${wave.scanCount} scans in wave ${wave.wave_number} are already saved. They keep the ages they were saved with: only new scans use the new date.`}
               </p>
               <p>
                 If their ages need correcting, that has to be done in Bloom as
@@ -167,9 +176,7 @@ export function WaveSowingDateInfo({
             </div>
           )}
           {check?.error && <p className="text-red-600">{check.error}</p>}
-          {check?.noteNeeded && (
-            <p className="text-gray-700">{check.noteNeeded}</p>
-          )}
+          {check?.conflict && <p className="text-gray-700">{check.conflict}</p>}
           {reasonNeeded && (
             <textarea
               aria-label="Reason"

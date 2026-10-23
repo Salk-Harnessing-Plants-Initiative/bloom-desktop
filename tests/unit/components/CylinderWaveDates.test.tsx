@@ -18,6 +18,7 @@ const wave1 = {
   scanCount: 72,
   changes: [
     {
+      id: 'c1',
       old_sowing_date: '2025-11-26',
       new_sowing_date: '2025-11-27',
       reason: 'Typo',
@@ -25,6 +26,7 @@ const wave1 = {
       changed_at: '2025-12-01T10:00:00.000Z',
     },
     {
+      id: 'c2',
       old_sowing_date: '2025-11-27',
       new_sowing_date: '2025-11-25',
       reason: 'Checked the seed log',

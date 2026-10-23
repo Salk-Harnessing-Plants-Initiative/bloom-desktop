@@ -5,7 +5,11 @@
  */
 
 import { useEffect, useState } from 'react';
-import { MAX_REASON_LENGTH, formatSowingDate } from '../../utils/sowing-date';
+import {
+  MAX_REASON_LENGTH,
+  formatDays,
+  formatSowingDate,
+} from '../../utils/sowing-date';
 import { validatePlantAgeDays } from '../../utils/metadata-validation';
 import type { CylinderWaveInfo } from '../../types/cylinder-wave';
 import type { PlantAgeChange } from '../hooks/useWaveSowingDate';
@@ -88,7 +92,7 @@ export function PlantAgeNote({
             age.
           </p>
           <p>
-            Calculated age: {calculatedAge} days. Reason: {change.reason}
+            Calculated age: {formatDays(calculatedAge)}. Reason: {change.reason}
           </p>
           <button
             type="button"
@@ -142,7 +146,7 @@ export function PlantAgeNote({
               />
             </svg>
             <div>
-              <p>Calculated age: {calculatedAge} days.</p>
+              <p>Calculated age: {formatDays(calculatedAge)}.</p>
               <p>Applies to this scan only.</p>
             </div>
           </div>

@@ -1,9 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   checkNewWave,
+  checkSowingDateChange,
+  formatDays,
   isIsoDate,
+  plantAgeChangeError,
   plantAgeDays,
-  sowingDateChangeError,
   sowingDateError,
   toIsoDate,
 } from '../../src/utils/sowing-date';
@@ -133,23 +135,122 @@ describe('checkNewWave', () => {
   });
 });
 
-describe('sowingDateChangeError', () => {
-  it('needs a reason only once the wave has scans', () => {
-    expect(sowingDateChangeError('2026-03-02', '', false, today)).toBeNull();
-    expect(sowingDateChangeError('2026-03-02', '  ', true, today)).toMatch(
-      /give a reason/
+describe('checkSowingDateChange', () => {
+  const change = (newDate: string, reason = '', waveHasScans = false) => ({
+    waveNumber: 2,
+    currentDate: '2026-03-01',
+    newDate,
+    reason,
+    waveHasScans,
+  });
+  const wave1 = { wave_number: 1, sowing_date: '2026-02-20' };
+
+  it('needs no reason before the first scan, and one after it', () => {
+    expect(checkSowingDateChange(change('2026-03-02'), [wave1], today)).toEqual(
+      {
+        error: null,
+        conflict: null,
+        reasonNeeded: false,
+        saveError: null,
+      }
     );
+    const scanned = checkSowingDateChange(
+      change('2026-03-02', '  ', true),
+      [wave1],
+      today
+    );
+    expect(scanned.reasonNeeded).toBe(true);
+    expect(scanned.saveError).toMatch(/give a reason/);
     expect(
-      sowingDateChangeError('2026-03-02', 'Typo: sown on the 2nd', true, today)
+      checkSowingDateChange(
+        change('2026-03-02', 'Typo: sown on the 2nd', true),
+        [wave1],
+        today
+      ).saveError
     ).toBeNull();
   });
 
-  it('refuses a future date and an over-long reason', () => {
-    expect(sowingDateChangeError('2026-04-01', 'x', true, today)).toMatch(
-      /future/
+  it('asks for a reason, not a note, when the date conflicts with another wave', () => {
+    const check = checkSowingDateChange(change('2026-02-19'), [wave1], today);
+    expect(check.conflict).toMatch(
+      /^Wave 1 was sown on .+, so wave 2 would be sown on or before it\. Give a reason for the change\.$/
+    );
+    expect(check.reasonNeeded).toBe(true);
+    expect(check.saveError).toBe(check.conflict);
+  });
+
+  it('refuses the same date, a future date and an over-long reason', () => {
+    expect(checkSowingDateChange(change('2026-03-01'), [], today).error).toBe(
+      'That is already the sowing date.'
     );
     expect(
-      sowingDateChangeError('2026-03-02', 'x'.repeat(501), true, today)
+      checkSowingDateChange(change('2026-04-01', 'x', true), [], today)
+        .saveError
+    ).toMatch(/future/);
+    expect(
+      checkSowingDateChange(
+        change('2026-03-02', 'x'.repeat(501), true),
+        [],
+        today
+      ).saveError
     ).toMatch(/under 500/);
+  });
+});
+
+describe('plantAgeChangeError', () => {
+  it('accepts the calculated age, and a changed age with a reason', () => {
+    expect(
+      plantAgeChangeError({ plant_age_days: 9, calculated_plant_age_days: 9 })
+    ).toBeNull();
+    expect(
+      plantAgeChangeError({
+        plant_age_days: 8,
+        calculated_plant_age_days: 9,
+        plant_age_change_reason: 'Sown a day later',
+      })
+    ).toBeNull();
+    // Scans without a sowing date (e.g. older callers) have nothing to check.
+    expect(plantAgeChangeError({ plant_age_days: 9 })).toBeNull();
+  });
+
+  it('refuses a changed age without a reason, and a reason without a change', () => {
+    expect(
+      plantAgeChangeError({
+        plant_age_days: 8,
+        calculated_plant_age_days: 9,
+        plant_age_change_reason: ' ',
+      })
+    ).toBe('A changed plant age needs a reason.');
+    expect(
+      plantAgeChangeError({
+        plant_age_days: 9,
+        calculated_plant_age_days: 9,
+        plant_age_change_reason: 'Sown a day later',
+      })
+    ).toBe("A reason was given, but the age wasn't changed.");
+    expect(
+      plantAgeChangeError({
+        plant_age_days: 9,
+        plant_age_change_reason: 'Sown a day later',
+      })
+    ).toMatch(/without a calculated age/);
+  });
+
+  it('refuses an over-long reason', () => {
+    expect(
+      plantAgeChangeError({
+        plant_age_days: 8,
+        calculated_plant_age_days: 9,
+        plant_age_change_reason: 'x'.repeat(501),
+      })
+    ).toMatch(/under 500/);
+  });
+});
+
+describe('formatDays', () => {
+  it('uses the singular for one day', () => {
+    expect(formatDays(0)).toBe('0 days');
+    expect(formatDays(1)).toBe('1 day');
+    expect(formatDays(9)).toBe('9 days');
   });
 });
