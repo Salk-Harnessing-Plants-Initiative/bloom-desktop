@@ -30,6 +30,7 @@ import {
   validateWaveNumber,
   validatePlantAgeDays,
 } from '../utils/metadata-validation';
+import { useSowingDateFields } from './hooks/useSowingDateFields';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -90,6 +91,19 @@ export function CaptureScan() {
   const [duplicateScanWarning, setDuplicateScanWarning] = useState<
     string | null
   >(null);
+
+  // The plant age comes from the wave's sowing date (#407).
+  const setPlantAgeDays = useCallback((age: string) => {
+    setMetadata((prev) =>
+      prev.plantAgeDays === age ? prev : { ...prev, plantAgeDays: age }
+    );
+  }, []);
+  const { sowing, holdsStartScan, startScanHold, waveNote, plantAgeNote } =
+    useSowingDateFields(metadata, setPlantAgeDays, isScanning);
+  const { clearForNextScan } = sowing;
+  // The scan listeners are registered once: reach the latest reload through a ref.
+  const reloadWavesRef = useRef(sowing.reload);
+  reloadWavesRef.current = sowing.reload;
 
   // Handle barcode validation changes from MetadataForm
   const handleBarcodeValidationChange = useCallback(
@@ -416,6 +430,11 @@ export function CaptureScan() {
           setTimeout(() => setShowSuccessMessage(false), 5000);
         }
 
+        // A changed age or sowing date was for this scan only.
+        clearForNextScan();
+        // The wave now has a scan: a sowing-date change now needs a reason.
+        void reloadWavesRef.current();
+
         // Reset metadata for next scan (optional)
         // For now, keep the same experiment/phenotyper but increment plant
       } else {
@@ -485,7 +504,8 @@ export function CaptureScan() {
     cameraConfigured &&
     !isScanning &&
     !barcodeValidationError &&
-    !duplicateScanWarning;
+    !duplicateScanWarning &&
+    !holdsStartScan;
 
   // Start scan handler
   const handleStartScan = async () => {
@@ -516,7 +536,7 @@ export function CaptureScan() {
       const numFrames = scanNumFrames ?? 72;
       const secondsPerRot = scanSecondsPerRot ?? 7.0;
 
-      await window.electron.scanner.initialize({
+      const init = await window.electron.scanner.initialize({
         camera: cameraSettings,
         daq: {
           ...DEFAULT_DAQ_SETTINGS,
@@ -533,9 +553,15 @@ export function CaptureScan() {
           accession_name: metadata.accessionName || undefined,
           plant_age_days: parseInt(metadata.plantAgeDays, 10),
           wave_number: parseInt(metadata.waveNumber, 10),
+          calculated_plant_age_days: sowing.calculatedAge ?? undefined,
+          plant_age_change_reason: sowing.change?.reason,
           scan_path: relativePath,
         },
       });
+      // Don't scan when the scanner refused to start (e.g. a bad plant age).
+      if (init?.success === false) {
+        throw new Error(init.error ?? 'The scanner could not start.');
+      }
 
       // Start scan
       await window.electron.scanner.scan();
@@ -675,6 +701,9 @@ export function CaptureScan() {
                 disabled={isScanning}
                 errors={errors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
+                waveNote={waveNote}
+                plantAgeReadOnly={sowing.wave !== null}
+                plantAgeNote={plantAgeNote}
               />
 
               {/* Duplicate Scan Warning */}
@@ -798,6 +827,9 @@ export function CaptureScan() {
                       Camera not configured
                     </p>
                   )}
+                {startScanHold && (
+                  <p className="text-sm text-red-600 mt-2">{startScanHold}</p>
+                )}
               </div>
             </div>
           </div>

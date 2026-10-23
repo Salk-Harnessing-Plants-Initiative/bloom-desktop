@@ -155,6 +155,29 @@ describe('ScannerProcess — database save outcome (#392)', () => {
     expect(completeEvents[0].db_saved).toBe(true);
   });
 
+  it('saves the calculated age and the reason for a changed age on the scan row (#407)', async () => {
+    mockScanCreate.mockResolvedValue({ id: 'scan-124' });
+    const settings = buildSettings(outputDir, true);
+    settings.metadata = {
+      ...settings.metadata!,
+      plant_age_days: 13,
+      calculated_plant_age_days: 14,
+      plant_age_change_reason: 'Experiment was sown later',
+    };
+    await scanner.initialize(settings);
+
+    await scanner.scan();
+
+    expect(mockScanCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        phenotyper_id: 'user-001',
+        plant_age_days: 13,
+        calculated_plant_age_days: 14,
+        plant_age_change_reason: 'Experiment was sown later',
+      }),
+    });
+  });
+
   it('leaves db_saved undefined when no metadata was provided (no save attempted)', async () => {
     await scanner.initialize(buildSettings(outputDir, false));
 
@@ -163,5 +186,44 @@ describe('ScannerProcess — database save outcome (#392)', () => {
     expect(mockScanCreate).not.toHaveBeenCalled();
     expect(result.db_saved).toBeUndefined();
     expect(result.success).toBe(true);
+  });
+});
+
+describe('ScannerProcess — the plant age is checked before scanning (#407)', () => {
+  it('refuses a changed age without a reason, without starting the scanner', async () => {
+    const sendCommand = vi.fn().mockResolvedValue({ success: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scanner = new ScannerProcess({ sendCommand } as any);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const settings = buildSettings(os.tmpdir(), true);
+    settings.metadata = {
+      ...settings.metadata!,
+      plant_age_days: 13,
+      calculated_plant_age_days: 14,
+    };
+    expect(await scanner.initialize(settings)).toEqual({
+      success: false,
+      initialized: false,
+      error: 'A changed plant age needs a reason.',
+    });
+    expect(sendCommand).not.toHaveBeenCalled();
+  });
+
+  it("doesn't keep the previous plant's settings after a refusal", async () => {
+    const sendCommand = vi.fn().mockResolvedValue({ success: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scanner = new ScannerProcess({ sendCommand } as any);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await scanner.initialize(buildSettings(os.tmpdir(), true));
+    const bad = buildSettings(os.tmpdir(), true);
+    bad.metadata = {
+      ...bad.metadata!,
+      plant_id: 'plant-002',
+      calculated_plant_age_days: 14,
+      plant_age_change_reason: 'x'.repeat(501),
+    };
+    expect((await scanner.initialize(bad)).success).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((scanner as any).currentSettings).toBeNull();
   });
 });

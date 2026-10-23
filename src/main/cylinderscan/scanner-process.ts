@@ -16,6 +16,7 @@ import type {
   ScanProgress,
 } from '../../types/scanner';
 import { writeMetadataJson } from './scan-metadata-json';
+import { plantAgeChangeError } from '../../utils/sowing-date';
 import type { ImageStatus } from '../../types/database';
 
 /**
@@ -46,7 +47,18 @@ export class ScannerProcess extends EventEmitter {
    */
   async initialize(
     settings: ScannerSettings
-  ): Promise<{ success: boolean; initialized: boolean }> {
+  ): Promise<{ success: boolean; initialized: boolean; error?: string }> {
+    // Refuse a bad plant age before anything is captured (#407).
+    const ageError = settings.metadata
+      ? plantAgeChangeError(settings.metadata)
+      : null;
+    if (ageError) {
+      console.error('[Scanner] Refused to start:', ageError);
+      // A scan() after this must not save under the previous plant's settings.
+      this.currentSettings = null;
+      return { success: false, initialized: false, error: ageError };
+    }
+
     // Store settings for database persistence
     this.currentSettings = settings;
 
@@ -262,6 +274,8 @@ export class ScannerProcess extends EventEmitter {
         accession_name: metadata.accession_name,
         plant_age_days: metadata.plant_age_days,
         wave_number: metadata.wave_number,
+        calculated_plant_age_days: metadata.calculated_plant_age_days,
+        plant_age_change_reason: metadata.plant_age_change_reason,
 
         // Scan parameters — store relative path (pilot compatible)
         path: relativeScanPath,

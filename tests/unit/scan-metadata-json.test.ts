@@ -167,6 +167,32 @@ describe('scan-metadata-json', () => {
       expect(metadata.accession_name).toBeUndefined();
     });
 
+    it('includes the calculated age and the reason for a changed age (#407)', () => {
+      const base = makeScannerSettings();
+      const settings = makeScannerSettings({
+        metadata: {
+          ...base.metadata!,
+          plant_age_days: 13,
+          calculated_plant_age_days: 14,
+          plant_age_change_reason: 'Experiment was sown later',
+        },
+      });
+      const metadata = buildMetadataObject(settings, new Date());
+
+      expect(metadata.plant_age_days).toBe(13);
+      expect(metadata.calculated_plant_age_days).toBe(14);
+      expect(metadata.plant_age_change_reason).toBe(
+        'Experiment was sown later'
+      );
+    });
+
+    it('omits the calculated age and reason for a scan without a sowing date', () => {
+      const metadata = buildMetadataObject(makeScannerSettings(), new Date());
+
+      expect(metadata).not.toHaveProperty('calculated_plant_age_days');
+      expect(metadata).not.toHaveProperty('plant_age_change_reason');
+    });
+
     it('prefers metadata.scan_path (relative) over output_path (absolute)', () => {
       const settings = makeScannerSettings({
         output_path: '/absolute/path/to/scan',

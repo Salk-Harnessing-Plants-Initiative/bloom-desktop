@@ -19,6 +19,15 @@ import {
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { CaptureScan } from '../../src/renderer/CaptureScan';
+import { toIsoDate } from '../../src/utils/sowing-date';
+
+/** Local "YYYY-MM-DD" `days` ago, by calendar arithmetic so DST can't shift it. */
+const sownDaysAgo = (days: number) => {
+  const now = new Date();
+  return toIsoDate(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() - days)
+  );
+};
 
 // Mocks for window.electron APIs
 const mockConfigGet = vi.fn();
@@ -126,6 +135,26 @@ beforeEach(() => {
       checkIdleReset: vi.fn().mockResolvedValue(false),
     },
     database: {
+      cylinderWaves: {
+        // Wave 1 sown 14 days ago, so the calculated age matches the tests' 14.
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              id: 'wave-1',
+              wave_number: 1,
+              sowing_date: sownDaysAgo(14),
+              note: null,
+              set_by_name: 'Demo Phenotyper',
+              set_at: '2026-01-02T09:00:00.000Z',
+              scanCount: 0,
+              changes: [],
+            },
+          ],
+        }),
+        create: vi.fn(),
+        changeSowingDate: vi.fn(),
+      },
       scans: {
         getRecent: mockGetRecentScans,
         checkDuplicate: mockCheckDuplicate,
@@ -891,5 +920,337 @@ describe('CaptureScan duplicate-scan check', () => {
     expect(clearIntervalSpy).toHaveBeenCalledWith(duplicateCheckIntervalId);
     setIntervalSpy.mockRestore();
     clearIntervalSpy.mockRestore();
+  });
+});
+
+describe('CaptureScan plant age from the sowing date (#407)', () => {
+  const wavesList = () =>
+    window.electron.database.cylinderWaves.list as ReturnType<typeof vi.fn>;
+  const scanMetadata = () => mockScannerInitialize.mock.calls[0][0].metadata;
+
+  it('saves the age calculated from the wave sowing date, read-only', async () => {
+    await fillFormAndStartScan();
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(scanMetadata()).toMatchObject({
+      plant_age_days: 14,
+      wave_number: 1,
+      calculated_plant_age_days: 14,
+      plant_age_change_reason: undefined,
+    });
+    expect(screen.getByLabelText(/Plant Age/)).toHaveAttribute('readonly');
+    expect(screen.getByTestId('plant-age-note')).toHaveTextContent(
+      "Calculated from wave 1's start date"
+    );
+    expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
+      'set by Demo Phenotyper'
+    );
+  });
+
+  it('asks for a new wave sowing date and keeps Start Scan disabled until it is saved', async () => {
+    wavesList().mockResolvedValue({ success: true, data: [] });
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+
+    expect(
+      await screen.findByTestId('wave-sowing-date-panel')
+    ).toHaveTextContent(
+      'Please set the start date for wave 1. The plant age is counted from it.'
+    );
+    expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
+    expect(
+      screen.getByText(/Save wave 1's start date above to start the scan/)
+    ).toBeInTheDocument();
+    // The session's age (14) isn't shown for a wave with no sowing date.
+    expect(screen.getByLabelText(/Plant Age/)).toHaveValue('');
+  });
+
+  it("saves the calculated age, not the session's typed age", async () => {
+    // The session remembers 21 from before; wave 1 was sown 14 days ago.
+    mockSessionGet.mockResolvedValue({
+      phenotyperId: 'pheno-1',
+      experimentId: 'exp-1',
+      waveNumber: '1',
+      plantAgeDays: '21',
+      accessionName: '',
+    });
+    await fillFormAndStartScan();
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(scanMetadata()).toMatchObject({
+      plant_age_days: 14,
+      calculated_plant_age_days: 14,
+    });
+    expect(screen.getByLabelText(/Plant Age/)).toHaveValue('14');
+  });
+
+  it('goes back to the calculated age after the scan, and reloads the waves', async () => {
+    let complete: ((result: unknown) => void) | null = null;
+    mockScannerOnComplete.mockImplementation((cb) => {
+      complete = cb;
+      return () => {};
+    });
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    fireEvent.click(await screen.findByTestId('change-age'));
+    fireEvent.change(screen.getByTestId('change-age-input'), {
+      target: { value: '13' },
+    });
+    fireEvent.change(screen.getByTestId('change-age-reason'), {
+      target: { value: 'Experiment was sown later' },
+    });
+    fireEvent.click(screen.getByTestId('change-age-confirm'));
+    expect(screen.getByTestId('plant-age-changed')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Plant Age/)).toHaveValue('13');
+
+    const startButton = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    const loadsBefore = wavesList().mock.calls.length;
+
+    await act(async () => {
+      complete!({
+        success: true,
+        frames_captured: 36,
+        output_path: '/scans/x',
+        db_saved: true,
+      });
+    });
+
+    expect(screen.queryByTestId('plant-age-changed')).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Plant Age/)).toHaveValue('14')
+    );
+    // Reloaded so the wave's scan count (and the Edit rules) are current.
+    expect(wavesList().mock.calls.length).toBeGreaterThan(loadsBefore);
+  });
+
+  it("doesn't scan when the scanner refuses the plant age, and says why", async () => {
+    mockScannerInitialize.mockResolvedValue({
+      success: false,
+      initialized: false,
+      error: 'A changed plant age needs a reason.',
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await fillFormAndStartScan();
+    expect(
+      await screen.findByText('A changed plant age needs a reason.')
+    ).toBeInTheDocument();
+    expect(mockScannerScan).not.toHaveBeenCalled();
+  });
+
+  it('saves a changed age with the calculated age and the reason', async () => {
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    fireEvent.click(await screen.findByTestId('change-age'));
+    fireEvent.change(screen.getByTestId('change-age-input'), {
+      target: { value: '13' },
+    });
+    fireEvent.change(screen.getByTestId('change-age-reason'), {
+      target: { value: 'Experiment was sown later' },
+    });
+    fireEvent.click(screen.getByTestId('change-age-confirm'));
+
+    const startButton = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(scanMetadata()).toMatchObject({
+      plant_age_days: 13,
+      calculated_plant_age_days: 14,
+      plant_age_change_reason: 'Experiment was sown later',
+    });
+  });
+});
+
+describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () => {
+  async function fillPlant() {
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    const startButton = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    return startButton;
+  }
+
+  it('keeps Start Scan disabled while the Change age box is open', async () => {
+    const startButton = await fillPlant();
+    fireEvent.click(screen.getByTestId('change-age'));
+    expect(startButton).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Use the new age or cancel the age change above to start the scan'
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+  });
+
+  it('keeps Start Scan disabled while the sowing-date Edit box is open', async () => {
+    const startButton = await fillPlant();
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    expect(startButton).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Save or cancel the start date change above to start the scan'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('closes and empties an unconfirmed Change age box when the plant changes', async () => {
+    await fillPlant();
+    fireEvent.click(screen.getByTestId('change-age'));
+    fireEvent.change(screen.getByTestId('change-age-input'), {
+      target: { value: '5' },
+    });
+    fireEvent.change(screen.getByTestId('change-age-reason'), {
+      target: { value: 'Experiment was sown later' },
+    });
+
+    const plantIdInput = screen.getByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-002' } });
+    });
+
+    expect(screen.queryByTestId('change-age-box')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('change-age'));
+    expect(screen.getByTestId('change-age-input')).toHaveValue('');
+    expect(screen.getByTestId('change-age-reason')).toHaveValue('');
+  });
+
+  it('only one of the two per scan: a changed age locks the sowing-date Edit', async () => {
+    await fillPlant();
+    fireEvent.click(screen.getByTestId('change-age'));
+    // While the age box is open, the date can't be edited.
+    expect(screen.queryByTestId('sowing-date-edit')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sowing-date-edit-locked')).toHaveTextContent(
+      'Finish or cancel the age change first.'
+    );
+    fireEvent.change(screen.getByTestId('change-age-input'), {
+      target: { value: '13' },
+    });
+    fireEvent.change(screen.getByTestId('change-age-reason'), {
+      target: { value: 'Experiment was sown later' },
+    });
+    fireEvent.click(screen.getByTestId('change-age-confirm'));
+    expect(screen.getByTestId('sowing-date-edit-locked')).toHaveTextContent(
+      'To edit the start date instead, click Use calculated age.'
+    );
+
+    fireEvent.click(screen.getByText('Use calculated age'));
+    expect(screen.getByTestId('sowing-date-edit')).toBeInTheDocument();
+  });
+
+  it('only one of the two per scan: a changed sowing date locks Change age until the next scan', async () => {
+    let complete: ((result: unknown) => void) | null = null;
+    mockScannerOnComplete.mockImplementation((cb) => {
+      complete = cb;
+      return () => {};
+    });
+    const waves = window.electron.database.cylinderWaves;
+    (waves.changeSowingDate as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+    });
+    const startButton = await fillPlant();
+
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    // While the date box is open, the age can't be changed.
+    expect(screen.getByTestId('change-age-locked')).toHaveTextContent(
+      'Finish or cancel the start date change first.'
+    );
+    // Wave 1 was really sown a day later: 13 days ago.
+    (waves.list as ReturnType<typeof vi.fn>).mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'wave-1',
+          wave_number: 1,
+          sowing_date: sownDaysAgo(13),
+          note: null,
+          set_by_name: 'Demo Phenotyper',
+          set_at: '2026-01-02T09:00:00.000Z',
+          scanCount: 0,
+          changes: [],
+        },
+      ],
+    });
+    fireEvent.change(screen.getByLabelText('Start date'), {
+      target: { value: sownDaysAgo(13) },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('sowing-date-edit-save'));
+    });
+
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Plant Age/)).toHaveValue('13')
+    );
+    expect(screen.queryByTestId('change-age')).not.toBeInTheDocument();
+    expect(screen.getByTestId('change-age-locked')).toHaveTextContent(
+      'The start date was changed, so the age was recalculated.'
+    );
+
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(mockScannerInitialize.mock.calls[0][0].metadata).toMatchObject({
+      plant_age_days: 13,
+      calculated_plant_age_days: 13,
+      plant_age_change_reason: undefined,
+    });
+    await act(async () => {
+      complete!({
+        success: true,
+        frames_captured: 36,
+        output_path: '/scans/x',
+        db_saved: true,
+      });
+    });
+    expect(await screen.findByTestId('change-age')).toBeInTheDocument();
+  });
+
+  it('tells the operator to restart when the sowing dates cannot be loaded', async () => {
+    (
+      window.electron.database.cylinderWaves.list as ReturnType<typeof vi.fn>
+    ).mockResolvedValue({ success: false, error: 'database is locked' });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+
+    const error = await screen.findByTestId('sowing-date-load-error');
+    expect(error).toHaveTextContent(
+      "Couldn't load the start dates. Close Bloom Desktop and open it again."
+    );
+    expect(error).toHaveTextContent('Details: database is locked');
+    expect(
+      screen.queryByTestId('wave-sowing-date-panel')
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
+    expect(
+      screen.getByText('Restart Bloom Desktop to start the scan')
+    ).toBeInTheDocument();
   });
 });

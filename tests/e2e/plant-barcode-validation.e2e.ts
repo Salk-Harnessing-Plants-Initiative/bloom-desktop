@@ -121,6 +121,20 @@ test.afterEach(async () => {
   cleanupTestBloomConfig();
 });
 
+/**
+ * A local "YYYY-MM-DD" date `days` ago, by calendar arithmetic (DST-safe): a
+ * wave sown then gives a calculated plant age of `days` (#407).
+ */
+function sownDaysAgo(days: number): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days);
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
 // ============================================================================
 // IPC Handler Tests - db:accessions:getPlantBarcodes
 // ============================================================================
@@ -480,6 +494,13 @@ test.describe('UI: Duplicate Scan Prevention', () => {
         plant_age_days: 21,
       },
     });
+    await prisma.cylinderWave.create({
+      data: {
+        experiment_id: experiment.id,
+        wave_number: 2,
+        sowing_date: sownDaysAgo(21),
+      },
+    });
 
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
@@ -488,11 +509,10 @@ test.describe('UI: Duplicate Scan Prevention', () => {
     await window.selectOption('.experiment-chooser', { index: 1 });
     await window.selectOption('.phenotyper-chooser', { index: 1 });
 
-    // The new 4-field key requires wave number and plant age to be filled
-    // too, not just the plant barcode — the old same-day check never
-    // needed these fields.
+    // The 4-field key needs the wave and the plant age as well as the barcode.
+    // Wave 2 was sown 21 days ago, so the age is calculated as 21 (#407).
     await window.locator('#waveNumber').fill('2');
-    await window.locator('#plantAgeDays').fill('21');
+    await expect(window.locator('#plantAgeDays')).toHaveValue('21');
 
     const plantBarcodeInput = window.locator('#plantQrCode');
     await plantBarcodeInput.fill('ALREADY_SCANNED_PLANT');
@@ -539,6 +559,15 @@ test.describe('UI: Duplicate Scan Prevention', () => {
         plant_age_days: 21,
       },
     });
+    for (const wave_number of [2, 3]) {
+      await prisma.cylinderWave.create({
+        data: {
+          experiment_id: experiment.id,
+          wave_number,
+          sowing_date: sownDaysAgo(21),
+        },
+      });
+    }
 
     await window.click('text=Capture Scan');
     await window.waitForLoadState('networkidle');
@@ -547,8 +576,9 @@ test.describe('UI: Duplicate Scan Prevention', () => {
     await window.selectOption('.experiment-chooser', { index: 1 });
     await window.selectOption('.phenotyper-chooser', { index: 1 });
 
+    // Wave 3 was also sown 21 days ago: same age, different wave, no duplicate.
     await window.locator('#waveNumber').fill('3');
-    await window.locator('#plantAgeDays').fill('21');
+    await expect(window.locator('#plantAgeDays')).toHaveValue('21');
 
     const plantBarcodeInput = window.locator('#plantQrCode');
     await plantBarcodeInput.fill('DIFFERENT_WAVE_PLANT');
@@ -1121,12 +1151,28 @@ test.describe('UI: Session State Zero Value Persistence', () => {
       },
     });
 
-    await prisma.experiment.create({
+    const experiment = await prisma.experiment.create({
       data: {
         name: 'Zero Wave Experiment',
         species: 'Arabidopsis',
         scientist_id: scientist.id,
         accession_id: accession.id,
+      },
+    });
+
+    // Wave 0 sown today: the plant age is calculated from the sowing date (#407),
+    // so a sown-today plant is 0 days old.
+    const today = new Date();
+    const sownToday = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0'),
+    ].join('-');
+    await prisma.cylinderWave.create({
+      data: {
+        experiment_id: experiment.id,
+        wave_number: 0,
+        sowing_date: sownToday,
       },
     });
 
@@ -1145,9 +1191,8 @@ test.describe('UI: Session State Zero Value Persistence', () => {
     const waveNumberInput = window.locator('#waveNumber');
     await waveNumberInput.fill('0');
 
-    // Set plant age to 0 (valid value - e.g., day of planting)
-    const plantAgeInput = window.locator('#plantAgeDays');
-    await plantAgeInput.fill('0');
+    // The plant age is calculated from wave 0's sowing date: 0 days.
+    await expect(window.locator('#plantAgeDays')).toHaveValue('0');
 
     // Wait for session save debounce (300ms + buffer)
     await window.waitForTimeout(500);
@@ -1163,6 +1208,9 @@ test.describe('UI: Session State Zero Value Persistence', () => {
     // Wait for session restore
     await window.waitForTimeout(500);
 
+    // The wave number comes back from the session; the age is recalculated from
+    // wave 0's sowing date. So this checks that wave 0 isn't treated as empty,
+    // and that a calculated age of 0 shows as '0', not ''.
     // Verify wave number is still 0 (not empty or reset)
     const restoredWaveNumber = await window.locator('#waveNumber').inputValue();
     const restoredPlantAge = await window.locator('#plantAgeDays').inputValue();

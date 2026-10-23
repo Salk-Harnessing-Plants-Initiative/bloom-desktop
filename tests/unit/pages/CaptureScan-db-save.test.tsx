@@ -25,6 +25,15 @@ vi.mock('../../../src/components/Streamer', () => ({
   Streamer: () => null,
 }));
 import type { ScanResult } from '../../../src/types/scanner';
+import { toIsoDate } from '../../../src/utils/sowing-date';
+
+/** Local "YYYY-MM-DD" `days` ago, by calendar arithmetic so DST can't shift it. */
+const sownDaysAgo = (days: number) => {
+  const now = new Date();
+  return toIsoDate(
+    new Date(now.getFullYear(), now.getMonth(), now.getDate() - days)
+  );
+};
 
 const PLANT_BARCODE = 'PLANT-001';
 const OUTPUT_PATH = '/scans/2026-10-12/PLANT-001/uuid-1';
@@ -65,6 +74,26 @@ beforeEach(() => {
     },
     database: {
       ...win.electron?.database,
+      cylinderWaves: {
+        // Wave 1 sown 14 days ago, so the calculated age matches the tests' 14.
+        list: vi.fn().mockResolvedValue({
+          success: true,
+          data: [
+            {
+              id: 'wave-1',
+              wave_number: 1,
+              sowing_date: sownDaysAgo(14),
+              note: null,
+              set_by_name: 'Demo Phenotyper',
+              set_at: '2026-01-02T09:00:00.000Z',
+              scanCount: 0,
+              changes: [],
+            },
+          ],
+        }),
+        create: vi.fn(),
+        changeSowingDate: vi.fn(),
+      },
       scans: {
         ...win.electron?.database?.scans,
         getRecent: vi.fn().mockResolvedValue({ success: true, data: [] }),

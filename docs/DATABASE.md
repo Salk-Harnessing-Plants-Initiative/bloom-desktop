@@ -159,7 +159,9 @@ model Scan {
   gamma           Float
   seconds_per_rot Float
   wave_number     Int
-  plant_age_days  Int
+  plant_age_days  Int        // The age used: calculated from the wave's start date, or changed with a reason
+  calculated_plant_age_days Int?    // Calculated from CylinderWave.sowing_date (null for older scans)
+  plant_age_change_reason   String? // The operator's reason when plant_age_days differs from it
   deleted         Boolean    @default(false)
   images          Image[]
   phenotyper      Phenotyper @relation(fields: [phenotyper_id], references: [id])
@@ -184,6 +186,39 @@ model Image {
   scan         Scan   @relation(fields: [scan_id], references: [id])
 
   @@index([scan_id])
+}
+```
+
+#### CylinderWave and CylinderWaveSowingDateChange
+
+Each CylinderScan wave's start date, a local calendar date stored as `"YYYY-MM-DD"` in `sowing_date`. It is the day the plant age counts from, as day 0: the sowing date, the transfer date, or whichever day the experiment counts from (Capture Scan calls it the "start date"). Capture Scan calculates the plant age from it: the calendar days from that date to the scan date. The rules:
+
+- a future date is refused;
+- a date on or before an earlier wave's needs a `note`;
+- once the wave has scans, the date only changes with a reason. Every change is recorded in `CylinderWaveSowingDateChange` with the old and new date, and saved scans keep their age.
+
+```prisma
+model CylinderWave {
+  id                   String   @id @default(uuid())
+  experiment_id        String
+  wave_number          Int
+  sowing_date          String
+  note                 String?
+  set_by_phenotyper_id String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([experiment_id, wave_number])
+}
+
+model CylinderWaveSowingDateChange {
+  id                       String   @id @default(uuid())
+  wave_id                  String
+  old_sowing_date          String
+  new_sowing_date          String
+  reason                   String?
+  changed_by_phenotyper_id String?
+  changedAt                DateTime @default(now())
 }
 ```
 
@@ -417,6 +452,24 @@ window.electron.database.scans.getRecent(options?: {
 window.electron.database.scans.checkDuplicate(plantId: string, experimentId: string, waveNumber: number, plantAgeDays: number)
 // Returns: DatabaseResponse<boolean>
 // Note: Used for duplicate scan prevention (excludes soft-deleted scans)
+```
+
+### CylinderScan waves
+
+```typescript
+// An experiment's waves with sowing dates and scan counts
+window.electron.database.cylinderWaves.list(experimentId: string)
+// Returns: DatabaseResponse<CylinderWaveInfo[]>
+
+// Set a wave's sowing date (the first time the wave is used on Capture Scan)
+window.electron.database.cylinderWaves.create({ experimentId, waveNumber, sowingDate, note?, waveConfirmed?, phenotyperId })
+// Returns: DatabaseResponse<CylinderWaveInfo>; refused with the reason when a rule isn't met.
+// phenotyperId is required (and must exist) for create and changeSowingDate, so the log always says who.
+
+// Change a wave's sowing date from Capture Scan (reason required once the wave has scans);
+// the change is logged and listed with the wave (CylinderWaveInfo.changes)
+window.electron.database.cylinderWaves.changeSowingDate({ waveId, sowingDate, reason?, phenotyperId })
+// Returns: DatabaseResponse<CylinderWaveInfo>
 ```
 
 ### Phenotypers
