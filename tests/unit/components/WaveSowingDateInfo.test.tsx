@@ -157,6 +157,22 @@ describe('WaveSowingDateInfo', () => {
     expect(screen.getByTestId('sowing-date-edit-save')).toBeInTheDocument();
   });
 
+  it('offers no Edit while the age is changed for this scan, and says why', () => {
+    render(
+      <WaveSowingDateInfo
+        wave={wave2}
+        waves={[wave1, wave2]}
+        onChangeDate={vi.fn()}
+        phenotyperChosen
+        lockedMessage="The age was changed for this scan."
+      />
+    );
+    expect(screen.queryByTestId('sowing-date-edit')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sowing-date-edit-locked')).toHaveTextContent(
+      'The age was changed for this scan.'
+    );
+  });
+
   it('greys out everything inside an open Edit box while scanning', () => {
     const onChangeDate = vi.fn();
     const { rerender } = render(

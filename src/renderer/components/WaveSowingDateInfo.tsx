@@ -28,6 +28,8 @@ export interface WaveSowingDateInfoProps {
   phenotyperChosen: boolean;
   /** Told when the Edit box opens or closes, so Start Scan can wait for it. */
   onOpenChange?: (open: boolean) => void;
+  /** Why Edit isn't offered right now (only one change per scan), if so. */
+  lockedMessage?: string | null;
   disabled?: boolean;
 }
 
@@ -45,6 +47,7 @@ export function WaveSowingDateInfo({
   onChangeDate,
   phenotyperChosen,
   onOpenChange,
+  lockedMessage = null,
   disabled = false,
 }: WaveSowingDateInfoProps) {
   const [editing, setEditing] = useState(false);
@@ -103,7 +106,7 @@ export function WaveSowingDateInfo({
         {wave.set_by_name
           ? ` · set by ${wave.set_by_name} on ${formatSetAt(wave.set_at)}`
           : ` (set on ${formatSetAt(wave.set_at)})`}
-        {!editing && (
+        {!editing && !lockedMessage && (
           <>
             {' '}
             <button
@@ -118,6 +121,11 @@ export function WaveSowingDateInfo({
           </>
         )}
       </p>
+      {!editing && lockedMessage && (
+        <p className="text-amber-800" data-testid="sowing-date-edit-locked">
+          {lockedMessage}
+        </p>
+      )}
 
       {wave.note && (
         <p

@@ -36,6 +36,13 @@ export interface UseWaveSowingDateResult {
   /** The age the scan will be saved with. */
   ageToUse: number | null;
   setChange: (change: PlantAgeChange | null) => void;
+  /**
+   * The wave's sowing date was changed for this scan. Only one of the two (the
+   * sowing date or the age) can be changed per scan, so the age can't be now.
+   */
+  dateChanged: boolean;
+  /** After a scan: the next scan starts with neither changed. */
+  clearForNextScan: () => void;
   saveWave: (
     input: Omit<CylinderWaveCreateInput, 'experimentId' | 'waveNumber'>
   ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
@@ -51,7 +58,8 @@ export interface UseWaveSowingDateResult {
 /**
  * The entered wave's sowing date and the plant age calculated from it (#407).
  * A changed age applies to one scan: it is dropped when the experiment, wave,
- * plant or phenotyper changes, or when the caller clears it after a scan.
+ * plant or phenotyper changes, or when the caller clears it after a scan. The
+ * same goes for the record that the sowing date was changed for this scan.
  */
 export function useWaveSowingDate(
   experimentId: string,
@@ -63,6 +71,7 @@ export function useWaveSowingDate(
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [change, setChange] = useState<PlantAgeChange | null>(null);
+  const [dateChanged, setDateChanged] = useState(false);
   // Only the latest request's answer is used: an older one (e.g. for the
   // experiment chosen before this one) is ignored.
   const latestRequest = useRef(0);
@@ -94,6 +103,7 @@ export function useWaveSowingDate(
 
   useEffect(() => {
     setChange(null);
+    setDateChanged(false);
   }, [experimentId, waveNumberText, plantQrCode, phenotyperId]);
 
   const parsed = validateWaveNumber(waveNumberText);
@@ -163,11 +173,21 @@ export function useWaveSowingDate(
           reason,
           phenotyperId,
         });
-      if (result.success) await load(experimentId);
+      if (result.success) {
+        // The age is recalculated from the new date; it can't also be changed.
+        setChange(null);
+        setDateChanged(true);
+        await load(experimentId);
+      }
       return result;
     },
     [wave, phenotyperId, experimentId, load]
   );
+
+  const clearForNextScan = useCallback(() => {
+    setChange(null);
+    setDateChanged(false);
+  }, []);
 
   const reload = useCallback(async () => {
     if (experimentId) await load(experimentId);
@@ -186,6 +206,8 @@ export function useWaveSowingDate(
     change,
     ageToUse: change ? change.age : calculatedAge,
     setChange,
+    dateChanged,
+    clearForNextScan,
     saveWave,
     changeDate,
     reload,

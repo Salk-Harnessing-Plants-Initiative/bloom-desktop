@@ -19,6 +19,8 @@ export interface PlantAgeNoteProps {
   phenotyperName?: string;
   /** Told when the Change age box opens or closes, so Start Scan can wait for it. */
   onOpenChange?: (open: boolean) => void;
+  /** Why Change age isn't offered right now (only one change per scan), if so. */
+  lockedMessage?: string | null;
   disabled?: boolean;
 }
 
@@ -29,6 +31,7 @@ export function PlantAgeNote({
   onChange,
   phenotyperName,
   onOpenChange,
+  lockedMessage = null,
   disabled = false,
 }: PlantAgeNoteProps) {
   const [open, setOpen] = useState(false);
@@ -100,15 +103,21 @@ export function PlantAgeNote({
         <p>
           Calculated from wave {wave.wave_number}&apos;s sowing date (
           {formatSowingDate(wave.sowing_date)}).{' '}
-          <button
-            type="button"
-            onClick={openBox}
-            disabled={disabled}
-            className="underline"
-            data-testid="change-age"
-          >
-            Change age
-          </button>
+          {lockedMessage ? (
+            <span className="text-amber-800" data-testid="change-age-locked">
+              {lockedMessage}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={openBox}
+              disabled={disabled}
+              className="underline"
+              data-testid="change-age"
+            >
+              Change age
+            </button>
+          )}
         </p>
       )}
 

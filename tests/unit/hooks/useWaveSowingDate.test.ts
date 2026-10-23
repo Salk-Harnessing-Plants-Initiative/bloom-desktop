@@ -167,6 +167,72 @@ describe('useWaveSowingDate', () => {
     expect(list).toHaveBeenCalledWith('exp');
   });
 
+  it('after a date change, drops a changed age and records that the date changed', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.database.cylinderWaves.changeSowingDate = vi
+      .fn()
+      .mockResolvedValue({ success: true });
+    const { result, rerender } = renderHook(
+      (props) => useWaveSowingDate(...props),
+      {
+        initialProps: ['exp', '1', 'Sorghum_1', 'ph-1'] as [
+          string,
+          string,
+          string,
+          string,
+        ],
+      }
+    );
+    await waitFor(() => expect(result.current.wave).not.toBeNull());
+    expect(result.current.dateChanged).toBe(false);
+    act(() =>
+      result.current.setChange({ age: 8, reason: 'Experiment was sown later' })
+    );
+    list.mockResolvedValue({ success: true, data: [wave(1, 8)] });
+    await act(async () => {
+      await result.current.changeDate(daysAgo(8));
+    });
+    expect(result.current.change).toBeNull();
+    expect(result.current.dateChanged).toBe(true);
+    expect(result.current.ageToUse).toBe(8);
+
+    // The next plant starts with nothing changed.
+    rerender(['exp', '1', 'Sorghum_2', 'ph-1']);
+    await waitFor(() => expect(result.current.dateChanged).toBe(false));
+  });
+
+  it('clears both changes for the next scan', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.database.cylinderWaves.changeSowingDate = vi
+      .fn()
+      .mockResolvedValue({ success: true });
+    const { result } = renderHook(() =>
+      useWaveSowingDate('exp', '1', 'Sorghum_1', 'ph-1')
+    );
+    await waitFor(() => expect(result.current.wave).not.toBeNull());
+    await act(async () => {
+      await result.current.changeDate(daysAgo(8));
+    });
+    expect(result.current.dateChanged).toBe(true);
+    act(() => result.current.clearForNextScan());
+    expect(result.current.dateChanged).toBe(false);
+  });
+
+  it('does not record a date change that was refused', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.database.cylinderWaves.changeSowingDate = vi
+      .fn()
+      .mockResolvedValue({ success: false, error: 'database is locked' });
+    const { result } = renderHook(() =>
+      useWaveSowingDate('exp', '1', 'Sorghum_1', 'ph-1')
+    );
+    await waitFor(() => expect(result.current.wave).not.toBeNull());
+    await act(async () => {
+      await result.current.changeDate(daysAgo(8));
+    });
+    expect(result.current.dateChanged).toBe(false);
+  });
+
   it('reloads the waves on request', async () => {
     const { result } = renderHook(() =>
       useWaveSowingDate('exp', '1', 'Sorghum_1')

@@ -185,6 +185,22 @@ describe('PlantAgeNote', () => {
     );
   });
 
+  it('offers no Change age once the sowing date was changed, and says why', () => {
+    render(
+      <PlantAgeNote
+        wave={wave}
+        calculatedAge={9}
+        change={null}
+        onChange={vi.fn()}
+        lockedMessage="The sowing date was changed."
+      />
+    );
+    expect(screen.queryByTestId('change-age')).not.toBeInTheDocument();
+    expect(screen.getByTestId('change-age-locked')).toHaveTextContent(
+      'The sowing date was changed.'
+    );
+  });
+
   it('changes the age only with a different age and a reason', () => {
     const onChange = vi.fn();
     render(
