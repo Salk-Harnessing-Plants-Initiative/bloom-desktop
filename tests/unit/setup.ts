@@ -60,6 +60,15 @@ const mockDatabaseAPI = {
     list: vi.fn().mockResolvedValue({ success: true, data: [] }),
     create: vi.fn().mockResolvedValue({ success: true, data: null }),
     changeSowingDate: vi.fn().mockResolvedValue({ success: true, data: null }),
+    earlierScans: vi.fn().mockResolvedValue({
+      success: true,
+      data: {
+        scanCount: 0,
+        agreeing: 0,
+        candidates: [],
+        scannedWaveNumbers: [],
+      },
+    }),
   },
   scans: {
     list: vi.fn().mockResolvedValue({

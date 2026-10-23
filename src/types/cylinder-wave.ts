@@ -50,3 +50,37 @@ export interface CylinderWaveDateChangeInput {
   /** Who is setting or changing the date: required, so the log can say who. */
   phenotyperId: string;
 }
+
+/** A date one or more earlier scans imply, and how many. */
+export interface ImpliedSowingDate {
+  date: string;
+  count: number;
+}
+
+/** What a wave's scans from before sowing dates existed point to (#407). */
+export interface EarlierScansInfo {
+  /** Earlier scans in the wave (0 when it has none, or already has a date). */
+  scanCount: number;
+  /** Scans within a day of the most common implied date. */
+  agreeing: number;
+  /** Implied sowing dates, most common first. */
+  candidates: ImpliedSowingDate[];
+  /** Every wave number of the experiment that has scans, dated or not. */
+  scannedWaveNumbers: number[];
+}
+
+/** One wave in the start-up backfill's report. */
+export interface SowingDateBackfillWave {
+  experiment: string;
+  wave_number: number;
+  scanCount: number;
+  agreeing: number;
+  /** The date set, or null when left for the operator. */
+  sowingDate: string | null;
+  candidates: ImpliedSowingDate[];
+}
+
+export interface SowingDateBackfillResult {
+  set: SowingDateBackfillWave[];
+  leftForOperator: SowingDateBackfillWave[];
+}

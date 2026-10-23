@@ -120,12 +120,15 @@ export interface NewWaveCheck {
  * Checks for a new wave's sowing date against the experiment's other waves. A wave
  * sown on or before an earlier-numbered wave (or on or after a later-numbered one)
  * needs a note; a wave number that skips ahead needs a confirmation.
+ * `scannedWaveNumbers` adds waves that have scans but no date yet (scanned before
+ * sowing dates existed), so they count when judging a skip.
  */
 export function checkNewWave(
   waveNumber: number,
   sowingDate: string,
   existing: WaveSowingDate[],
-  today: Date
+  today: Date,
+  scannedWaveNumbers: number[] = []
 ): NewWaveCheck {
   const result: NewWaveCheck = {
     error: sowingDateError(sowingDate, today),
@@ -137,13 +140,17 @@ export function checkNewWave(
   const conflict = waveConflict(waveNumber, sowingDate, existing);
   if (conflict) result.noteNeeded = `${conflict} Add a note saying why.`;
 
-  const highest = existing.reduce(
-    (max, w) => Math.max(max, w.wave_number),
-    existing.length > 0 ? -1 : 0
+  const known = [
+    ...existing.map((w) => w.wave_number),
+    ...scannedWaveNumbers,
+  ].filter((n) => n !== waveNumber);
+  const highest = known.reduce(
+    (max, n) => Math.max(max, n),
+    known.length > 0 ? -1 : 0
   );
   if (waveNumber > highest + 1) {
     result.waveConfirmNeeded =
-      existing.length > 0
+      known.length > 0
         ? `The highest wave of this experiment so far is ${highest}. Is this really wave ${waveNumber}?`
         : `This is the experiment's first wave. Is it really wave ${waveNumber}?`;
   }

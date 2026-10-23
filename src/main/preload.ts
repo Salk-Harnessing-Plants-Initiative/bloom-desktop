@@ -224,6 +224,12 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:cylinderWaves:create', input),
     changeSowingDate: (input: CylinderWaveDateChangeInput) =>
       ipcRenderer.invoke('db:cylinderWaves:changeSowingDate', input),
+    earlierScans: (experimentId: string, waveNumber: number) =>
+      ipcRenderer.invoke(
+        'db:cylinderWaves:earlierScans',
+        experimentId,
+        waveNumber
+      ),
   },
   scans: {
     list: (filters?: ScanFilters | PaginatedScanFilters) =>

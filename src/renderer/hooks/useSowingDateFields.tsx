@@ -95,6 +95,7 @@ export function useSowingDateFields(
       waveNumber={sowing.waveNumber}
       waves={sowing.waves}
       phenotyperId={metadata.phenotyper}
+      earlier={sowing.earlier}
       onSave={sowing.saveWave}
       disabled={isScanning}
     />
