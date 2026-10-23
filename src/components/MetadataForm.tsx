@@ -96,15 +96,18 @@ export function MetadataForm({
   const handleExperimentChange = useCallback(
     (experimentId: string | null) => {
       const nextId = experimentId || '';
-      const switched = nextId !== values.experimentId;
+      // Only moving away from a chosen experiment counts: with none chosen, any wave
+      // and age in the form were typed after the last clear, for the one being picked.
+      const switched =
+        values.experimentId !== '' && nextId !== values.experimentId;
       onChange({
         ...values,
         experimentId: nextId,
         // Reset barcode-related fields when experiment changes
         plantQrCode: '',
         accessionName: '',
-        // Wave and age belong to the experiment, not the session: kept for the same
-        // experiment, cleared for a different one so the previous experiment's values
+        // Wave and age belong to the experiment, not the session: cleared when the
+        // operator moves to another experiment (or none), so the previous one's values
         // can't be scanned under it unnoticed (#407).
         waveNumber: switched ? '' : values.waveNumber,
         plantAgeDays: switched ? '' : values.plantAgeDays,

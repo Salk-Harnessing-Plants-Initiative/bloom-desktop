@@ -1,6 +1,7 @@
 /**
  * Unit tests: MetadataForm clears wave number and plant age when the operator
- * chooses a different experiment (#407), and keeps them for the same one.
+ * moves from one experiment to another, or to none (#407), and keeps values
+ * typed before the first experiment is chosen.
  * ExperimentChooser is replaced by a stub, so the test drives the experiment
  * change directly instead of going through the IPC-backed dropdown.
  */
@@ -19,6 +20,7 @@ vi.mock('../../../src/renderer/components/ExperimentChooser', () => ({
     <div>
       <button onClick={() => onExperimentChange('exp-A')}>choose A</button>
       <button onClick={() => onExperimentChange('exp-B')}>choose B</button>
+      <button onClick={() => onExperimentChange(null)}>choose none</button>
     </div>
   ),
 }));
@@ -68,20 +70,34 @@ describe('MetadataForm experiment change (#407)', () => {
         experimentId: 'exp-A',
         waveNumber: '2',
         plantAgeDays: '12',
+        plantQrCode: '',
+        accessionName: '',
       })
     );
   });
 
-  it('starts empty for the first experiment chosen on an empty form', () => {
-    const onChange = renderForm({
+  it('clears wave number and plant age when "Choose an experiment" is picked', () => {
+    const onChange = renderForm();
+    fireEvent.click(screen.getByText('choose none'));
+    expect(onChange).toHaveBeenCalledWith({
       ...filled,
       experimentId: '',
       waveNumber: '',
       plantAgeDays: '',
+      plantQrCode: '',
+      accessionName: '',
     });
+  });
+
+  it('keeps wave number and plant age typed before the first experiment is chosen', () => {
+    const onChange = renderForm({ ...filled, experimentId: '' });
     fireEvent.click(screen.getByText('choose A'));
     expect(onChange).toHaveBeenCalledWith(
-      expect.objectContaining({ waveNumber: '', plantAgeDays: '' })
+      expect.objectContaining({
+        experimentId: 'exp-A',
+        waveNumber: '2',
+        plantAgeDays: '12',
+      })
     );
   });
 });
