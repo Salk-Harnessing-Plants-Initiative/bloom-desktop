@@ -1,8 +1,8 @@
 /**
  * Under the wave number on Capture Scan, once the wave has a sowing date (#407):
- * the date, who set it and when. Until the wave's first scan the date can be
- * edited here; after that it can only be corrected, with a reason, on the
- * Experiments page.
+ * the date, who set it and when, and Edit. Before the wave's first scan the date
+ * changes freely. After that a change needs a reason, and the scans already saved
+ * keep the age they were saved with. Every change is logged (Experiments page).
  */
 
 import { useState } from 'react';
@@ -43,25 +43,26 @@ export function WaveSowingDateInfo({
 }: WaveSowingDateInfoProps) {
   const [editing, setEditing] = useState(false);
   const [sowingDate, setSowingDate] = useState(wave.sowing_date);
-  const [note, setNote] = useState('');
+  const [reason, setReason] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const canEdit = wave.scanCount === 0;
+  const hasScans = wave.scanCount > 0;
 
   const others = waves.filter((w) => w.wave_number !== wave.wave_number);
   const check =
     editing && sowingDate !== wave.sowing_date
       ? checkNewWave(wave.wave_number, sowingDate, others, new Date())
       : null;
+  const reasonNeeded = hasScans || Boolean(check?.noteNeeded);
   const canSave =
     !saving &&
     check !== null &&
     !check.error &&
-    (!check.noteNeeded || note.trim() !== '');
+    (!reasonNeeded || reason.trim() !== '');
 
   const open = () => {
     setSowingDate(wave.sowing_date);
-    setNote('');
+    setReason('');
     setSaveError(null);
     setEditing(true);
   };
@@ -69,7 +70,7 @@ export function WaveSowingDateInfo({
     setSaving(true);
     setSaveError(null);
     try {
-      const result = await onChangeDate(sowingDate, note.trim() || undefined);
+      const result = await onChangeDate(sowingDate, reason.trim() || undefined);
       if (result.success) setEditing(false);
       else setSaveError(result.error ?? 'Could not change the sowing date.');
     } catch (error) {
@@ -88,7 +89,7 @@ export function WaveSowingDateInfo({
         Sowing date: {formatSowingDate(wave.sowing_date)}
         {wave.set_by_name ? ` · set by ${wave.set_by_name}` : ''} on{' '}
         {formatSetAt(wave.set_at)}
-        {canEdit && !editing && (
+        {!editing && (
           <>
             {' '}
             <button
@@ -118,19 +119,37 @@ export function WaveSowingDateInfo({
             disabled={saving}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
           />
+          {hasScans && (
+            <div
+              className="text-amber-800 space-y-1"
+              data-testid="sowing-date-edit-scans-warning"
+            >
+              <p>
+                {wave.scanCount} {wave.scanCount === 1 ? 'scan' : 'scans'} in
+                wave {wave.wave_number} {wave.scanCount === 1 ? 'was' : 'were'}{' '}
+                saved with ages from this date. They are not changed: only new
+                scans use the new date.
+              </p>
+              <p>
+                If their ages need correcting, that has to be done in Bloom as
+                well.
+              </p>
+            </div>
+          )}
           {check?.error && <p className="text-red-600">{check.error}</p>}
           {check?.noteNeeded && (
-            <div className="space-y-1">
-              <p className="text-gray-700">{check.noteNeeded}</p>
-              <textarea
-                aria-label="Note"
-                value={note}
-                maxLength={MAX_REASON_LENGTH}
-                onChange={(e) => setNote(e.target.value)}
-                disabled={saving}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              />
-            </div>
+            <p className="text-gray-700">{check.noteNeeded}</p>
+          )}
+          {reasonNeeded && (
+            <textarea
+              aria-label="Reason"
+              placeholder="Reason for the change (required)"
+              value={reason}
+              maxLength={MAX_REASON_LENGTH}
+              onChange={(e) => setReason(e.target.value)}
+              disabled={saving}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            />
           )}
           {saveError && <p className="text-red-600">{saveError}</p>}
           <div className="flex gap-2">

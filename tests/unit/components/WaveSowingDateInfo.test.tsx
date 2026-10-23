@@ -15,6 +15,7 @@ const wave2 = {
   set_by_name: 'Demo Phenotyper',
   set_at: '2026-02-21T09:00:00.000Z',
   scanCount: 0,
+  changes: [],
 };
 const wave1 = { wave_number: 1, sowing_date: '2025-11-26' };
 
@@ -45,9 +46,38 @@ describe('WaveSowingDateInfo', () => {
     );
   });
 
-  it('offers Edit only until the wave has a scan', () => {
-    renderInfo({ ...wave2, scanCount: 1 });
-    expect(screen.queryByTestId('sowing-date-edit')).not.toBeInTheDocument();
+  it('after scans, still offers Edit but needs a reason and warns the scans keep their age', async () => {
+    const onChangeDate = renderInfo({ ...wave2, scanCount: 3 });
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    expect(
+      screen.getByTestId('sowing-date-edit-scans-warning')
+    ).toHaveTextContent(
+      '3 scans in wave 2 were saved with ages from this date. They are not changed: only new scans use the new date.'
+    );
+    fireEvent.change(screen.getByLabelText('Sowing date'), {
+      target: { value: '2026-02-19' },
+    });
+    const save = screen.getByTestId('sowing-date-edit-save');
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Reason'), {
+      target: { value: 'Typo: sown a day earlier' },
+    });
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(onChangeDate).toHaveBeenCalledWith(
+        '2026-02-19',
+        'Typo: sown a day earlier'
+      )
+    );
+  });
+
+  it('before scans, needs no reason and shows no warning', () => {
+    renderInfo();
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    expect(
+      screen.queryByTestId('sowing-date-edit-scans-warning')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument();
   });
 
   it('saves an edited date', async () => {
@@ -77,7 +107,7 @@ describe('WaveSowingDateInfo', () => {
     });
     const save = screen.getByTestId('sowing-date-edit-save');
     expect(save).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Note'), {
+    fireEvent.change(screen.getByLabelText('Reason'), {
       target: { value: 'Sown together' },
     });
     fireEvent.click(save);

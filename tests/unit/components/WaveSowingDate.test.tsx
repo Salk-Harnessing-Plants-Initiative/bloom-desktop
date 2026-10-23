@@ -102,6 +102,7 @@ describe('PlantAgeNote', () => {
     set_by_name: 'Demo Phenotyper',
     set_at: '2026-01-02T09:00:00.000Z',
     scanCount: 0,
+    changes: [],
   };
 
   it('says where the age came from', () => {

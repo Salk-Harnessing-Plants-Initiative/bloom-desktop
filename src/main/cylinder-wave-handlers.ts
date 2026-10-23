@@ -30,6 +30,15 @@ interface WaveRow {
   updatedAt: Date;
 }
 
+interface ChangeRow {
+  wave_id: string;
+  old_sowing_date: string;
+  new_sowing_date: string;
+  reason: string | null;
+  changed_by_phenotyper_id: string | null;
+  changedAt: Date;
+}
+
 /** The part of the Prisma client the handlers use. */
 export interface CylinderWaveDbLike {
   cylinderWave: {
@@ -52,6 +61,12 @@ export interface CylinderWaveDbLike {
     count: (args: {
       where: { experiment_id: string; wave_number: number; deleted: boolean };
     }) => Promise<number>;
+  };
+  cylinderWaveSowingDateChange: {
+    findMany: (args: {
+      where: { wave_id: { in: string[] } };
+      orderBy: { changedAt: 'asc' };
+    }) => Promise<ChangeRow[]>;
   };
   phenotyper: {
     findMany: (args: {
@@ -108,9 +123,19 @@ async function withScanCounts(
   db: CylinderWaveDbLike,
   rows: WaveRow[]
 ): Promise<CylinderWaveInfo[]> {
+  const changes =
+    rows.length > 0
+      ? await db.cylinderWaveSowingDateChange.findMany({
+          where: { wave_id: { in: rows.map((r) => r.id) } },
+          orderBy: { changedAt: 'asc' },
+        })
+      : [];
   const ids = [
     ...new Set(
-      rows.map((r) => r.set_by_phenotyper_id).filter((id): id is string => !!id)
+      [
+        ...rows.map((r) => r.set_by_phenotyper_id),
+        ...changes.map((c) => c.changed_by_phenotyper_id),
+      ].filter((id): id is string => !!id)
     ),
   ];
   const names = new Map(
@@ -133,6 +158,17 @@ async function withScanCounts(
         ? (names.get(row.set_by_phenotyper_id) ?? null)
         : null,
       set_at: row.updatedAt.toISOString(),
+      changes: changes
+        .filter((c) => c.wave_id === row.id)
+        .map((c) => ({
+          old_sowing_date: c.old_sowing_date,
+          new_sowing_date: c.new_sowing_date,
+          reason: c.reason,
+          changed_by_name: c.changed_by_phenotyper_id
+            ? (names.get(c.changed_by_phenotyper_id) ?? null)
+            : null,
+          changed_at: c.changedAt.toISOString(),
+        })),
       scanCount: await db.scan.count({
         where: {
           experiment_id: row.experiment_id,

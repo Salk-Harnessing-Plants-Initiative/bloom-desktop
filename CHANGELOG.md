@@ -11,9 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Capture Scan calculates the plant age from each wave's sowing date instead of asking the operator to type it ([#407](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/407), [#408](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/408)).
   - **Setting the date:** the first time a wave is used, Capture Scan asks when it was sown, and Start Scan waits until the date is saved. A future date is refused. A date on or before an earlier wave's needs a note. A wave number that skips ahead (wave 5 when the highest so far is 1) must be confirmed.
-  - **Under the wave number:** once set, the sowing date is shown with who set it and when. Until the wave's first scan it can be edited there; the edit is recorded, and the editor becomes the new "set by".
+  - **Under the wave number:** once set, the sowing date is shown with who set it and when, and **Edit**. Before the wave's first scan, a change needs no reason. After that, it needs a reason, and the box says that scans already saved keep their age and that correcting them has to be done in Bloom as well. Every change is recorded, and the editor becomes the new "set by".
   - **The age:** shown read-only. For a plant that really is a different age, **Change age** takes the age to use and a reason. They apply to that scan only, and the scan saves the age used, the calculated age and the reason.
-  - **The Experiments page** lists each CylinderScan experiment's waves with their sowing dates. A date can be changed freely until the wave's first scan, then only with a reason. Every change is recorded, and saved scans keep the age they were saved with.
+  - **The Experiments page** lists each CylinderScan experiment's waves with their current sowing dates and scan counts, and a log of every change: previous date, new date, when, who and why. Dates can't be changed there.
 
 ### Changed
 

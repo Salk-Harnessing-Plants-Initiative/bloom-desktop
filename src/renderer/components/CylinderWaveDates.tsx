@@ -1,121 +1,41 @@
 /**
- * A CylinderScan experiment's waves and their sowing dates on the Experiments
- * page (#407). A date changes freely until the wave's first scan; after that only
- * with a reason. Every change is recorded with the old and new date, and saved
- * scans keep the age they were saved with.
+ * A CylinderScan experiment's waves on the Experiments page (#407): each wave's
+ * current sowing date and scan count, and a log of every change to the date
+ * (previous date, new date, when, who and why). Read-only: the date is set and
+ * changed on Capture Scan, under the wave number.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import {
-  MAX_REASON_LENGTH,
-  formatSowingDate,
-  sowingDateChangeError,
-  toIsoDate,
-} from '../../utils/sowing-date';
-import type { CylinderWaveInfo } from '../../types/cylinder-wave';
+import { formatSowingDate } from '../../utils/sowing-date';
+import type {
+  CylinderWaveDateChange,
+  CylinderWaveInfo,
+} from '../../types/cylinder-wave';
 
-function WaveDateEditor({
-  wave,
-  onSaved,
-  onCancel,
-}: {
-  wave: CylinderWaveInfo;
-  onSaved: () => void;
-  onCancel: () => void;
-}) {
-  const [sowingDate, setSowingDate] = useState(wave.sowing_date);
-  const [reason, setReason] = useState('');
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const hasScans = wave.scanCount > 0;
-  const problem =
-    sowingDate === wave.sowing_date
-      ? null
-      : sowingDateChangeError(sowingDate, reason, hasScans, new Date());
+function formatChangedAt(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
-  const save = async () => {
-    setSaving(true);
-    setSaveError(null);
-    try {
-      const result =
-        await window.electron.database.cylinderWaves.changeSowingDate({
-          waveId: wave.id,
-          sowingDate,
-          reason: reason.trim() || undefined,
-        });
-      if (result.success) onSaved();
-      else setSaveError(result.error ?? 'Could not change the sowing date.');
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'Unknown error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
+function ChangeLogEntry({ change }: { change: CylinderWaveDateChange }) {
   return (
-    <div
-      className="mt-1 mb-2 bg-amber-50 border-2 border-amber-400 rounded-lg p-3 space-y-2"
-      data-testid={`wave-date-editor-${wave.wave_number}`}
-    >
-      {hasScans && (
-        <div className="text-amber-800 space-y-1">
-          <p>
-            {wave.scanCount} {wave.scanCount === 1 ? 'scan' : 'scans'} in wave{' '}
-            {wave.wave_number} {wave.scanCount === 1 ? 'was' : 'were'} saved
-            with ages from the old sowing date (
-            {formatSowingDate(wave.sowing_date)}). They are not changed: only
-            new scans use the new date.
-          </p>
-          <p>
-            If their ages need correcting, that has to be done in Bloom as well.
-            Give a reason for the change.
-          </p>
-        </div>
-      )}
-      <input
-        type="date"
-        aria-label="New sowing date"
-        value={sowingDate}
-        max={toIsoDate(new Date())}
-        onChange={(e) => setSowingDate(e.target.value)}
-        className="px-3 py-2 border border-gray-300 rounded-md"
-      />
-      <textarea
-        aria-label="Reason"
-        placeholder={hasScans ? 'Reason (required)' : 'Reason (optional)'}
-        value={reason}
-        maxLength={MAX_REASON_LENGTH}
-        onChange={(e) => setReason(e.target.value)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-      />
-      {problem && <p className="text-red-600">{problem}</p>}
-      {saveError && <p className="text-red-600">{saveError}</p>}
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={save}
-          disabled={
-            saving || problem !== null || sowingDate === wave.sowing_date
-          }
-          className="px-3 py-1.5 rounded-md bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50"
-        >
-          Save date
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-1.5 rounded-md border border-gray-300"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
+    <li>
+      Changed from {formatSowingDate(change.old_sowing_date)} to{' '}
+      {formatSowingDate(change.new_sowing_date)} on{' '}
+      {formatChangedAt(change.changed_at)}
+      {change.changed_by_name ? ` by ${change.changed_by_name}` : ''}
+      {change.reason ? `. Reason: ${change.reason}` : ''}
+    </li>
   );
 }
 
 export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
   const [waves, setWaves] = useState<CylinderWaveInfo[]>([]);
-  const [editing, setEditing] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -149,23 +69,16 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
           <li key={wave.id}>
             Wave {wave.wave_number}: sown {formatSowingDate(wave.sowing_date)}
             {wave.scanCount > 0 &&
-              ` (${wave.scanCount} ${wave.scanCount === 1 ? 'scan' : 'scans'})`}{' '}
-            <button
-              type="button"
-              onClick={() => setEditing(wave.wave_number)}
-              className="underline"
-            >
-              Change date
-            </button>
-            {editing === wave.wave_number && (
-              <WaveDateEditor
-                wave={wave}
-                onCancel={() => setEditing(null)}
-                onSaved={() => {
-                  setEditing(null);
-                  void load();
-                }}
-              />
+              ` (${wave.scanCount} ${wave.scanCount === 1 ? 'scan' : 'scans'})`}
+            {wave.changes.length > 0 && (
+              <ul
+                className="ml-4 text-xs text-gray-500"
+                data-testid={`wave-date-log-${wave.wave_number}`}
+              >
+                {wave.changes.map((change) => (
+                  <ChangeLogEntry key={change.changed_at} change={change} />
+                ))}
+              </ul>
             )}
           </li>
         ))}

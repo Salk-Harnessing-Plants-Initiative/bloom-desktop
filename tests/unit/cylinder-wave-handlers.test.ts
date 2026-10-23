@@ -26,7 +26,7 @@ const phenotypers = [
 
 /** An in-memory fake of the tables the handlers use. */
 function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
-  const changes: unknown[] = [];
+  const changes: Record<string, unknown>[] = [];
   const db = {
     cylinderWave: {
       findMany: vi.fn(async ({ where }) =>
@@ -45,6 +45,13 @@ function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
     },
     scan: {
       count: vi.fn(async ({ where }) => scanCounts[where.wave_number] ?? 0),
+    },
+    cylinderWaveSowingDateChange: {
+      findMany: vi.fn(async ({ where }) =>
+        changes
+          .filter((c) => where.wave_id.in.includes(c.wave_id))
+          .map((c) => ({ changedAt: EDITED_AT, ...c }))
+      ),
     },
     phenotyper: {
       findMany: vi.fn(async ({ where }) =>
@@ -67,7 +74,7 @@ function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
           },
         },
         cylinderWaveSowingDateChange: {
-          create: async ({ data }: { data: unknown }) => {
+          create: async ({ data }: { data: Record<string, unknown> }) => {
             changes.push(data);
             return data;
           },
@@ -104,6 +111,7 @@ describe('listWaves', () => {
           set_by_name: 'Demo Phenotyper',
           set_at: SET_AT.toISOString(),
           scanCount: 72,
+          changes: [],
         },
       ],
     });
@@ -112,6 +120,43 @@ describe('listWaves', () => {
   it('rejects a missing experiment id', async () => {
     const { db } = fakeDb([]);
     expect((await listWaves({ db, now }, ' ')).success).toBe(false);
+  });
+});
+
+describe('listWaves: the change log', () => {
+  it('lists every change to the date, oldest first, with who and why', async () => {
+    const fake = fakeDb([{ ...wave1 }], { 1: 3 });
+    const deps = { db: fake.db, now };
+    await changeSowingDate(deps, {
+      waveId: 'w1',
+      sowingDate: '2025-11-27',
+      reason: 'Typo',
+      phenotyperId: 'ph-2',
+    });
+    await changeSowingDate(deps, {
+      waveId: 'w1',
+      sowingDate: '2025-11-25',
+      reason: 'Checked the seed log',
+      phenotyperId: 'ph-1',
+    });
+    const result = await listWaves(deps, 'exp');
+    expect(result.data?.[0].sowing_date).toBe('2025-11-25');
+    expect(result.data?.[0].changes).toEqual([
+      {
+        old_sowing_date: '2025-11-26',
+        new_sowing_date: '2025-11-27',
+        reason: 'Typo',
+        changed_by_name: 'Second Phenotyper',
+        changed_at: EDITED_AT.toISOString(),
+      },
+      {
+        old_sowing_date: '2025-11-27',
+        new_sowing_date: '2025-11-25',
+        reason: 'Checked the seed log',
+        changed_by_name: 'Demo Phenotyper',
+        changed_at: EDITED_AT.toISOString(),
+      },
+    ]);
   });
 });
 

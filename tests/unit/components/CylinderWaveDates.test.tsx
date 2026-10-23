@@ -1,127 +1,89 @@
 /**
- * Unit tests for the Experiments page list of CylinderScan wave sowing dates (#407).
+ * Unit tests for the Experiments page list of CylinderScan wave sowing dates and
+ * their change log (#407). The list is read-only: dates change on Capture Scan.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { CylinderWaveDates } from '../../../src/renderer/components/CylinderWaveDates';
 
-const waves = [
-  {
-    id: 'w1',
-    wave_number: 1,
-    sowing_date: '2025-11-26',
-    note: null,
-    set_by_name: 'Demo Phenotyper',
-    set_at: '2026-01-02T09:00:00.000Z',
-    scanCount: 72,
-  },
-  {
-    id: 'w2',
-    wave_number: 2,
-    sowing_date: '2026-02-20',
-    note: null,
-    set_by_name: 'Demo Phenotyper',
-    set_at: '2026-01-02T09:00:00.000Z',
-    scanCount: 0,
-  },
-];
+const wave1 = {
+  id: 'w1',
+  wave_number: 1,
+  sowing_date: '2025-11-25',
+  note: null,
+  set_by_name: 'Demo Phenotyper',
+  set_at: '2026-01-02T09:00:00.000Z',
+  scanCount: 72,
+  changes: [
+    {
+      old_sowing_date: '2025-11-26',
+      new_sowing_date: '2025-11-27',
+      reason: 'Typo',
+      changed_by_name: 'Second Phenotyper',
+      changed_at: '2025-12-01T10:00:00.000Z',
+    },
+    {
+      old_sowing_date: '2025-11-27',
+      new_sowing_date: '2025-11-25',
+      reason: 'Checked the seed log',
+      changed_by_name: 'Demo Phenotyper',
+      changed_at: '2025-12-02T10:00:00.000Z',
+    },
+  ],
+};
+const wave2 = {
+  ...wave1,
+  id: 'w2',
+  wave_number: 2,
+  sowing_date: '2026-02-20',
+  scanCount: 1,
+  changes: [],
+};
 
 describe('CylinderWaveDates', () => {
   let list: ReturnType<typeof vi.fn>;
-  let changeSowingDate: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    list = vi.fn().mockResolvedValue({ success: true, data: waves });
-    changeSowingDate = vi
-      .fn()
-      .mockResolvedValue({ success: true, data: waves[1] });
+    list = vi.fn().mockResolvedValue({ success: true, data: [wave1, wave2] });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global.window as any).electron.database.cylinderWaves = {
-      list,
-      create: vi.fn(),
-      changeSowingDate,
-    };
+    (global.window as any).electron.database.cylinderWaves.list = list;
   });
 
-  const openEditor = async (wave: number) => {
-    render(<CylinderWaveDates experimentId="exp" />);
-    await screen.findByText(/Wave 1: sown/);
-    fireEvent.click(screen.getAllByText('Change date')[wave - 1]);
-    return screen.getByTestId(`wave-date-editor-${wave}`);
-  };
-
-  it('lists the waves with their sowing dates and scan counts', async () => {
+  it('lists each wave with its current sowing date and scan count', async () => {
     render(<CylinderWaveDates experimentId="exp" />);
     expect(
       await screen.findByText(/Wave 1: sown .+ \(72 scans\)/)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Wave 2: sown/)).toBeInTheDocument();
+    expect(screen.getByText(/Wave 2: sown .+ \(1 scan\)/)).toBeInTheDocument();
     expect(list).toHaveBeenCalledWith('exp');
   });
 
-  it('says "1 scan" for a single scan', async () => {
-    list.mockResolvedValue({
-      success: true,
-      data: [{ ...waves[0], scanCount: 1 }],
-    });
+  it('logs every change to the date, oldest first, with when, who and why', async () => {
     render(<CylinderWaveDates experimentId="exp" />);
-    expect(
-      await screen.findByText(/Wave 1: sown .+ \(1 scan\)/)
-    ).toBeInTheDocument();
+    const log = await screen.findByTestId('wave-date-log-1');
+    const entries = log.querySelectorAll('li');
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toHaveTextContent(
+      /^Changed from .+ to .+ on .+ by Second Phenotyper\. Reason: Typo$/
+    );
+    expect(entries[1]).toHaveTextContent(
+      /by Demo Phenotyper\. Reason: Checked the seed log$/
+    );
+    expect(screen.queryByTestId('wave-date-log-2')).not.toBeInTheDocument();
   });
 
-  it('changes a date freely before the wave has scans', async () => {
-    const editor = await openEditor(2);
-    fireEvent.change(screen.getByLabelText('New sowing date'), {
-      target: { value: '2026-02-21' },
-    });
-    fireEvent.click(screen.getByText('Save date'));
-    await waitFor(() =>
-      expect(changeSowingDate).toHaveBeenCalledWith({
-        waveId: 'w2',
-        sowingDate: '2026-02-21',
-        reason: undefined,
-      })
-    );
-    expect(editor).not.toHaveTextContent('old sowing date');
+  it('has no way to change a date here', async () => {
+    render(<CylinderWaveDates experimentId="exp" />);
+    await screen.findByText(/Wave 1: sown/);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('needs a reason once the wave has scans, and says saved scans keep their age', async () => {
-    const editor = await openEditor(1);
-    expect(editor).toHaveTextContent(
-      /72 scans in wave 1 were saved with ages from the old sowing date \(.+\)\. They are not changed: only new scans use the new date\./
-    );
-    fireEvent.change(screen.getByLabelText('New sowing date'), {
-      target: { value: '2025-11-27' },
-    });
-    expect(screen.getByText('Save date')).toBeDisabled();
-    expect(editor).toHaveTextContent('give a reason');
-    fireEvent.change(screen.getByLabelText('Reason'), {
-      target: { value: 'Typo' },
-    });
-    fireEvent.click(screen.getByText('Save date'));
-    await waitFor(() =>
-      expect(changeSowingDate).toHaveBeenCalledWith({
-        waveId: 'w1',
-        sowingDate: '2025-11-27',
-        reason: 'Typo',
-      })
-    );
-  });
-
-  it('shows the error when the change is refused', async () => {
-    changeSowingDate.mockResolvedValue({
-      success: false,
-      error: 'Wave 1 was sown on 26 Nov 2025, so ...',
-    });
-    await openEditor(2);
-    fireEvent.change(screen.getByLabelText('New sowing date'), {
-      target: { value: '2025-11-01' },
-    });
-    fireEvent.click(screen.getByText('Save date'));
-    expect(await screen.findByText(/^Wave 1 was sown on/)).toBeInTheDocument();
+  it('shows the error when the waves cannot be loaded', async () => {
+    list.mockResolvedValue({ success: false, error: 'database is locked' });
+    render(<CylinderWaveDates experimentId="exp" />);
+    expect(await screen.findByText('database is locked')).toBeInTheDocument();
   });
 
   it('shows nothing for an experiment without waves', async () => {

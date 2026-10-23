@@ -3,6 +3,16 @@
  * calculates the plant age from the wave's sowing date.
  */
 
+/** One change to a wave's sowing date, for the log on the Experiments page. */
+export interface CylinderWaveDateChange {
+  old_sowing_date: string;
+  new_sowing_date: string;
+  reason: string | null;
+  changed_by_name: string | null;
+  /** When the change was made (ISO 8601). */
+  changed_at: string;
+}
+
 /** A wave of an experiment, with its sowing date ("YYYY-MM-DD", local). */
 export interface CylinderWaveInfo {
   id: string;
@@ -15,6 +25,8 @@ export interface CylinderWaveInfo {
   set_at: string;
   /** Saved (not deleted) scans in this wave; the date needs a reason to change once > 0. */
   scanCount: number;
+  /** Every change to the sowing date, oldest first. */
+  changes: CylinderWaveDateChange[];
 }
 
 export interface CylinderWaveCreateInput {
