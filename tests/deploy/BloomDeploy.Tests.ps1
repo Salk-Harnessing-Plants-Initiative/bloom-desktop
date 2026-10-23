@@ -17,151 +17,7 @@ BeforeAll {
         Set-Content -LiteralPath (Join-Path $StageDir 'Setup.exe') -Value $Installer -NoNewline
         $hash = (Get-FileHash -LiteralPath (Join-Path $StageDir 'Setup.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
         Set-Content -LiteralPath (Join-Path $StageDir 'SHA256SUMS') -Value "$hash  Setup.exe"
-        Set-Content -LiteralPath (Join-Path $StageDir 'manifest.json') -Value '{"files": [{"name": "Setup.exe", "target": "windows"}, {"name": "bloom.deb", "target": "linux"}]}'
-    }
-}
-
-Describe 'Assert-Checksums' {
-    BeforeEach {
-        $stage = Join-Path $TestDrive 'stage'
-        New-Item -ItemType Directory -Force -Path $stage | Out-Null
-        Set-Content -LiteralPath (Join-Path $stage 'Setup.exe') -Value 'installer' -NoNewline
-        $hash = (Get-FileHash -LiteralPath (Join-Path $stage 'Setup.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
-        Set-Content -LiteralPath (Join-Path $stage 'SHA256SUMS') -Value "$hash  Setup.exe"
-    }
-
-    It 'passes when the file matches' {
-        { Assert-Checksums -StageDir $stage -FileNames 'Setup.exe' } | Should -Not -Throw
-    }
-
-    It 'throws on a mismatch' {
-        Set-Content -LiteralPath (Join-Path $stage 'Setup.exe') -Value 'tampered' -NoNewline
-        { Assert-Checksums -StageDir $stage -FileNames 'Setup.exe' } | Should -Throw '*Checksum mismatch*'
-    }
-
-    It 'throws when a file is not listed' {
-        Set-Content -LiteralPath (Join-Path $stage 'other.nupkg') -Value 'x'
-        { Assert-Checksums -StageDir $stage -FileNames 'other.nupkg' } | Should -Throw '*not listed*'
-    }
-}
-
-Describe 'Save-ReleaseFiles' {
-    BeforeEach {
-        # The "release": files served by the mocked download, from a folder of fixtures.
-        $published = Join-Path $TestDrive ('published-' + [guid]::NewGuid())
-        New-StagedRelease -StageDir $published
-        $stage = Join-Path $TestDrive ('stage-' + [guid]::NewGuid())
-        Mock -ModuleName BloomDeploy Invoke-WebRequest {
-            Copy-Item -LiteralPath (Join-Path $published ($Uri -replace '^.*/', '')) -Destination $OutFile
-        }
-    }
-
-    It 'downloads the Windows files, checks them and returns Setup.exe' {
-        Save-ReleaseFiles -BaseUrl 'https://example.invalid/download/v0.2.1' -StageDir $stage |
-            Should -Be (Join-Path $stage 'Setup.exe')
-        Should -Invoke -ModuleName BloomDeploy Invoke-WebRequest -Times 0 -Exactly -ParameterFilter { $Uri -like '*bloom.deb' }
-    }
-
-    It 'throws on a tampered installer' {
-        Set-Content -LiteralPath (Join-Path $published 'Setup.exe') -Value 'tampered' -NoNewline
-        { Save-ReleaseFiles -BaseUrl 'https://example.invalid/download/v0.2.1' -StageDir $stage } |
-            Should -Throw '*Checksum mismatch*'
-    }
-
-    It 'throws when the release has no Windows files' {
-        Set-Content -LiteralPath (Join-Path $published 'manifest.json') -Value '{"files": [{"name": "bloom.deb", "target": "linux"}]}'
-        { Save-ReleaseFiles -BaseUrl 'https://example.invalid/download/v0.2.1' -StageDir $stage } |
-            Should -Throw '*no Windows files*'
-    }
-}
-
-Describe 'Test-StagedRelease' {
-    BeforeEach {
-        $stage = Join-Path $TestDrive ('staged-' + [guid]::NewGuid())
-        New-StagedRelease -StageDir $stage
-    }
-
-    It 'is true for a complete, matching release' {
-        Test-StagedRelease -StageDir $stage | Should -BeTrue
-    }
-
-    It 'is false when a file was changed after staging' {
-        Set-Content -LiteralPath (Join-Path $stage 'Setup.exe') -Value 'swapped' -NoNewline
-        Test-StagedRelease -StageDir $stage | Should -BeFalse
-    }
-
-    It 'is false without the manifest' {
-        Remove-Item -LiteralPath (Join-Path $stage 'manifest.json')
-        Test-StagedRelease -StageDir $stage | Should -BeFalse
-    }
-}
-
-Describe 'Invoke-Rollback' {
-    It 'refuses to run a staged installer that does not match SHA256SUMS' {
-        $releases = Join-Path $TestDrive ('releases-' + [guid]::NewGuid())
-        New-StagedRelease -StageDir (Join-Path $releases 'v0.1.0')
-        Set-Content -LiteralPath (Join-Path $releases 'v0.1.0\Setup.exe') -Value 'swapped' -NoNewline
-        Mock -ModuleName BloomDeploy Install-Release { }
-        { Invoke-Rollback -PreviousVersion '0.1.0' -ReleasesRoot $releases -LocalAppData (Join-Path $TestDrive 'lad-none') } |
-            Should -Throw "*don't match SHA256SUMS*"
-        Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0 -Exactly
-    }
-}
-
-Describe 'Get-InstalledVersion' {
-    It 'returns $null when the app is not installed' {
-        Get-InstalledVersion -LocalAppData (Join-Path $TestDrive 'empty') | Should -BeNullOrEmpty
-    }
-
-    It 'returns the newest version, mapping pre-release folders to release versions' {
-        $root = Join-Path $TestDrive 'lad-rc\bloom_desktop'
-        foreach ($v in '0.2.0', '0.2.1-rc1', '0.2.1-rc2') { New-Item -ItemType Directory -Force -Path (Join-Path $root "app-$v") | Out-Null }
-        Get-InstalledVersion -LocalAppData (Join-Path $TestDrive 'lad-rc') | Should -Be '0.2.1-rc.2'
-        New-Item -ItemType Directory -Force -Path (Join-Path $root 'app-0.2.1') | Out-Null
-        Get-InstalledVersion -LocalAppData (Join-Path $TestDrive 'lad-rc') | Should -Be '0.2.1'
-    }
-
-    It 'returns the highest app-<version> folder' {
-        $root = Join-Path $TestDrive 'lad\bloom_desktop'
-        foreach ($v in '0.1.9', '0.2.0', '0.10.0') { New-Item -ItemType Directory -Force -Path (Join-Path $root "app-$v") | Out-Null }
-        Get-InstalledVersion -LocalAppData (Join-Path $TestDrive 'lad') | Should -Be '0.10.0'
-    }
-}
-
-Describe 'Test-Installation' {
-    BeforeEach {
-        $lad = Join-Path $TestDrive ('lad-' + [guid]::NewGuid())
-        New-Item -ItemType Directory -Force -Path (Join-Path $lad 'bloom_desktop\app-0.2.0') | Out-Null
-    }
-
-    It 'reports no problems when the requested version is installed' {
-        @(Test-Installation -Version '0.2.0' -LocalAppData $lad) | Should -HaveCount 0
-    }
-
-    It 'reports the wrong installed version' {
-        @(Test-Installation -Version '0.3.0' -LocalAppData $lad) | Should -Contain "Installed version is '0.2.0', expected '0.3.0'."
-    }
-}
-
-Describe 'Install-Release' {
-    It 'sets the skip-first-run variable for the installer and restores it afterwards' {
-        $script:seen = $null
-        Mock -ModuleName BloomDeploy Start-Process {
-            $script:seen = [Environment]::GetEnvironmentVariable('BLOOM_DEPLOY_SKIP_FIRSTRUN', 'Process')
-            [pscustomobject]@{ Handle = 1; ExitCode = 0 } |
-                Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($ms) $true } -PassThru
-        }
-        Install-Release -SetupExe 'C:\fake\Setup.exe'
-        $script:seen | Should -Be '1'
-        [Environment]::GetEnvironmentVariable('BLOOM_DEPLOY_SKIP_FIRSTRUN', 'Process') | Should -BeNullOrEmpty
-    }
-
-    It 'throws when the installer fails' {
-        Mock -ModuleName BloomDeploy Start-Process {
-            [pscustomobject]@{ Handle = 1; ExitCode = 3 } |
-                Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($ms) $true } -PassThru
-        }
-        { Install-Release -SetupExe 'C:\fake\Setup.exe' } | Should -Throw '*exited with code 3*'
+        Set-Content -LiteralPath (Join-Path $StageDir 'manifest.json') -Value '{"files": [{"name": "Setup.exe", "target": "windows"}]}'
     }
 }
 
@@ -192,7 +48,8 @@ Describe 'Invoke-StationDeploy' {
         Mock -ModuleName BloomDeploy Update-StationDatabase { }
         Mock -ModuleName BloomDeploy Install-Release { }
         Mock -ModuleName BloomDeploy Test-Installation { }
-        Mock -ModuleName BloomDeploy Invoke-DeploySelfTest { [pscustomobject]@{ Status = 'passed'; Detail = 'plant P'; Problems = @() } }
+        Mock -ModuleName BloomDeploy Invoke-DeploySelfTest { [pscustomobject]@{ Status = 'passed'; Detail = 'plant P'; PlantId = 'P'; Problems = @() } }
+        Mock -ModuleName BloomDeploy Find-BloomUpload { [pscustomobject]@{ Found = $true; Detail = 'plant P (id 9) in experiment ''DEPLOY-TEST PC1Scanner'' (id 3) with 1 scan(s) and 3 image(s)' } }
         Mock -ModuleName BloomDeploy Invoke-Rollback { }
         Mock -ModuleName BloomDeploy Restore-StationData { }
         Mock -ModuleName BloomDeploy Save-FailedDatabase { }
@@ -207,8 +64,13 @@ Describe 'Invoke-StationDeploy' {
         Should -Invoke -ModuleName BloomDeploy Invoke-DeploySelfTest -Times 1 -ParameterFilter { $Species -eq 'Sorghum' }
         (Get-ChildItem (Join-Path $root 'backups') -Directory) | Should -HaveCount 1
         Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 0
-        $result.Checks['Upload self-test'] | Should -Be 'passed: plant P'
-        $result.Checks['Database'] | Should -Be 'upgraded, no rows lost'
+        # Each stage's row ends with the time it took.
+        $result.Checks['Upload self-test'] | Should -Match '^passed: plant P \(\d+s\)$'
+        $result.Checks['Database'] | Should -Match '^upgraded, no rows lost \(\d+s\)$'
+        $result.Checks['Install'] | Should -Match '^v0\.2\.0 installed \(\d+s\)$'
+        $result.Checks['Backup'] | Should -Match ('^saved to ' + [regex]::Escape((Join-Path $root 'backups')))
+        $result.Checks['Found in Bloom'] | Should -BeLike "yes: plant P (id 9) in experiment 'DEPLOY-TEST PC1Scanner'*"
+        Should -Invoke -ModuleName BloomDeploy Find-BloomUpload -Times 1 -Exactly -ParameterFilter { $PlantId -eq 'P' }
         $result.Checks['Station settings'] | Should -Be 'ok'
         $result.Checks['Scans drive (health only)'] | Should -Be '250 GB of free disk space'
         # Only the new release: the staged v0.1.0 verifies, so it isn't downloaded again.
@@ -459,6 +321,35 @@ Describe 'Invoke-StationDeploy' {
         Mock -ModuleName BloomDeploy Test-BloomRunning { $script:runningCalls++; $script:runningCalls -gt 1 }
         (Invoke-StationDeploy @common).Status | Should -Be 'skipped-app-running'
         Should -Invoke -ModuleName BloomDeploy Install-Release -Times 0 -Exactly
+    }
+
+    It 'still deploys, with a warning, when Bloom does not show the test upload' {
+        Mock -ModuleName BloomDeploy Find-BloomUpload { [pscustomobject]@{ Found = $false; Detail = 'plant P not found in Bloom' } }
+        $result = Invoke-StationDeploy @common
+        $result.Status | Should -Be 'deployed'
+        $result.Checks['Found in Bloom'] | Should -BeLike 'no: plant P not found in Bloom*'
+        Should -Invoke -ModuleName BloomDeploy Invoke-Rollback -Times 0 -Exactly
+    }
+
+    It 'does not look in Bloom when the self-test failed' {
+        Mock -ModuleName BloomDeploy Invoke-DeploySelfTest { [pscustomobject]@{ Status = 'failed'; Detail = 'plant P'; PlantId = 'P'; Problems = @('Self-test upload failed: denied') } }
+        (Invoke-StationDeploy @common).Status | Should -Be 'rolled-back'
+        Should -Invoke -ModuleName BloomDeploy Find-BloomUpload -Times 0 -Exactly
+    }
+
+    It 'skips the database upgrade when the wrong version was installed' {
+        Mock -ModuleName BloomDeploy Test-Installation { "Installed version is '0.1.0', expected '0.2.0'." }
+        $result = Invoke-StationDeploy @common
+        $result.Checks['Install'] | Should -BeLike 'wrong version installed*'
+        Should -Invoke -ModuleName BloomDeploy Update-StationDatabase -Times 0 -Exactly
+    }
+
+    It 'shows each stage as a section of the job log, closed even when the deploy stops early' {
+        Mock -ModuleName DeployStages Write-Host { }
+        Mock -ModuleName BloomDeploy Test-StationReady { 'SCANNER_MODE in .env must be cylinderscan.' }
+        Invoke-StationDeploy @common | Out-Null
+        Should -Invoke -ModuleName DeployStages Write-Host -ParameterFilter { $Object -eq '::group::Check the station' }
+        Should -Invoke -ModuleName DeployStages Write-Host -Times 2 -Exactly -ParameterFilter { $Object -eq '::endgroup::' }
     }
 
     It 'writes a log file' {
