@@ -92,15 +92,22 @@ export function MetadataForm({
     [values, onChange]
   );
 
-  // Handle experiment change - reset barcode-related fields
+  // Handle experiment change - reset the fields that belong to the experiment
   const handleExperimentChange = useCallback(
     (experimentId: string | null) => {
+      const nextId = experimentId || '';
+      const switched = nextId !== values.experimentId;
       onChange({
         ...values,
-        experimentId: experimentId || '',
+        experimentId: nextId,
         // Reset barcode-related fields when experiment changes
         plantQrCode: '',
         accessionName: '',
+        // Wave and age belong to the experiment, not the session: kept for the same
+        // experiment, cleared for a different one so the previous experiment's values
+        // can't be scanned under it unnoticed (#407).
+        waveNumber: switched ? '' : values.waveNumber,
+        plantAgeDays: switched ? '' : values.plantAgeDays,
       });
     },
     [values, onChange]
