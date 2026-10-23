@@ -54,7 +54,11 @@ if ($env:GITHUB_STEP_SUMMARY) {
     $summary = @("## Deploy v$Version", '', "- Result: **$($result.Status)**", "- ${label}: $previous")
     if ($result.Checks.Count -gt 0) {
         $summary += '', '| Check | Result |', '|---|---|'
-        foreach ($name in $result.Checks.Keys) { $summary += "| $name | $($result.Checks[$name]) |" }
+        # The summary is public: check values are redacted like the problems, and kept to one table cell.
+        foreach ($name in $result.Checks.Keys) {
+            $value = (Protect-DeployText -Text "$($result.Checks[$name])") -replace '[|\r\n]', ' '
+            $summary += "| $name | $value |"
+        }
     }
     if ($result.Problems.Count -gt 0) { $summary += '' }
     foreach ($problem in $result.Problems) { $summary += "- Problem: $problem" }

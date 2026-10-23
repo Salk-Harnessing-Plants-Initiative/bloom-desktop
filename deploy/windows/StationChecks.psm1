@@ -22,7 +22,8 @@ $script:SelfTestPollMilliseconds = 500
 $script:SelfTestMinVersion = [version]'0.2.1'
 # 0x80000003 (STATUS_BREAKPOINT) as a signed or unsigned exit code: Chromium couldn't start.
 $script:ChromiumStartupCrashCodes = @(-2147483645, 2147483651)
-$script:MinFreeDiskGB = 20
+# Below this, the scans drive's health line warns; it never stops a deploy.
+$script:MinScansDiskGB = 20
 # Room for two releases' installers (about 0.7 GB each) and a backup of bloom.db.
 $script:MinDeployDiskGB = 5
 $script:MockVariables = @('BLOOM_USE_MOCK_HARDWARE', 'BLOOM_USE_MOCK_CAMERA', 'BLOOM_USE_MOCK_DAQ')
@@ -150,9 +151,23 @@ function Get-UserEnvironmentVariable {
 }
 
 function Get-FreeDiskGB {
+    <# Free GB on $Path's drive root (Get-Item without -Force can't see hidden folders). Throws if it can't be read. #>
     param([Parameter(Mandatory)][string]$Path)
-    $drive = (Get-Item -LiteralPath $Path).PSDrive
-    [math]::Floor((Get-PSDrive -Name $drive.Name).Free / 1GB)
+    $drive = New-Object IO.DriveInfo ([IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path)))
+    # Checked first: PowerShell turns a property's exception into $null, which would read as 0 GB.
+    if (-not $drive.IsReady) { throw "Drive $($drive.Name) doesn't exist or isn't ready." }
+    [math]::Floor($drive.AvailableFreeSpace / 1GB)
+}
+
+function Get-ScansDriveHealth {
+    <# Health only, never blocks a deploy: SCANS_DIR's free disk space, as a line for the job summary. #>
+    param([Parameter(Mandatory)][string]$ProfileDir)
+    $scansDir = (Read-StationEnv -ProfileDir $ProfileDir)['SCANS_DIR']
+    if (-not $scansDir) { return 'not checked (no SCANS_DIR in .env)' }
+    try { $free = Get-FreeDiskGB -Path $scansDir }
+    catch { return "could not read: $($_.Exception.Message)" }
+    if ($free -lt $script:MinScansDiskGB) { return "only $free GB of free disk space; scans may fail (at least $($script:MinScansDiskGB) GB recommended)" }
+    "$free GB of free disk space"
 }
 
 function Test-StationReady {
@@ -188,18 +203,16 @@ function Test-StationReady {
     # Scans go to SCANS_DIR (e.g. E:\bloom-scans); installers and backups to the deploy folder.
     $scansDir = $settings['SCANS_DIR']
     if (-not $scansDir -or -not (Test-Path -LiteralPath $scansDir)) {
-        $problems.Add('SCANS_DIR in .env must be an existing folder.')
+        $problems.Add("SCANS_DIR in .env must be a folder the deploy can see. It runs as the runner's service, so a drive mapped only in the signed-in session isn't visible to it.")
     }
-    else {
-        $scansFree = Get-FreeDiskGB -Path $scansDir
-        if ($scansFree -lt $script:MinFreeDiskGB) {
-            $problems.Add("Only $scansFree GB free on the scans drive; at least $($script:MinFreeDiskGB) GB is needed.")
+    # Free disk space on the scans drive is a health check (Get-ScansDriveHealth), not a blocker.
+    try {
+        $deployFree = Get-FreeDiskGB -Path $DeployRoot
+        if ($deployFree -lt $script:MinDeployDiskGB) {
+            $problems.Add("Only $deployFree GB of free disk space for installers and backups; at least $($script:MinDeployDiskGB) GB is needed.")
         }
     }
-    $deployFree = Get-FreeDiskGB -Path $DeployRoot
-    if ($deployFree -lt $script:MinDeployDiskGB) {
-        $problems.Add("Only $deployFree GB free for installers and backups; at least $($script:MinDeployDiskGB) GB is needed.")
-    }
+    catch { $problems.Add("Could not read free disk space for installers and backups ($DeployRoot): $($_.Exception.Message)") }
 
     # Plain values, so callers' @(...) gives an empty array when there are no problems.
     $problems.ToArray()
@@ -382,5 +395,5 @@ function Invoke-DeploySelfTest {
 }
 
 Export-ModuleMember -Function Set-DeployLogFile, Set-DeployRedactions, Protect-DeployText, Write-DeployLog, Wait-SelfTestProcessesExit, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
-    Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Get-UserEnvironmentVariable, Get-FreeDiskGB, Test-StationReady, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
+    Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Get-UserEnvironmentVariable, Get-FreeDiskGB, Get-ScansDriveHealth, Test-StationReady, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
     Compare-RowCounts, Update-StationDatabase, Invoke-DeploySelfTest
