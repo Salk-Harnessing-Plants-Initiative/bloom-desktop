@@ -255,6 +255,83 @@ describe('createWave', () => {
   });
 });
 
+describe('createWave and earlier scans (#407)', () => {
+  const earlier = {
+    scanCount: 100,
+    agreeing: 80,
+    candidates: [
+      { date: '2025-11-26', count: 80 },
+      { date: '2025-11-29', count: 20 },
+    ],
+    scannedWaveNumbers: [1, 2, 3],
+  };
+  const input = {
+    experimentId: 'exp',
+    waveNumber: 2,
+    phenotyperId: 'ph-1',
+  };
+
+  it('needs a note when the date is far from what the earlier scans point to', async () => {
+    const fake = fakeDb([]);
+    const deps = { db: fake.db, now, earlierScans: async () => earlier };
+    const without = await createWave(deps, {
+      ...input,
+      sowingDate: '2025-12-05',
+    });
+    expect(without.success).toBe(false);
+    expect(without.error).toMatch(
+      /^Earlier scans in wave 2 \(100\) point to sowing on .+ Add a note saying why this date is different\.$/
+    );
+    expect(
+      (
+        await createWave(deps, {
+          ...input,
+          sowingDate: '2025-12-05',
+          note: 'Checked the seed log',
+        })
+      ).success
+    ).toBe(true);
+  });
+
+  it('accepts a date within a day of what the earlier scans point to', async () => {
+    const fake = fakeDb([]);
+    const deps = { db: fake.db, now, earlierScans: async () => earlier };
+    expect(
+      (await createWave(deps, { ...input, sowingDate: '2025-11-27' })).success
+    ).toBe(true);
+  });
+
+  it('counts waves with only earlier scans when judging a skip', async () => {
+    const fake = fakeDb([]);
+    const deps = {
+      db: fake.db,
+      now,
+      earlierScans: async () => ({ ...earlier, candidates: [] }),
+    };
+    // Waves 1-3 have earlier scans, so wave 4 is not a skip, but wave 6 is.
+    expect(
+      (
+        await createWave(deps, {
+          ...input,
+          waveNumber: 4,
+          sowingDate: '2026-02-20',
+        })
+      ).success
+    ).toBe(true);
+    expect(
+      (
+        await createWave(deps, {
+          ...input,
+          waveNumber: 6,
+          sowingDate: '2026-02-21',
+        })
+      ).error
+    ).toBe(
+      'The highest wave of this experiment so far is 4. Is this really wave 6?'
+    );
+  });
+});
+
 describe('a phenotyper is required to set or change a date', () => {
   it('refuses to create a wave without a phenotyper, or with an unknown one', async () => {
     const fake = fakeDb([{ ...wave1 }]);

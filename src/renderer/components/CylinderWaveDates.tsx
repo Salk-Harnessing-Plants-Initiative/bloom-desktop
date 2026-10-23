@@ -70,6 +70,9 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
             Wave {wave.wave_number}: sown {formatSowingDate(wave.sowing_date)}
             {wave.scanCount > 0 &&
               ` (${wave.scanCount} ${wave.scanCount === 1 ? 'scan' : 'scans'})`}
+            {wave.note && (
+              <p className="ml-4 text-xs text-gray-500">{wave.note}</p>
+            )}
             {wave.changes.length > 0 && (
               <ul
                 className="ml-4 text-xs text-gray-500"

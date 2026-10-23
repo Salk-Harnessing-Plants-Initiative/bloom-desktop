@@ -92,6 +92,17 @@ describe('checkNewWave', () => {
     }
   });
 
+  it('counts waves that only have earlier scans when judging a skip', () => {
+    expect(
+      checkNewWave(3, '2026-02-20', [], today, [1, 2]).waveConfirmNeeded
+    ).toBeNull();
+    expect(
+      checkNewWave(5, '2026-02-20', [], today, [1, 2]).waveConfirmNeeded
+    ).toBe(
+      'The highest wave of this experiment so far is 2. Is this really wave 5?'
+    );
+  });
+
   it('reports a future date as an error before anything else', () => {
     const check = checkNewWave(5, '2026-04-01', [wave1], today);
     expect(check.error).toMatch(/future/);

@@ -119,6 +119,14 @@ export function WaveSowingDateInfo({
         )}
       </p>
 
+      {wave.note && (
+        <p
+          className="text-xs text-gray-500"
+          data-testid="wave-sowing-date-note"
+        >
+          {wave.note}
+        </p>
+      )}
       {editing && (
         <div
           className="mt-2 bg-white border-2 border-green-600 rounded-lg p-3 space-y-2"

@@ -68,6 +68,47 @@ describe('WaveSowingDatePanel', () => {
     expect(screen.getByTestId('sowing-date-save')).toBeDisabled();
   });
 
+  it('shows what earlier scans point to, and fills that date on request', () => {
+    const earlier = {
+      scanCount: 100,
+      agreeing: 80,
+      candidates: [
+        { date: daysAgo(14), count: 80 },
+        { date: daysAgo(11), count: 20 },
+      ],
+      scannedWaveNumbers: [1],
+    };
+    render(
+      <WaveSowingDatePanel
+        waveNumber={1}
+        waves={[]}
+        phenotyperId="ph-1"
+        earlier={earlier}
+        onSave={vi.fn()}
+      />
+    );
+    expect(screen.getByTestId('sowing-date-earlier-scans')).toHaveTextContent(
+      /^Earlier scans in wave 1 \(100\) point to sowing on .+ \(80 scans\) or .+ \(20 scans\)\./
+    );
+    fireEvent.click(screen.getByTestId('sowing-date-use-earlier'));
+    expect(screen.getByTestId('sowing-date-input')).toHaveValue(daysAgo(14));
+    expect(screen.queryByTestId('sowing-date-note')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sowing-date-save')).not.toBeDisabled();
+
+    // A date far from it needs a note.
+    fireEvent.change(screen.getByTestId('sowing-date-input'), {
+      target: { value: daysAgo(4) },
+    });
+    expect(
+      screen.getByText(/Add a note saying why this date is different\.$/)
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('sowing-date-save')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('sowing-date-note'), {
+      target: { value: 'Checked the seed log' },
+    });
+    expect(screen.getByTestId('sowing-date-save')).not.toBeDisabled();
+  });
+
   it('refuses a future date', () => {
     const { setDate, save } = renderPanel();
     setDate(toIsoDate(new Date(Date.now() + 2 * 86_400_000)));

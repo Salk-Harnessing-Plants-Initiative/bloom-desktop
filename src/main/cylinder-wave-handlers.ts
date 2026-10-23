@@ -10,6 +10,7 @@
 import type { IpcMain } from 'electron';
 import type { DatabaseResponse } from '../types/database';
 import type {
+  EarlierScansInfo,
   CylinderWaveCreateInput,
   CylinderWaveDateChangeInput,
   CylinderWaveInfo,
@@ -19,6 +20,10 @@ import {
   checkNewWave,
   sowingDateChangeError,
 } from '../utils/sowing-date';
+import {
+  agreesWithEarlierScans,
+  earlierScansDisagree,
+} from '../utils/sowing-date-backfill';
 
 interface WaveRow {
   id: string;
@@ -101,6 +106,11 @@ export interface CylinderWaveDeps {
   db: CylinderWaveDbLike;
   /** Today's date; injectable for tests. */
   now?: () => Date;
+  /** What a wave's scans from before sowing dates existed point to (#407). */
+  earlierScans?: (
+    experimentId: string,
+    waveNumber: number
+  ) => Promise<EarlierScansInfo>;
 }
 
 function fail(error: unknown): DatabaseResponse<never> {
@@ -251,15 +261,29 @@ export async function createWave(
         error: `Wave ${input.waveNumber} already has a sowing date.`,
       };
     }
+    const earlier = deps.earlierScans
+      ? await deps.earlierScans(experimentId, input.waveNumber)
+      : null;
     const check = checkNewWave(
       input.waveNumber,
       input.sowingDate,
       existing,
-      (deps.now ?? (() => new Date()))()
+      (deps.now ?? (() => new Date()))(),
+      earlier?.scannedWaveNumbers ?? []
     );
     if (check.error) return { success: false, error: check.error };
     if (check.noteNeeded && !note)
       return { success: false, error: check.noteNeeded };
+    if (
+      earlier &&
+      !agreesWithEarlierScans(input.sowingDate, earlier) &&
+      !note
+    ) {
+      return {
+        success: false,
+        error: earlierScansDisagree(input.waveNumber, earlier),
+      };
+    }
     if (check.waveConfirmNeeded && input.waveConfirmed !== true) {
       return { success: false, error: check.waveConfirmNeeded };
     }

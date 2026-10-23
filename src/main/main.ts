@@ -50,6 +50,12 @@ import {
 import { registerDatabaseHandlers } from './database-handlers';
 import { registerCylinderWaveHandlers } from './cylinder-wave-handlers';
 import {
+  earlierScans,
+  registerSowingDateBackfillHandlers,
+} from './sowing-date-backfill';
+import { parseSowingDateBackfillArgs } from './sowing-date-backfill-run';
+import { startSowingDateBackfill } from './sowing-date-backfill-cli';
+import {
   loadEnvConfig,
   saveEnvConfig,
   validateConfig,
@@ -104,12 +110,17 @@ if (isDeployFirstRun(process.argv, process.env)) {
 // synthetic scan to Bloom and exits, with no window, hardware or single-instance
 // lock. It writes only to the database copy it is given. See deploy-self-test.ts.
 const deploySelfTest = parseDeploySelfTestArgs(process.argv);
+// Sowing-date backfill, run by hand once after installing (#407): fills in older
+// waves' sowing dates from their earlier scans, shows the result and exits.
+const sowingDateBackfill = parseSowingDateBackfillArgs(process.argv);
 
 // Single-instance lock (#249): two instances running concurrently against
 // the same SQLite database and hardware is a real data-corruption risk on
 // lab machines. Must run before any app.on('ready', ...) registration.
 if (deploySelfTest) {
   void startDeploySelfTest(deploySelfTest);
+} else if (sowingDateBackfill) {
+  void startSowingDateBackfill(sowingDateBackfill);
 } else if (shouldQuitAsSecondInstance(app.requestSingleInstanceLock())) {
   app.quit();
 } else {
@@ -1239,7 +1250,13 @@ app.on('ready', async () => {
       markMetadataDeleted,
       getMainWindow: () => mainWindow,
     });
-    registerCylinderWaveHandlers({ ipcMain, db: getDatabase() });
+    registerCylinderWaveHandlers({
+      ipcMain,
+      db: getDatabase(),
+      earlierScans: (experimentId, waveNumber) =>
+        earlierScans(getDatabase(), experimentId, waveNumber),
+    });
+    registerSowingDateBackfillHandlers({ ipcMain, db: getDatabase() });
     console.log('[Main] Database initialized and handlers registered');
 
     // Initialize GraviScan handlers if mode is graviscan

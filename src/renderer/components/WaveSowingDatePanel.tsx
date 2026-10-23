@@ -9,10 +9,19 @@ import { useState } from 'react';
 import {
   MAX_REASON_LENGTH,
   checkNewWave,
+  formatSowingDate,
   toIsoDate,
   type WaveSowingDate,
 } from '../../utils/sowing-date';
-import type { CylinderWaveCreateInput } from '../../types/cylinder-wave';
+import type {
+  CylinderWaveCreateInput,
+  EarlierScansInfo,
+} from '../../types/cylinder-wave';
+import {
+  agreesWithEarlierScans,
+  describeEarlierScans,
+  earlierScansDisagree,
+} from '../../utils/sowing-date-backfill';
 import type { DatabaseResponse } from '../../types/database';
 
 export interface WaveSowingDatePanelProps {
@@ -20,6 +29,8 @@ export interface WaveSowingDatePanelProps {
   /** The experiment's other waves. */
   waves: WaveSowingDate[];
   phenotyperId: string;
+  /** What the wave's scans from before sowing dates existed point to, if any. */
+  earlier?: EarlierScansInfo | null;
   onSave: (
     input: Omit<CylinderWaveCreateInput, 'experimentId' | 'waveNumber'>
   ) => Promise<DatabaseResponse<unknown>>;
@@ -30,6 +41,7 @@ export function WaveSowingDatePanel({
   waveNumber,
   waves,
   phenotyperId,
+  earlier = null,
   onSave,
   disabled = false,
 }: WaveSowingDatePanelProps) {
@@ -40,8 +52,24 @@ export function WaveSowingDatePanel({
   const [saving, setSaving] = useState(false);
 
   const check = sowingDate
-    ? checkNewWave(waveNumber, sowingDate, waves, new Date())
+    ? checkNewWave(
+        waveNumber,
+        sowingDate,
+        waves,
+        new Date(),
+        earlier?.scannedWaveNumbers ?? []
+      )
     : null;
+  const hasEarlierScans = Boolean(earlier && earlier.candidates.length > 0);
+  // A date far from what the wave's earlier scans point to needs a note too.
+  const disagrees =
+    hasEarlierScans &&
+    check !== null &&
+    !check.error &&
+    !agreesWithEarlierScans(sowingDate, earlier!);
+  const noteMessage =
+    check?.noteNeeded ??
+    (disagrees ? earlierScansDisagree(waveNumber, earlier!) : null);
   const phenotyperChosen = phenotyperId.trim() !== '';
   const canSave =
     !disabled &&
@@ -49,7 +77,7 @@ export function WaveSowingDatePanel({
     phenotyperChosen &&
     check !== null &&
     !check.error &&
-    (!check.noteNeeded || note.trim() !== '') &&
+    (!noteMessage || note.trim() !== '') &&
     (!check.waveConfirmNeeded || waveConfirmed);
 
   const save = async () => {
@@ -79,6 +107,23 @@ export function WaveSowingDatePanel({
       <p className="font-medium text-green-800">
         Please set the sowing date for wave {waveNumber}.
       </p>
+      {hasEarlierScans && (
+        <div
+          className="text-sm text-gray-700"
+          data-testid="sowing-date-earlier-scans"
+        >
+          <p>{describeEarlierScans(waveNumber, earlier!)}</p>
+          <button
+            type="button"
+            onClick={() => setSowingDate(earlier!.candidates[0].date)}
+            disabled={disabled || saving}
+            className="underline"
+            data-testid="sowing-date-use-earlier"
+          >
+            Use {formatSowingDate(earlier!.candidates[0].date)}
+          </button>
+        </div>
+      )}
       <input
         type="date"
         aria-label="Sowing date"
@@ -90,9 +135,9 @@ export function WaveSowingDatePanel({
         data-testid="sowing-date-input"
       />
       {check?.error && <p className="text-sm text-red-600">{check.error}</p>}
-      {check?.noteNeeded && (
+      {noteMessage && (
         <div className="space-y-1">
-          <p className="text-sm text-gray-700">{check.noteNeeded}</p>
+          <p className="text-sm text-gray-700">{noteMessage}</p>
           <textarea
             aria-label="Note"
             value={note}

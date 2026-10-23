@@ -132,6 +132,27 @@ Adding more stations needs no code change: steps 1–6 and 8 for each.
 
 If the test upload reports that it wrote no result while the runner runs as a service, the app may not be able to start in the service's session on that station. Run the runner from the lab account's desktop instead (`run.cmd` at sign-in) and tell the maintainers.
 
+## Sowing dates for experiments scanned before the update
+
+The version that calculates plant age from each wave's sowing date needs a sowing date for every wave. Waves scanned before that update have none. Their scans already say when the wave was sown: each scan's date minus the age typed for it. Run this **once by hand** on each scanner PC after installing that version. Running it again changes nothing, because waves that already have a date are never touched.
+
+1. Close Bloom Desktop; the command refuses to run while it's open.
+2. In a Command Prompt, preview what it would do. Nothing is changed:
+
+   ```
+   "%LOCALAPPDATA%\bloom_desktop\app-<version>\Bloom Desktop.exe" --backfill-sowing-dates --dry-run
+   ```
+
+3. Read the message it shows, then run it for real:
+
+   ```
+   "%LOCALAPPDATA%\bloom_desktop\app-<version>\Bloom Desktop.exe" --backfill-sowing-dates
+   ```
+
+- **Waves whose earlier scans agree** get that date. "Agree" means at least 90% of the scans are within a day of the most common date. The wave's note says "Worked out from N of M earlier scans", and it shows under the wave number on Capture Scan and on the Experiments page.
+- **Waves whose earlier scans disagree are left alone**, for example ones with a carried-over age (#407) or a wrong wave (#408). The first time someone scans such a wave, Capture Scan shows what its scans point to and asks for the date. A date more than a day from the most common one needs a note.
+- **Every run, including a dry run, writes a report** to `%USERPROFILE%\.bloom\logs\sowing-date-backfill-<date>-<time>.json`. It lists the waves set, how many scans agreed, and the waves left for the operator with the dates their scans point to. Keep it as the record of what was done.
+
 ## Restoring a backup by hand
 
 Signed in as the station's lab account, use the backup folder named in the job summary (in `C:\BloomDeploy\backups\`). Scans saved on the station after that backup was made aren't in it, so stop scanning first.

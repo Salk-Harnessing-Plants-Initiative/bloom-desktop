@@ -4,6 +4,7 @@ import { plantAgeDays } from '../../utils/sowing-date';
 import type {
   CylinderWaveCreateInput,
   CylinderWaveInfo,
+  EarlierScansInfo,
 } from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
 
@@ -26,6 +27,8 @@ export interface UseWaveSowingDateResult {
   loading: boolean;
   /** The waves couldn't be read: scanning waits, and the operator is told to restart. */
   loadError: string | null;
+  /** For a wave that needs its date: what its scans from before sowing dates point to. */
+  earlier: EarlierScansInfo | null;
   /** Calendar days from the wave's sowing date to today. */
   calculatedAge: number | null;
   /** The age the operator changed for this scan, if any. */
@@ -104,6 +107,32 @@ export function useWaveSowingDate(
     ? plantAgeDays(wave.sowing_date, new Date())
     : null;
 
+  const needsSowingDate = ready && !loading && !loadError && wave === null;
+  const [earlier, setEarlier] = useState<EarlierScansInfo | null>(null);
+  useEffect(() => {
+    setEarlier(null);
+    if (!needsSowingDate || waveNumber === null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const result =
+          await window.electron.database.cylinderWaves.earlierScans(
+            experimentId,
+            waveNumber
+          );
+        if (!cancelled && result.success && result.data)
+          setEarlier(result.data);
+      } catch (error) {
+        // Only a hint for the operator: the main process checks again on save.
+        if (!cancelled)
+          console.error('[useWaveSowingDate] earlierScans() failed:', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [needsSowingDate, experimentId, waveNumber]);
+
   const saveWave = useCallback<UseWaveSowingDateResult['saveWave']>(
     async (input) => {
       if (!experimentId || waveNumber === null) {
@@ -149,7 +178,8 @@ export function useWaveSowingDate(
     wave,
     waveNumber,
     // A failed read isn't "no sowing date": the operator is told to restart instead.
-    needsSowingDate: ready && !loading && !loadError && wave === null,
+    needsSowingDate,
+    earlier,
     loading,
     loadError: ready ? loadError : null,
     calculatedAge,
