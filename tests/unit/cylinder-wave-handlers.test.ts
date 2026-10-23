@@ -44,7 +44,15 @@ function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
       }),
     },
     scan: {
-      count: vi.fn(async ({ where }) => scanCounts[where.wave_number] ?? 0),
+      groupBy: vi.fn(async ({ where }) =>
+        Object.entries(scanCounts)
+          .map(([wave, n]) => ({
+            experiment_id: 'exp',
+            wave_number: Number(wave),
+            _count: { _all: n },
+          }))
+          .filter((c) => where.wave_number.in.includes(c.wave_number))
+      ),
     },
     cylinderWaveSowingDateChange: {
       findMany: vi.fn(async ({ where }) =>
@@ -75,7 +83,7 @@ function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
         },
         cylinderWaveSowingDateChange: {
           create: async ({ data }: { data: Record<string, unknown> }) => {
-            changes.push(data);
+            changes.push({ id: `c${changes.length + 1}`, ...data });
             return data;
           },
         },
@@ -130,8 +138,16 @@ describe('listWaves', () => {
       where: { experiment_id: 'exp' },
       orderBy: { wave_number: 'asc' },
     });
-    expect(raw.scan.count).toHaveBeenCalledWith({
-      where: { experiment_id: 'exp', wave_number: 1, deleted: false },
+    // One query for all the waves' live scans.
+    expect(raw.scan.groupBy).toHaveBeenCalledTimes(1);
+    expect(raw.scan.groupBy).toHaveBeenCalledWith({
+      by: ['experiment_id', 'wave_number'],
+      where: {
+        experiment_id: { in: ['exp'] },
+        wave_number: { in: [1] },
+        deleted: false,
+      },
+      _count: { _all: true },
     });
     expect(raw.cylinderWaveSowingDateChange.findMany).toHaveBeenCalledWith({
       where: { wave_id: { in: ['w1'] } },
@@ -141,7 +157,7 @@ describe('listWaves', () => {
 
   it('returns a database error instead of throwing', async () => {
     const { db, raw } = fakeDb([{ ...wave1 }]);
-    raw.scan.count.mockRejectedValue(new Error('database is locked'));
+    raw.scan.groupBy.mockRejectedValue(new Error('database is locked'));
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(await listWaves({ db, now }, 'exp')).toEqual({
       success: false,
@@ -170,6 +186,7 @@ describe('listWaves: the change log', () => {
     expect(result.data?.[0].sowing_date).toBe('2025-11-25');
     expect(result.data?.[0].changes).toEqual([
       {
+        id: 'c1',
         old_sowing_date: '2025-11-26',
         new_sowing_date: '2025-11-27',
         reason: 'Typo',
@@ -177,6 +194,7 @@ describe('listWaves: the change log', () => {
         changed_at: EDITED_AT.toISOString(),
       },
       {
+        id: 'c2',
         old_sowing_date: '2025-11-27',
         new_sowing_date: '2025-11-25',
         reason: 'Checked the seed log',
@@ -329,6 +347,7 @@ describe('changeSowingDate', () => {
     expect(result.data?.sowing_date).toBe('2025-11-27');
     expect(fake.changes).toEqual([
       {
+        id: 'c1',
         wave_id: 'w1',
         old_sowing_date: '2025-11-26',
         new_sowing_date: '2025-11-27',

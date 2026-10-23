@@ -1032,6 +1032,20 @@ describe('CaptureScan plant age from the sowing date (#407)', () => {
     expect(wavesList().mock.calls.length).toBeGreaterThan(loadsBefore);
   });
 
+  it("doesn't scan when the scanner refuses the plant age, and says why", async () => {
+    mockScannerInitialize.mockResolvedValue({
+      success: false,
+      initialized: false,
+      error: 'A changed plant age needs a reason.',
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await fillFormAndStartScan();
+    expect(
+      await screen.findByText('A changed plant age needs a reason.')
+    ).toBeInTheDocument();
+    expect(mockScannerScan).not.toHaveBeenCalled();
+  });
+
   it('saves a changed age with the calculated age and the reason', async () => {
     renderCaptureScan();
     await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());

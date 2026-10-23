@@ -63,6 +63,38 @@ export function formatSowingDate(sowingDate: string): string {
   );
 }
 
+/**
+ * What's wrong with a scan's plant age fields, or null: a changed age needs a
+ * reason, a reason needs a changed age, and the reason has a length limit.
+ * Checked in the main process before scanning, since the renderer can't be trusted.
+ */
+export function plantAgeChangeError(scan: {
+  plant_age_days: number;
+  calculated_plant_age_days?: number;
+  plant_age_change_reason?: string;
+}): string | null {
+  const reason = scan.plant_age_change_reason?.trim() ?? '';
+  const calculated = scan.calculated_plant_age_days;
+  if (reason.length > MAX_REASON_LENGTH) {
+    return `Keep the reason under ${MAX_REASON_LENGTH} characters.`;
+  }
+  if (calculated === undefined) {
+    return reason ? 'A reason was given without a calculated age.' : null;
+  }
+  if (scan.plant_age_days !== calculated && !reason) {
+    return 'A changed plant age needs a reason.';
+  }
+  if (scan.plant_age_days === calculated && reason) {
+    return "A reason was given, but the age wasn't changed.";
+  }
+  return null;
+}
+
+/** "1 day", "9 days". */
+export function formatDays(days: number): string {
+  return `${days} ${days === 1 ? 'day' : 'days'}`;
+}
+
 /** A problem with a date the operator entered, or null when it can be used. */
 export function sowingDateError(
   sowingDate: string,
@@ -102,20 +134,8 @@ export function checkNewWave(
   };
   if (result.error) return result;
 
-  const conflict = [...existing]
-    .sort((a, b) => a.wave_number - b.wave_number)
-    .find((w) =>
-      w.wave_number < waveNumber
-        ? w.sowing_date >= sowingDate
-        : w.sowing_date <= sowingDate
-    );
-  if (conflict) {
-    const when =
-      conflict.wave_number < waveNumber ? 'on or before' : 'on or after';
-    result.noteNeeded =
-      `Wave ${conflict.wave_number} was sown on ${formatSowingDate(conflict.sowing_date)}, ` +
-      `so wave ${waveNumber} would be sown ${when} it. Add a note saying why.`;
-  }
+  const conflict = waveConflict(waveNumber, sowingDate, existing);
+  if (conflict) result.noteNeeded = `${conflict} Add a note saying why.`;
 
   const highest = existing.reduce(
     (max, w) => Math.max(max, w.wave_number),
@@ -130,20 +150,75 @@ export function checkNewWave(
   return result;
 }
 
-/** Why a sowing-date change can't be saved, or null. */
-export function sowingDateChangeError(
-  newSowingDate: string,
-  reason: string,
-  waveHasScans: boolean,
-  today: Date
+/**
+ * The first other wave whose date conflicts with this one: an earlier-numbered
+ * wave sown on or after it, or a later-numbered one sown on or before it.
+ */
+function waveConflict(
+  waveNumber: number,
+  sowingDate: string,
+  others: WaveSowingDate[]
 ): string | null {
-  const dateError = sowingDateError(newSowingDate, today);
-  if (dateError) return dateError;
-  if (waveHasScans && !reason.trim()) {
-    return 'This wave already has scans: give a reason for the change.';
-  }
-  if (reason.length > MAX_REASON_LENGTH) {
-    return `Keep the reason under ${MAX_REASON_LENGTH} characters.`;
-  }
-  return null;
+  const conflict = [...others]
+    .sort((a, b) => a.wave_number - b.wave_number)
+    .find((w) =>
+      w.wave_number < waveNumber
+        ? w.sowing_date >= sowingDate
+        : w.sowing_date <= sowingDate
+    );
+  if (!conflict) return null;
+  const when =
+    conflict.wave_number < waveNumber ? 'on or before' : 'on or after';
+  return (
+    `Wave ${conflict.wave_number} was sown on ${formatSowingDate(conflict.sowing_date)}, ` +
+    `so wave ${waveNumber} would be sown ${when} it.`
+  );
+}
+
+export interface SowingDateChangeCheck {
+  /** The new date can't be used, whatever the reason. */
+  error: string | null;
+  /** The new date conflicts with another wave's: saving needs a reason. */
+  conflict: string | null;
+  /** A reason is needed: the wave has scans, or the date conflicts. */
+  reasonNeeded: boolean;
+  /** Why the change can't be saved with this reason, or null when it can. */
+  saveError: string | null;
+}
+
+/**
+ * The rules for changing a wave's sowing date, shared by the Edit box and the
+ * main process. Before the wave's first scan no reason is needed, unless the new
+ * date conflicts with another wave; after it, a reason always is.
+ */
+export function checkSowingDateChange(
+  change: {
+    waveNumber: number;
+    currentDate: string;
+    newDate: string;
+    reason: string;
+    waveHasScans: boolean;
+  },
+  otherWaves: WaveSowingDate[],
+  today: Date
+): SowingDateChangeCheck {
+  const reason = change.reason.trim();
+  const error =
+    change.newDate === change.currentDate
+      ? 'That is already the sowing date.'
+      : sowingDateError(change.newDate, today);
+  const found = error
+    ? null
+    : waveConflict(change.waveNumber, change.newDate, otherWaves);
+  const conflict = found ? `${found} Give a reason for the change.` : null;
+  const reasonNeeded = change.waveHasScans || conflict !== null;
+  const saveError =
+    error ??
+    (reasonNeeded && !reason
+      ? (conflict ??
+        'This wave already has scans: give a reason for the change.')
+      : reason.length > MAX_REASON_LENGTH
+        ? `Keep the reason under ${MAX_REASON_LENGTH} characters.`
+        : null);
+  return { error, conflict, reasonNeeded, saveError };
 }

@@ -12,9 +12,7 @@ export function usePhenotyperName(phenotyperId: string): string | null {
       try {
         const result = await window.electron.database.phenotypers.list();
         if (cancelled || !result.success || !Array.isArray(result.data)) return;
-        const match = (result.data as { id: string; name: string }[]).find(
-          (p) => p.id === phenotyperId
-        );
+        const match = result.data.find((p) => p.id === phenotyperId);
         setName(match ? match.name : null);
       } catch (error) {
         if (!cancelled)

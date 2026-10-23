@@ -17,7 +17,7 @@ import type {
 import {
   MAX_REASON_LENGTH,
   checkNewWave,
-  sowingDateChangeError,
+  checkSowingDateChange,
 } from '../utils/sowing-date';
 
 interface WaveRow {
@@ -31,6 +31,7 @@ interface WaveRow {
 }
 
 interface ChangeRow {
+  id: string;
   wave_id: string;
   old_sowing_date: string;
   new_sowing_date: string;
@@ -58,9 +59,17 @@ export interface CylinderWaveDbLike {
     }) => Promise<WaveRow>;
   };
   scan: {
-    count: (args: {
-      where: { experiment_id: string; wave_number: number; deleted: boolean };
-    }) => Promise<number>;
+    groupBy: (args: {
+      by: ['experiment_id', 'wave_number'];
+      where: {
+        experiment_id: { in: string[] };
+        wave_number: { in: number[] };
+        deleted: boolean;
+      };
+      _count: { _all: true };
+    }) => Promise<
+      { experiment_id: string; wave_number: number; _count: { _all: number } }[]
+    >;
   };
   cylinderWaveSowingDateChange: {
     findMany: (args: {
@@ -166,36 +175,50 @@ async function withScanCounts(
         ).map((p) => [p.id, p.name])
       : []
   );
-  return Promise.all(
-    rows.map(async (row) => ({
-      id: row.id,
-      wave_number: row.wave_number,
-      sowing_date: row.sowing_date,
-      note: row.note,
-      set_by_name: row.set_by_phenotyper_id
-        ? (names.get(row.set_by_phenotyper_id) ?? null)
-        : null,
-      set_at: row.updatedAt.toISOString(),
-      changes: changes
-        .filter((c) => c.wave_id === row.id)
-        .map((c) => ({
-          old_sowing_date: c.old_sowing_date,
-          new_sowing_date: c.new_sowing_date,
-          reason: c.reason,
-          changed_by_name: c.changed_by_phenotyper_id
-            ? (names.get(c.changed_by_phenotyper_id) ?? null)
-            : null,
-          changed_at: c.changedAt.toISOString(),
-        })),
-      scanCount: await db.scan.count({
-        where: {
-          experiment_id: row.experiment_id,
-          wave_number: row.wave_number,
-          deleted: false,
-        },
-      }),
-    }))
-  );
+  // One query for every wave's live scans, rather than one per wave.
+  const counts =
+    rows.length > 0
+      ? await db.scan.groupBy({
+          by: ['experiment_id', 'wave_number'],
+          where: {
+            experiment_id: {
+              in: [...new Set(rows.map((r) => r.experiment_id))],
+            },
+            wave_number: { in: [...new Set(rows.map((r) => r.wave_number))] },
+            deleted: false,
+          },
+          _count: { _all: true },
+        })
+      : [];
+  const scanCount = (row: WaveRow) =>
+    counts.find(
+      (c) =>
+        c.experiment_id === row.experiment_id &&
+        c.wave_number === row.wave_number
+    )?._count._all ?? 0;
+  return rows.map((row) => ({
+    id: row.id,
+    wave_number: row.wave_number,
+    sowing_date: row.sowing_date,
+    note: row.note,
+    set_by_name: row.set_by_phenotyper_id
+      ? (names.get(row.set_by_phenotyper_id) ?? null)
+      : null,
+    set_at: row.updatedAt.toISOString(),
+    changes: changes
+      .filter((c) => c.wave_id === row.id)
+      .map((c) => ({
+        id: c.id,
+        old_sowing_date: c.old_sowing_date,
+        new_sowing_date: c.new_sowing_date,
+        reason: c.reason,
+        changed_by_name: c.changed_by_phenotyper_id
+          ? (names.get(c.changed_by_phenotyper_id) ?? null)
+          : null,
+        changed_at: c.changedAt.toISOString(),
+      })),
+    scanCount: scanCount(row),
+  }));
 }
 
 export async function listWaves(
@@ -295,33 +318,25 @@ export async function changeSowingDate(
     if (!wave) return { success: false, error: 'That wave no longer exists.' };
     const who = await phenotyperError(deps.db, phenotyperId);
     if (who) return { success: false, error: who };
-    if (wave.sowing_date === input.sowingDate) {
-      return { success: false, error: 'That is already the sowing date.' };
-    }
     const [current] = await withScanCounts(deps.db, [wave]);
-    const today = (deps.now ?? (() => new Date()))();
-    const changeError = sowingDateChangeError(
-      input.sowingDate,
-      reason,
-      current.scanCount > 0,
-      today
-    );
-    if (changeError) return { success: false, error: changeError };
-
     const others = (
       await deps.db.cylinderWave.findMany({
         where: { experiment_id: wave.experiment_id },
         orderBy: { wave_number: 'asc' },
       })
     ).filter((w) => w.id !== wave.id);
-    const conflict = checkNewWave(
-      wave.wave_number,
-      input.sowingDate,
+    const { saveError } = checkSowingDateChange(
+      {
+        waveNumber: wave.wave_number,
+        currentDate: wave.sowing_date,
+        newDate: input.sowingDate,
+        reason,
+        waveHasScans: current.scanCount > 0,
+      },
       others,
-      today
+      (deps.now ?? (() => new Date()))()
     );
-    if (conflict.noteNeeded && !reason)
-      return { success: false, error: conflict.noteNeeded };
+    if (saveError) return { success: false, error: saveError };
 
     const updated = await deps.db.$transaction(async (tx) => {
       await tx.cylinderWaveSowingDateChange.create({
