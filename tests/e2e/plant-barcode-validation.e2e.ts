@@ -1121,12 +1121,28 @@ test.describe('UI: Session State Zero Value Persistence', () => {
       },
     });
 
-    await prisma.experiment.create({
+    const experiment = await prisma.experiment.create({
       data: {
         name: 'Zero Wave Experiment',
         species: 'Arabidopsis',
         scientist_id: scientist.id,
         accession_id: accession.id,
+      },
+    });
+
+    // Wave 0 sown today: the plant age is calculated from the sowing date (#407),
+    // so a sown-today plant is 0 days old.
+    const today = new Date();
+    const sownToday = [
+      today.getFullYear(),
+      String(today.getMonth() + 1).padStart(2, '0'),
+      String(today.getDate()).padStart(2, '0'),
+    ].join('-');
+    await prisma.cylinderWave.create({
+      data: {
+        experiment_id: experiment.id,
+        wave_number: 0,
+        sowing_date: sownToday,
       },
     });
 
@@ -1145,9 +1161,8 @@ test.describe('UI: Session State Zero Value Persistence', () => {
     const waveNumberInput = window.locator('#waveNumber');
     await waveNumberInput.fill('0');
 
-    // Set plant age to 0 (valid value - e.g., day of planting)
-    const plantAgeInput = window.locator('#plantAgeDays');
-    await plantAgeInput.fill('0');
+    // The plant age is calculated from wave 0's sowing date: 0 days.
+    await expect(window.locator('#plantAgeDays')).toHaveValue('0');
 
     // Wait for session save debounce (300ms + buffer)
     await window.waitForTimeout(500);
