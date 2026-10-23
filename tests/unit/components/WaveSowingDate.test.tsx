@@ -115,12 +115,22 @@ describe('WaveSowingDatePanel', () => {
     expect(screen.getByTestId('sowing-date-save')).not.toBeDisabled();
   });
 
-  it('says what the start date is in a small ⓘ', () => {
+  it('opens a short note on the start date from the ⓘ', () => {
     renderPanel();
-    expect(screen.getByTestId('start-date-info')).toHaveAttribute(
-      'title',
-      'Any day you count plant age from (day 0): sowing, transfer to the cylinder, or your own start.'
+    expect(
+      screen.queryByTestId('start-date-info-text')
+    ).not.toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByTestId('start-date-info'));
+    expect(screen.getByTestId('start-date-info-text')).toHaveTextContent(
+      'You can use the sowing date, the germination date, or the date of transfer to the cylinder. The plant age for this wave is counted from it, as day 0.'
     );
+    fireEvent.mouseLeave(screen.getByTestId('start-date-info'));
+    expect(
+      screen.queryByTestId('start-date-info-text')
+    ).not.toBeInTheDocument();
+    // A click opens it too, e.g. on a touchscreen.
+    fireEvent.click(screen.getByTestId('start-date-info'));
+    expect(screen.getByTestId('start-date-info-text')).toBeInTheDocument();
   });
 
   it('refuses a future date', () => {

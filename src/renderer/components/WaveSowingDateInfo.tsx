@@ -113,7 +113,7 @@ export function WaveSowingDateInfo({
       data-testid="wave-sowing-date-info"
     >
       <p>
-        Start date
+        Start date to compute age
         <StartDateInfo />: {formatSowingDate(wave.sowing_date)}
         {wave.set_by_name
           ? ` · set by ${wave.set_by_name} on ${formatSetAt(wave.set_at)}`

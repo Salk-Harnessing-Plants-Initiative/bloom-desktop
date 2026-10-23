@@ -966,7 +966,9 @@ describe('CaptureScan plant age from the sowing date (#407)', () => {
 
     expect(
       await screen.findByTestId('wave-sowing-date-panel')
-    ).toHaveTextContent('Please set the start date for wave 1.');
+    ).toHaveTextContent(
+      'Please set the start date for wave 1. The plant age is counted from it.'
+    );
     expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
     expect(
       screen.getByText(/Save wave 1's start date above to start the scan/)
