@@ -5,7 +5,7 @@
  * keep the age they were saved with. Every change is logged (Experiments page).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   MAX_REASON_LENGTH,
   checkNewWave,
@@ -24,6 +24,8 @@ export interface WaveSowingDateInfoProps {
     sowingDate: string,
     reason?: string
   ) => Promise<DatabaseResponse<unknown>>;
+  /** Told when the Edit box opens or closes, so Start Scan can wait for it. */
+  onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
 }
 
@@ -39,9 +41,15 @@ export function WaveSowingDateInfo({
   wave,
   waves,
   onChangeDate,
+  onOpenChange,
   disabled = false,
 }: WaveSowingDateInfoProps) {
   const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    onOpenChange?.(editing);
+  }, [editing, onOpenChange]);
+  // A box that goes away (another wave or experiment) no longer holds up Start Scan.
+  useEffect(() => () => onOpenChange?.(false), [onOpenChange]);
   const [sowingDate, setSowingDate] = useState(wave.sowing_date);
   const [reason, setReason] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -55,6 +63,7 @@ export function WaveSowingDateInfo({
       : null;
   const reasonNeeded = hasScans || Boolean(check?.noteNeeded);
   const canSave =
+    !disabled &&
     !saving &&
     check !== null &&
     !check.error &&
@@ -116,7 +125,7 @@ export function WaveSowingDateInfo({
             value={sowingDate}
             max={toIsoDate(new Date())}
             onChange={(e) => setSowingDate(e.target.value)}
-            disabled={saving}
+            disabled={saving || disabled}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
           />
           {hasScans && (
@@ -147,7 +156,7 @@ export function WaveSowingDateInfo({
               value={reason}
               maxLength={MAX_REASON_LENGTH}
               onChange={(e) => setReason(e.target.value)}
-              disabled={saving}
+              disabled={saving || disabled}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
           )}
@@ -165,7 +174,8 @@ export function WaveSowingDateInfo({
             <button
               type="button"
               onClick={() => setEditing(false)}
-              className="px-3 py-1.5 rounded-md border border-gray-300"
+              disabled={disabled}
+              className="px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-50"
             >
               Cancel
             </button>

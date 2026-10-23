@@ -199,4 +199,46 @@ describe('PlantAgeNote', () => {
     expect(screen.getByText('Applies to this scan only.')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Enter age here')).toBeInTheDocument();
   });
+
+  it('greys out everything inside an open box while scanning', () => {
+    const { rerender } = render(
+      <PlantAgeNote
+        wave={wave}
+        calculatedAge={9}
+        change={null}
+        onChange={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getByTestId('change-age'));
+    rerender(
+      <PlantAgeNote
+        wave={wave}
+        calculatedAge={9}
+        change={null}
+        onChange={vi.fn()}
+        disabled
+      />
+    );
+    expect(screen.getByTestId('change-age-input')).toBeDisabled();
+    expect(screen.getByTestId('change-age-reason')).toBeDisabled();
+    expect(screen.getByTestId('change-age-confirm')).toBeDisabled();
+    expect(screen.getByText('Cancel')).toBeDisabled();
+  });
+
+  it('reports when the box opens and closes', () => {
+    const onOpenChange = vi.fn();
+    render(
+      <PlantAgeNote
+        wave={wave}
+        calculatedAge={9}
+        change={null}
+        onChange={vi.fn()}
+        onOpenChange={onOpenChange}
+      />
+    );
+    fireEvent.click(screen.getByTestId('change-age'));
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByText('Cancel'));
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
 });

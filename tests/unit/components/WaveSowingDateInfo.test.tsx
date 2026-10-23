@@ -134,4 +134,44 @@ describe('WaveSowingDateInfo', () => {
     fireEvent.click(screen.getByTestId('sowing-date-edit-save'));
     expect(await screen.findByText('database is locked')).toBeInTheDocument();
   });
+
+  it('greys out everything inside an open Edit box while scanning', () => {
+    const onChangeDate = vi.fn();
+    const { rerender } = render(
+      <WaveSowingDateInfo
+        wave={{ ...wave2, scanCount: 1 }}
+        waves={[wave1, wave2]}
+        onChangeDate={onChangeDate}
+      />
+    );
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    rerender(
+      <WaveSowingDateInfo
+        wave={{ ...wave2, scanCount: 1 }}
+        waves={[wave1, wave2]}
+        onChangeDate={onChangeDate}
+        disabled
+      />
+    );
+    expect(screen.getByLabelText('Sowing date')).toBeDisabled();
+    expect(screen.getByLabelText('Reason')).toBeDisabled();
+    expect(screen.getByTestId('sowing-date-edit-save')).toBeDisabled();
+    expect(screen.getByText('Cancel')).toBeDisabled();
+  });
+
+  it('reports when the Edit box opens and closes', () => {
+    const onOpenChange = vi.fn();
+    render(
+      <WaveSowingDateInfo
+        wave={wave2}
+        waves={[wave1, wave2]}
+        onChangeDate={vi.fn()}
+        onOpenChange={onOpenChange}
+      />
+    );
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByText('Cancel'));
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
 });

@@ -105,6 +105,10 @@ export function CaptureScan() {
   );
   const phenotyperName = usePhenotyperName(metadata.phenotyper);
   const { ageToUse, needsSowingDate, setChange: setAgeChange } = sowing;
+  // An open Change age or sowing-date Edit box must be finished or cancelled before
+  // scanning, so what the form shows is what the scan saves.
+  const [ageBoxOpen, setAgeBoxOpen] = useState(false);
+  const [dateBoxOpen, setDateBoxOpen] = useState(false);
   // The scan listeners are registered once: reach the latest reload through a ref.
   const reloadWavesRef = useRef(sowing.reload);
   reloadWavesRef.current = sowing.reload;
@@ -445,7 +449,7 @@ export function CaptureScan() {
 
         // A changed age was for this scan only.
         setAgeChange(null);
-        // The wave now has a scan: its sowing date can no longer be edited here.
+        // The wave now has a scan: a sowing-date change now needs a reason.
         void reloadWavesRef.current();
 
         // Reset metadata for next scan (optional)
@@ -519,7 +523,9 @@ export function CaptureScan() {
     !barcodeValidationError &&
     !duplicateScanWarning &&
     !sowing.loading &&
-    !sowing.needsSowingDate;
+    !sowing.needsSowingDate &&
+    !ageBoxOpen &&
+    !dateBoxOpen;
 
   // Start scan handler
   const handleStartScan = async () => {
@@ -727,6 +733,7 @@ export function CaptureScan() {
                       wave={sowing.wave}
                       waves={sowing.waves}
                       onChangeDate={sowing.changeDate}
+                      onOpenChange={setDateBoxOpen}
                       disabled={isScanning}
                     />
                   ) : undefined
@@ -740,6 +747,7 @@ export function CaptureScan() {
                       change={sowing.change}
                       onChange={sowing.setChange}
                       phenotyperName={phenotyperName ?? undefined}
+                      onOpenChange={setAgeBoxOpen}
                       disabled={isScanning}
                     />
                   ) : undefined
@@ -867,6 +875,13 @@ export function CaptureScan() {
                       Camera not configured
                     </p>
                   )}
+                {(ageBoxOpen || dateBoxOpen) && !isScanning && (
+                  <p className="text-sm text-red-600 mt-2">
+                    {ageBoxOpen
+                      ? 'Use the new age or cancel the age change above to start the scan'
+                      : 'Save or cancel the sowing date change above to start the scan'}
+                  </p>
+                )}
                 {sowing.needsSowingDate && (
                   <p className="text-sm text-red-600 mt-2">
                     Save wave {sowing.waveNumber}&apos;s sowing date above to

@@ -4,7 +4,7 @@
  * a reason and applies to one scan; both are saved with it.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MAX_REASON_LENGTH, formatSowingDate } from '../../utils/sowing-date';
 import { validatePlantAgeDays } from '../../utils/metadata-validation';
 import type { CylinderWaveInfo } from '../../types/cylinder-wave';
@@ -17,6 +17,8 @@ export interface PlantAgeNoteProps {
   onChange: (change: PlantAgeChange | null) => void;
   /** Who is scanning, shown when they change the age. */
   phenotyperName?: string;
+  /** Told when the Change age box opens or closes, so Start Scan can wait for it. */
+  onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
 }
 
@@ -26,9 +28,15 @@ export function PlantAgeNote({
   change,
   onChange,
   phenotyperName,
+  onOpenChange,
   disabled = false,
 }: PlantAgeNoteProps) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
+  // A box that goes away (another wave or experiment) no longer holds up Start Scan.
+  useEffect(() => () => onOpenChange?.(false), [onOpenChange]);
   const [ageText, setAgeText] = useState('');
   const [reason, setReason] = useState('');
 
@@ -136,6 +144,7 @@ export function PlantAgeNote({
             placeholder="Enter age here"
             value={ageText}
             onChange={(e) => setAgeText(e.target.value)}
+            disabled={disabled}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
             data-testid="change-age-input"
           />
@@ -146,6 +155,7 @@ export function PlantAgeNote({
             value={reason}
             maxLength={MAX_REASON_LENGTH}
             onChange={(e) => setReason(e.target.value)}
+            disabled={disabled}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
             data-testid="change-age-reason"
           />
@@ -153,7 +163,7 @@ export function PlantAgeNote({
             <button
               type="button"
               onClick={confirm}
-              disabled={!canConfirm}
+              disabled={disabled || !canConfirm}
               className="px-3 py-1.5 rounded-md bg-amber-600 text-white font-medium hover:bg-amber-700 disabled:opacity-50"
               data-testid="change-age-confirm"
             >
@@ -162,7 +172,8 @@ export function PlantAgeNote({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="px-3 py-1.5 rounded-md border border-gray-300"
+              disabled={disabled}
+              className="px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-50"
             >
               Cancel
             </button>

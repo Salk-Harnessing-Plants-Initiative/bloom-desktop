@@ -987,3 +987,41 @@ describe('CaptureScan plant age from the sowing date (#407)', () => {
     });
   });
 });
+
+describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () => {
+  async function fillPlant() {
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    const startButton = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+    return startButton;
+  }
+
+  it('keeps Start Scan disabled while the Change age box is open', async () => {
+    const startButton = await fillPlant();
+    fireEvent.click(screen.getByTestId('change-age'));
+    expect(startButton).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Use the new age or cancel the age change above to start the scan'
+      )
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Cancel'));
+    await waitFor(() => expect(startButton).not.toBeDisabled());
+  });
+
+  it('keeps Start Scan disabled while the sowing-date Edit box is open', async () => {
+    const startButton = await fillPlant();
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    expect(startButton).toBeDisabled();
+    expect(
+      screen.getByText(
+        'Save or cancel the sowing date change above to start the scan'
+      )
+    ).toBeInTheDocument();
+  });
+});
