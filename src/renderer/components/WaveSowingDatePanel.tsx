@@ -78,7 +78,8 @@ export function WaveSowingDatePanel({
       data-testid="wave-sowing-date-panel"
     >
       <p className="font-medium text-green-800">
-        Please set the start date for wave {waveNumber}.
+        Please set the start date for wave {waveNumber}. The plant age is
+        counted from it.
         <StartDateInfo />
       </p>
       <input

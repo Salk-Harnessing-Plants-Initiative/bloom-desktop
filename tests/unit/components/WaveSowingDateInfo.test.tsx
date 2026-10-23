@@ -36,7 +36,7 @@ describe('WaveSowingDateInfo', () => {
   it('shows the sowing date, who set it and when', () => {
     renderInfo();
     expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
-      /^Start date: .+ · set by Demo Phenotyper on .+Edit$/
+      /^Start date to compute age: .+ · set by Demo Phenotyper on .+Edit$/
     );
   });
 
@@ -245,7 +245,7 @@ describe('WaveSowingDateInfo', () => {
       />
     );
     expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
-      /^Start date: .+ \(set on .+\) Edit$/
+      /^Start date to compute age: .+ \(set on .+\) Edit$/
     );
   });
 });
