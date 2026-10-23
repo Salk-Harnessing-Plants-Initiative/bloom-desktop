@@ -74,10 +74,11 @@ describe('WaveSowingDatePanel', () => {
     expect(screen.getByTestId('sowing-date-save')).toBeDisabled();
   });
 
-  it('says what the start date is', () => {
+  it('says what the start date is in a small ⓘ', () => {
     renderPanel();
-    expect(screen.getByTestId('start-date-hint')).toHaveTextContent(
-      'The day the plant age counts from, as day 0: for example the sowing date or the transfer date.'
+    expect(screen.getByTestId('start-date-info')).toHaveAttribute(
+      'title',
+      'Any day you count plant age from (day 0): sowing, transfer to the cylinder, or your own start.'
     );
   });
 

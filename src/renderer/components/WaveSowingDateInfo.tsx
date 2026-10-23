@@ -15,6 +15,7 @@ import {
 } from '../../utils/sowing-date';
 import type { CylinderWaveInfo } from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
+import { StartDateInfo } from './StartDateInfo';
 
 export interface WaveSowingDateInfoProps {
   wave: CylinderWaveInfo;
@@ -112,7 +113,8 @@ export function WaveSowingDateInfo({
       data-testid="wave-sowing-date-info"
     >
       <p>
-        Start date: {formatSowingDate(wave.sowing_date)}
+        Start date
+        <StartDateInfo />: {formatSowingDate(wave.sowing_date)}
         {wave.set_by_name
           ? ` · set by ${wave.set_by_name} on ${formatSetAt(wave.set_at)}`
           : ` (set on ${formatSetAt(wave.set_at)})`}

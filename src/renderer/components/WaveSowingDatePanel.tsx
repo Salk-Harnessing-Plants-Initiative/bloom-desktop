@@ -14,6 +14,7 @@ import {
 } from '../../utils/sowing-date';
 import type { CylinderWaveCreateInput } from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
+import { StartDateInfo } from './StartDateInfo';
 
 export interface WaveSowingDatePanelProps {
   waveNumber: number;
@@ -78,10 +79,7 @@ export function WaveSowingDatePanel({
     >
       <p className="font-medium text-green-800">
         Please set the start date for wave {waveNumber}.
-      </p>
-      <p className="text-sm text-gray-600" data-testid="start-date-hint">
-        The day the plant age counts from, as day 0: for example the sowing date
-        or the transfer date.
+        <StartDateInfo />
       </p>
       <input
         type="date"
