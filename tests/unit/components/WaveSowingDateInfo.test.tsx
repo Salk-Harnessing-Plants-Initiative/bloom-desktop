@@ -26,6 +26,7 @@ function renderInfo(wave = wave2) {
       wave={wave}
       waves={[wave1, wave]}
       onChangeDate={onChangeDate}
+      phenotyperChosen
     />
   );
   return onChangeDate;
@@ -125,6 +126,7 @@ describe('WaveSowingDateInfo', () => {
         wave={wave2}
         waves={[wave1, wave2]}
         onChangeDate={onChange}
+        phenotyperChosen
       />
     );
     fireEvent.click(screen.getByTestId('sowing-date-edit'));
@@ -142,6 +144,7 @@ describe('WaveSowingDateInfo', () => {
         wave={{ ...wave2, scanCount: 1 }}
         waves={[wave1, wave2]}
         onChangeDate={onChangeDate}
+        phenotyperChosen
       />
     );
     fireEvent.click(screen.getByTestId('sowing-date-edit'));
@@ -150,6 +153,7 @@ describe('WaveSowingDateInfo', () => {
         wave={{ ...wave2, scanCount: 1 }}
         waves={[wave1, wave2]}
         onChangeDate={onChangeDate}
+        phenotyperChosen
         disabled
       />
     );
@@ -166,6 +170,7 @@ describe('WaveSowingDateInfo', () => {
         wave={wave2}
         waves={[wave1, wave2]}
         onChangeDate={vi.fn()}
+        phenotyperChosen
         onOpenChange={onOpenChange}
       />
     );
@@ -173,5 +178,38 @@ describe('WaveSowingDateInfo', () => {
     expect(onOpenChange).toHaveBeenLastCalledWith(true);
     fireEvent.click(screen.getByText('Cancel'));
     expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('needs a phenotyper before a date change can be saved', () => {
+    render(
+      <WaveSowingDateInfo
+        wave={wave2}
+        waves={[wave1, wave2]}
+        onChangeDate={vi.fn()}
+        phenotyperChosen={false}
+      />
+    );
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    fireEvent.change(screen.getByLabelText('Sowing date'), {
+      target: { value: '2026-02-19' },
+    });
+    expect(
+      screen.getByTestId('sowing-date-needs-phenotyper')
+    ).toHaveTextContent('Choose the phenotyper first.');
+    expect(screen.getByTestId('sowing-date-edit-save')).toBeDisabled();
+  });
+
+  it('says only when the date was set when the setter is unknown', () => {
+    render(
+      <WaveSowingDateInfo
+        wave={{ ...wave2, set_by_name: null }}
+        waves={[wave1, wave2]}
+        onChangeDate={vi.fn()}
+        phenotyperChosen
+      />
+    );
+    expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
+      /^Sowing date: .+ \(set on .+\) Edit$/
+    );
   });
 });

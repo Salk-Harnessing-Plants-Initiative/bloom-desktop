@@ -37,7 +37,8 @@ export interface CylinderWaveCreateInput {
   note?: string;
   /** Required when the wave number skips ahead of the experiment's waves. */
   waveConfirmed?: boolean;
-  phenotyperId?: string;
+  /** Who is setting or changing the date: required, so the log can say who. */
+  phenotyperId: string;
 }
 
 export interface CylinderWaveDateChangeInput {
@@ -45,5 +46,6 @@ export interface CylinderWaveDateChangeInput {
   sowingDate: string;
   /** Required once the wave has scans, or when the new date conflicts with another wave. */
   reason?: string;
-  phenotyperId?: string;
+  /** Who is setting or changing the date: required, so the log can say who. */
+  phenotyperId: string;
 }

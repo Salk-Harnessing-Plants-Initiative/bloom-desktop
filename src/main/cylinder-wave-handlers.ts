@@ -119,6 +119,24 @@ function trimmed(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+export const PHENOTYPER_REQUIRED = 'Choose the phenotyper first.';
+
+/**
+ * The phenotyper setting or changing a date: required and must exist, so the
+ * log can always say who. Returns an error message, or null when it's fine.
+ */
+async function phenotyperError(
+  db: CylinderWaveDbLike,
+  phenotyperId: string
+): Promise<string | null> {
+  if (!phenotyperId) return PHENOTYPER_REQUIRED;
+  const found = await db.phenotyper.findMany({
+    where: { id: { in: [phenotyperId] } },
+    select: { id: true, name: true },
+  });
+  return found.length > 0 ? null : 'That phenotyper no longer exists.';
+}
+
 async function withScanCounts(
   db: CylinderWaveDbLike,
   rows: WaveRow[]
@@ -204,6 +222,7 @@ export async function createWave(
 ): Promise<DatabaseResponse<CylinderWaveInfo>> {
   const experimentId = trimmed(input?.experimentId);
   const note = trimmed(input?.note);
+  const phenotyperId = trimmed(input?.phenotyperId);
   if (!experimentId) {
     return { success: false, error: 'experimentId must be a non-empty string' };
   }
@@ -220,6 +239,8 @@ export async function createWave(
     };
   }
   try {
+    const who = await phenotyperError(deps.db, phenotyperId);
+    if (who) return { success: false, error: who };
     const existing = await deps.db.cylinderWave.findMany({
       where: { experiment_id: experimentId },
       orderBy: { wave_number: 'asc' },
@@ -248,7 +269,7 @@ export async function createWave(
         wave_number: input.waveNumber,
         sowing_date: input.sowingDate,
         note: note || null,
-        set_by_phenotyper_id: trimmed(input.phenotyperId) || null,
+        set_by_phenotyper_id: phenotyperId,
       },
     });
     const [info] = await withScanCounts(deps.db, [row]);
@@ -264,6 +285,7 @@ export async function changeSowingDate(
 ): Promise<DatabaseResponse<CylinderWaveInfo>> {
   const waveId = trimmed(input?.waveId);
   const reason = trimmed(input?.reason);
+  const phenotyperId = trimmed(input?.phenotyperId);
   if (!waveId)
     return { success: false, error: 'waveId must be a non-empty string' };
   try {
@@ -271,6 +293,8 @@ export async function changeSowingDate(
       where: { id: waveId },
     });
     if (!wave) return { success: false, error: 'That wave no longer exists.' };
+    const who = await phenotyperError(deps.db, phenotyperId);
+    if (who) return { success: false, error: who };
     if (wave.sowing_date === input.sowingDate) {
       return { success: false, error: 'That is already the sowing date.' };
     }
@@ -306,16 +330,15 @@ export async function changeSowingDate(
           old_sowing_date: wave.sowing_date,
           new_sowing_date: input.sowingDate,
           reason: reason || null,
-          changed_by_phenotyper_id: trimmed(input.phenotyperId) || null,
+          changed_by_phenotyper_id: phenotyperId,
         },
       });
       // "Set by" follows the latest change; the change table keeps the history.
-      const phenotyperId = trimmed(input.phenotyperId);
       return tx.cylinderWave.update({
         where: { id: wave.id },
         data: {
           sowing_date: input.sowingDate,
-          ...(phenotyperId ? { set_by_phenotyper_id: phenotyperId } : {}),
+          set_by_phenotyper_id: phenotyperId,
         },
       });
     });

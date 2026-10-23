@@ -179,6 +179,7 @@ describe('createWave', () => {
       experimentId: 'exp',
       waveNumber: 2,
       sowingDate: '2026-02-20',
+      phenotyperId: 'ph-1',
       ...input,
     } as never);
 
@@ -254,12 +255,48 @@ describe('createWave', () => {
   });
 });
 
+describe('a phenotyper is required to set or change a date', () => {
+  it('refuses to create a wave without a phenotyper, or with an unknown one', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    const base = {
+      experimentId: 'exp',
+      waveNumber: 2,
+      sowingDate: '2026-02-20',
+    };
+    expect(
+      await createWave({ db: fake.db, now }, { ...base, phenotyperId: ' ' })
+    ).toEqual({ success: false, error: 'Choose the phenotyper first.' });
+    expect(
+      (
+        await createWave(
+          { db: fake.db, now },
+          { ...base, phenotyperId: 'ph-9' }
+        )
+      ).error
+    ).toBe('That phenotyper no longer exists.');
+    expect(fake.raw.cylinderWave.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses to change a date without a phenotyper, and logs nothing', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    const result = await changeSowingDate(
+      { db: fake.db, now },
+      { waveId: 'w1', sowingDate: '2025-11-27', phenotyperId: '' }
+    );
+    expect(result).toEqual({
+      success: false,
+      error: 'Choose the phenotyper first.',
+    });
+    expect(fake.changes).toHaveLength(0);
+  });
+});
+
 describe('changeSowingDate', () => {
   it('changes the date freely before the wave has scans, and records it', async () => {
     const fake = fakeDb([{ ...wave1 }]);
     const result = await changeSowingDate(
       { db: fake.db, now },
-      { waveId: 'w1', sowingDate: '2025-11-27' }
+      { phenotyperId: 'ph-1', waveId: 'w1', sowingDate: '2025-11-27' }
     );
     expect(result.success).toBe(true);
     expect(result.data?.sowing_date).toBe('2025-11-27');
@@ -269,7 +306,7 @@ describe('changeSowingDate', () => {
         old_sowing_date: '2025-11-26',
         new_sowing_date: '2025-11-27',
         reason: null,
-        changed_by_phenotyper_id: null,
+        changed_by_phenotyper_id: 'ph-1',
       },
     ]);
   });
@@ -295,7 +332,7 @@ describe('changeSowingDate', () => {
     const fake = fakeDb([{ ...wave1 }], { 1: 3 });
     const without = await changeSowingDate(
       { db: fake.db, now },
-      { waveId: 'w1', sowingDate: '2025-11-27' }
+      { phenotyperId: 'ph-1', waveId: 'w1', sowingDate: '2025-11-27' }
     );
     expect(without.error).toMatch(/give a reason/);
     expect(fake.changes).toHaveLength(0);
@@ -325,7 +362,7 @@ describe('changeSowingDate', () => {
     const fake = fakeDb([{ ...wave1 }, wave2]);
     const result = await changeSowingDate(
       { db: fake.db, now },
-      { waveId: 'w2', sowingDate: '2025-11-01' }
+      { phenotyperId: 'ph-1', waveId: 'w2', sowingDate: '2025-11-01' }
     );
     expect(result.error).toMatch(/^Wave 1 was sown/);
   });
@@ -336,18 +373,29 @@ describe('changeSowingDate', () => {
     expect(
       (
         await changeSowingDate(deps, {
+          phenotyperId: 'ph-1',
           waveId: 'nope',
           sowingDate: '2025-11-27',
         })
       ).error
     ).toBe('That wave no longer exists.');
     expect(
-      (await changeSowingDate(deps, { waveId: 'w1', sowingDate: '2025-11-26' }))
-        .error
+      (
+        await changeSowingDate(deps, {
+          phenotyperId: 'ph-1',
+          waveId: 'w1',
+          sowingDate: '2025-11-26',
+        })
+      ).error
     ).toBe('That is already the sowing date.');
     expect(
-      (await changeSowingDate(deps, { waveId: 'w1', sowingDate: '2026-04-01' }))
-        .error
+      (
+        await changeSowingDate(deps, {
+          phenotyperId: 'ph-1',
+          waveId: 'w1',
+          sowingDate: '2026-04-01',
+        })
+      ).error
     ).toMatch(/future/);
   });
 });

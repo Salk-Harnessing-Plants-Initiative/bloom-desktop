@@ -42,9 +42,11 @@ export function WaveSowingDatePanel({
   const check = sowingDate
     ? checkNewWave(waveNumber, sowingDate, waves, new Date())
     : null;
+  const phenotyperChosen = phenotyperId.trim() !== '';
   const canSave =
     !disabled &&
     !saving &&
+    phenotyperChosen &&
     check !== null &&
     !check.error &&
     (!check.noteNeeded || note.trim() !== '') &&
@@ -58,7 +60,7 @@ export function WaveSowingDatePanel({
         sowingDate,
         note: note.trim() || undefined,
         waveConfirmed,
-        phenotyperId: phenotyperId || undefined,
+        phenotyperId,
       });
       if (!result.success)
         setSaveError(result.error ?? 'Could not save the sowing date.');
@@ -115,6 +117,14 @@ export function WaveSowingDatePanel({
             {check.waveConfirmNeeded} Yes, this is wave {waveNumber}.
           </span>
         </label>
+      )}
+      {!phenotyperChosen && (
+        <p
+          className="text-sm text-red-600"
+          data-testid="sowing-date-needs-phenotyper"
+        >
+          Choose the phenotyper first.
+        </p>
       )}
       {saveError && <p className="text-sm text-red-600">{saveError}</p>}
       <button

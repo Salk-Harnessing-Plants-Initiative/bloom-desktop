@@ -49,6 +49,25 @@ describe('WaveSowingDatePanel', () => {
     );
   });
 
+  it('needs a phenotyper before the date can be saved', () => {
+    const onSave = vi.fn();
+    render(
+      <WaveSowingDatePanel
+        waveNumber={2}
+        waves={[wave1]}
+        phenotyperId=""
+        onSave={onSave}
+      />
+    );
+    fireEvent.change(screen.getByTestId('sowing-date-input'), {
+      target: { value: daysAgo(9) },
+    });
+    expect(
+      screen.getByTestId('sowing-date-needs-phenotyper')
+    ).toHaveTextContent('Choose the phenotyper first.');
+    expect(screen.getByTestId('sowing-date-save')).toBeDisabled();
+  });
+
   it('refuses a future date', () => {
     const { setDate, save } = renderPanel();
     setDate(toIsoDate(new Date(Date.now() + 2 * 86_400_000)));

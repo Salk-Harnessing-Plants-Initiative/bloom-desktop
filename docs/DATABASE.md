@@ -462,12 +462,13 @@ window.electron.database.cylinderWaves.list(experimentId: string)
 // Returns: DatabaseResponse<CylinderWaveInfo[]>
 
 // Set a wave's sowing date (the first time the wave is used on Capture Scan)
-window.electron.database.cylinderWaves.create({ experimentId, waveNumber, sowingDate, note?, waveConfirmed?, phenotyperId? })
-// Returns: DatabaseResponse<CylinderWaveInfo>; refused with the reason when a rule isn't met
+window.electron.database.cylinderWaves.create({ experimentId, waveNumber, sowingDate, note?, waveConfirmed?, phenotyperId })
+// Returns: DatabaseResponse<CylinderWaveInfo>; refused with the reason when a rule isn't met.
+// phenotyperId is required (and must exist) for create and changeSowingDate, so the log always says who.
 
 // Change a wave's sowing date from Capture Scan (reason required once the wave has scans);
 // the change is logged and listed with the wave (CylinderWaveInfo.changes)
-window.electron.database.cylinderWaves.changeSowingDate({ waveId, sowingDate, reason?, phenotyperId? })
+window.electron.database.cylinderWaves.changeSowingDate({ waveId, sowingDate, reason?, phenotyperId })
 // Returns: DatabaseResponse<CylinderWaveInfo>
 ```
 

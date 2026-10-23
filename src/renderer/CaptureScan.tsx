@@ -733,6 +733,7 @@ export function CaptureScan() {
                       wave={sowing.wave}
                       waves={sowing.waves}
                       onChangeDate={sowing.changeDate}
+                      phenotyperChosen={metadata.phenotyper !== ''}
                       onOpenChange={setDateBoxOpen}
                       disabled={isScanning}
                     />

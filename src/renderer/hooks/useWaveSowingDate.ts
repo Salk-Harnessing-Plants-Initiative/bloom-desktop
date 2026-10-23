@@ -118,7 +118,7 @@ export function useWaveSowingDate(
           waveId: wave.id,
           sowingDate,
           reason,
-          phenotyperId: phenotyperId || undefined,
+          phenotyperId,
         });
       if (result.success) await load(experimentId);
       return result;

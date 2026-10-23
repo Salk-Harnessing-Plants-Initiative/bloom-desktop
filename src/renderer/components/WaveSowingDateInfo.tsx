@@ -24,6 +24,8 @@ export interface WaveSowingDateInfoProps {
     sowingDate: string,
     reason?: string
   ) => Promise<DatabaseResponse<unknown>>;
+  /** A phenotyper is chosen: needed to save a change, so the log can say who. */
+  phenotyperChosen: boolean;
   /** Told when the Edit box opens or closes, so Start Scan can wait for it. */
   onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
@@ -41,6 +43,7 @@ export function WaveSowingDateInfo({
   wave,
   waves,
   onChangeDate,
+  phenotyperChosen,
   onOpenChange,
   disabled = false,
 }: WaveSowingDateInfoProps) {
@@ -65,6 +68,7 @@ export function WaveSowingDateInfo({
   const canSave =
     !disabled &&
     !saving &&
+    phenotyperChosen &&
     check !== null &&
     !check.error &&
     (!reasonNeeded || reason.trim() !== '');
@@ -96,8 +100,9 @@ export function WaveSowingDateInfo({
     >
       <p>
         Sowing date: {formatSowingDate(wave.sowing_date)}
-        {wave.set_by_name ? ` · set by ${wave.set_by_name}` : ''} on{' '}
-        {formatSetAt(wave.set_at)}
+        {wave.set_by_name
+          ? ` · set by ${wave.set_by_name} on ${formatSetAt(wave.set_at)}`
+          : ` (set on ${formatSetAt(wave.set_at)})`}
         {!editing && (
           <>
             {' '}
@@ -159,6 +164,14 @@ export function WaveSowingDateInfo({
               disabled={saving || disabled}
               className="w-full px-3 py-2 border border-gray-300 rounded-md"
             />
+          )}
+          {!phenotyperChosen && (
+            <p
+              className="text-red-600"
+              data-testid="sowing-date-needs-phenotyper"
+            >
+              Choose the phenotyper first.
+            </p>
           )}
           {saveError && <p className="text-red-600">{saveError}</p>}
           <div className="flex gap-2">
