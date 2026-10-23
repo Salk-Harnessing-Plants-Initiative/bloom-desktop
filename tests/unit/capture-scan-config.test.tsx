@@ -1024,4 +1024,25 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
       )
     ).toBeInTheDocument();
   });
+
+  it('closes and empties an unconfirmed Change age box when the plant changes', async () => {
+    await fillPlant();
+    fireEvent.click(screen.getByTestId('change-age'));
+    fireEvent.change(screen.getByTestId('change-age-input'), {
+      target: { value: '5' },
+    });
+    fireEvent.change(screen.getByTestId('change-age-reason'), {
+      target: { value: 'Experiment was sown later' },
+    });
+
+    const plantIdInput = screen.getByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-002' } });
+    });
+
+    expect(screen.queryByTestId('change-age-box')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('change-age'));
+    expect(screen.getByTestId('change-age-input')).toHaveValue('');
+    expect(screen.getByTestId('change-age-reason')).toHaveValue('');
+  });
 });

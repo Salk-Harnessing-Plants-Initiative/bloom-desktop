@@ -742,6 +742,14 @@ export function CaptureScan() {
                 plantAgeNote={
                   sowing.wave && sowing.calculatedAge !== null ? (
                     <PlantAgeNote
+                      // A new plant, wave, experiment or phenotyper starts with the box
+                      // closed and empty: a half-typed age never carries over.
+                      key={[
+                        metadata.experimentId,
+                        sowing.wave.id,
+                        metadata.plantQrCode,
+                        metadata.phenotyper,
+                      ].join('|')}
                       wave={sowing.wave}
                       calculatedAge={sowing.calculatedAge}
                       change={sowing.change}
