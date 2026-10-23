@@ -37,6 +37,14 @@ import { SowingDateLoadError } from './components/SowingDateLoadError';
 import { WaveSowingDateInfo } from './components/WaveSowingDateInfo';
 import { usePhenotyperName } from './hooks/usePhenotyperName';
 
+// Only one of the two, the sowing date or the plant age, can be changed per scan (#407).
+const ONE_CHANGE_AGE_CHANGED =
+  'The age was changed for this scan. To edit the sowing date instead, click Use calculated age.';
+const FINISH_AGE_CHANGE = 'Finish or cancel the age change first.';
+const ONE_CHANGE_DATE_CHANGED =
+  'The sowing date was changed, so the age was recalculated. The age can be changed on the next scan.';
+const FINISH_DATE_CHANGE = 'Finish or cancel the sowing date change first.';
+
 export function CaptureScan() {
   const navigate = useNavigate();
 
@@ -105,7 +113,7 @@ export function CaptureScan() {
     metadata.phenotyper
   );
   const phenotyperName = usePhenotyperName(metadata.phenotyper);
-  const { ageToUse, needsSowingDate, setChange: setAgeChange } = sowing;
+  const { ageToUse, needsSowingDate, clearForNextScan } = sowing;
   // An open Change age or sowing-date Edit box must be finished or cancelled before
   // scanning, so what the form shows is what the scan saves.
   const [ageBoxOpen, setAgeBoxOpen] = useState(false);
@@ -448,8 +456,8 @@ export function CaptureScan() {
           setTimeout(() => setShowSuccessMessage(false), 5000);
         }
 
-        // A changed age was for this scan only.
-        setAgeChange(null);
+        // A changed age or sowing date was for this scan only.
+        clearForNextScan();
         // The wave now has a scan: a sowing-date change now needs a reason.
         void reloadWavesRef.current();
 
@@ -739,6 +747,13 @@ export function CaptureScan() {
                       onChangeDate={sowing.changeDate}
                       phenotyperChosen={metadata.phenotyper !== ''}
                       onOpenChange={setDateBoxOpen}
+                      lockedMessage={
+                        sowing.change
+                          ? ONE_CHANGE_AGE_CHANGED
+                          : ageBoxOpen
+                            ? FINISH_AGE_CHANGE
+                            : null
+                      }
                       disabled={isScanning}
                     />
                   ) : undefined
@@ -761,6 +776,13 @@ export function CaptureScan() {
                       onChange={sowing.setChange}
                       phenotyperName={phenotyperName ?? undefined}
                       onOpenChange={setAgeBoxOpen}
+                      lockedMessage={
+                        sowing.dateChanged
+                          ? ONE_CHANGE_DATE_CHANGED
+                          : dateBoxOpen
+                            ? FINISH_DATE_CHANGE
+                            : null
+                      }
                       disabled={isScanning}
                     />
                   ) : undefined
