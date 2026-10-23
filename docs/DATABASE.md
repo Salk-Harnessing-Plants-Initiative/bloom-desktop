@@ -159,7 +159,7 @@ model Scan {
   gamma           Float
   seconds_per_rot Float
   wave_number     Int
-  plant_age_days  Int        // The age used: calculated from the wave's sowing date, or changed with a reason
+  plant_age_days  Int        // The age used: calculated from the wave's start date, or changed with a reason
   calculated_plant_age_days Int?    // Calculated from CylinderWave.sowing_date (null for older scans)
   plant_age_change_reason   String? // The operator's reason when plant_age_days differs from it
   deleted         Boolean    @default(false)
