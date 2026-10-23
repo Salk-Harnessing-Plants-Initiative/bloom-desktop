@@ -6,7 +6,7 @@ How a Windows CylinderScan station is set up to receive releases from **Actions 
 
 1. **Plan** (GitHub-hosted runner): the station is in `deploy/stations.yaml`, active, and a Windows CylinderScan station; the release `vX.Y.Z` is published (not a draft) and has its installer, `manifest.json` and `SHA256SUMS`.
 2. **Approval:** the run waits until a required reviewer of the station's environment approves it.
-3. **Deploy** (the station's runner), `deploy/windows/deploy-station.ps1`. Steps marked _nothing changed_ stop the deploy without touching the station:
+3. **Deploy** (the station's runner), `deploy/windows/deploy-station.ps1`. Each stage is a collapsible, timed section of the step's log on GitHub, waits longer than a minute print a "still waiting" line, and the job summary has a row per stage with its result and time. Steps marked _nothing changed_ stop the deploy without touching the station:
    - downloads the release's Windows files into `C:\BloomDeploy\releases\vX.Y.Z\` and checks each against `SHA256SUMS` (_nothing changed_ if one doesn't match);
    - stops if Bloom Desktop is running (_nothing changed_);
    - pings the camera at the IP in `.env`. Cameras are usually off between sessions, so this is only reported, unless the run's **require camera** box is ticked (_nothing changed_ if it doesn't answer);
@@ -15,11 +15,11 @@ How a Windows CylinderScan station is set up to receive releases from **Actions 
    - downloads the currently installed version too, so it can be reinstalled, if it isn't in `C:\BloomDeploy\releases\` yet (after a manual install) or its staged files no longer match `SHA256SUMS` (_nothing changed_ if it can't);
    - reads the database, to compare row counts after the upgrade (_nothing changed_ if it can't);
    - backs up `%USERPROFILE%\.bloom\data\bloom.db` and `%USERPROFILE%\.bloom\.env` into `C:\BloomDeploy\backups\<time>_v<old>\` and checks the copies;
-   - installs with `Setup.exe --silent`, without starting the app;
+   - installs with `Setup.exe --silent`, without starting the app, and checks the new version is the one installed. The installer's own log lines (Squirrel's) are copied into the deploy log. An installer still running after 10 minutes is stopped, since a failed one waits on an error dialog nobody can see;
    - **upgrades the database** with the release's migrations (`prisma migrate deploy`), and checks that no table lost rows. The app doesn't upgrade its own database;
-   - checks the new version is the one installed;
    - **test upload:** runs the installed app's `--deploy-self-test` on a copy of the database. It uploads a 3-frame synthetic scan to Bloom (see [Test data in Bloom](#test-data-in-bloom)) with the app's own upload code, without the camera and without changing the station's database;
-   - if the install, the database upgrade, a check or the test upload fails: keeps the database it left behind in `C:\BloomDeploy\failed\<time>_v<new>\`, restores `bloom.db` and `.env` from the backup and checks them, then reinstalls the previous version and checks it is installed;
+   - **looks the test upload up in Bloom** (plant, experiment, scans and images) and reports it as **Found in Bloom**. This is reported only and never fails the deploy;
+   - if the install, the database upgrade, a check or the test upload fails: keeps the database it left behind in `C:\BloomDeploy\failed\<time>_v<new>\`, restores `bloom.db` and `.env` from the backup and checks them, then reinstalls the previous version by running its `Setup.exe` (which replaces the newer one; nothing is uninstalled first) and checks it is installed. If that install fails, it deletes `%LOCALAPPDATA%\bloom_desktop` (the app only; the data is in `%USERPROFILE%\.bloom`) and tries once more;
    - keeps the newest 5 backups and 5 failed copies, and writes a log to `C:\BloomDeploy\logs\`; this run's log is attached to the run. The log and the job summary are public, so the station's user paths, account, camera address and Bloom details are replaced in them.
 4. **After a deploy,** when the camera is on, the operator checks the preview and a scan.
 
@@ -140,6 +140,6 @@ Signed in as the station's lab account, use the backup folder named in the job s
 2. Copy the whole `%USERPROFILE%\.bloom\data\` folder to `C:\BloomDeploy\manual\<date>\` (not `backups\` or `failed\`, which deploys prune). After `needs-attention` nothing else has kept it: if anyone scanned after the deploy started, tell the maintainers before going on.
 3. Delete any `bloom.db-journal`, `bloom.db-wal` and `bloom.db-shm` next to the database in `%USERPROFILE%\.bloom\data\`.
 4. Copy `bloom.db` (and any other `bloom.db-*` files in the backup) to `%USERPROFILE%\.bloom\data\`, and `.env` to `%USERPROFILE%\.bloom\`.
-5. Uninstall Bloom Desktop (Settings → Apps), then run `Setup.exe` from `C:\BloomDeploy\releases\v<version>\`, where `<version>` is the one in the backup folder's name (`<time>_v<version>`). The installer won't replace a newer version, and the newer app doesn't work with the older database. If the backup folder ends in `_none` (the first deploy to this station), skip this and tell the maintainers.
+5. Run `Setup.exe` from `C:\BloomDeploy\releases\v<version>\`, where `<version>` is the one in the backup folder's name (`<time>_v<version>`); it replaces whatever version is installed. The newer app doesn't work with the older database, so don't skip this. If the installer fails, end any `Setup.exe` and `Update.exe` in Task Manager, delete `%LOCALAPPDATA%\bloom_desktop` and run it again; its log is `%LOCALAPPDATA%\SquirrelTemp\Squirrel-Install.log`. If the backup folder ends in `_none` (the first deploy to this station), skip this and tell the maintainers.
 
 The database a failed deploy left behind is kept in `C:\BloomDeploy\failed\<time>_v<version>\`, for working out what went wrong; it isn't used again.

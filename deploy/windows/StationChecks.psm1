@@ -1,7 +1,7 @@
 # StationChecks.psm1: what BloomDeploy.psm1 and StationData.psm1 share on a Windows
 # CylinderScan station: the deploy log (with station details redacted), version helpers,
 # reading .env, the checks before anything changes (settings, camera, Bloom access), the
-# database row counts and upgrade, and the installed app's upload self-test.
+# database row counts and upgrade. The upload self-test is in SelfTest.psm1.
 #
 # Secrets from .env (Bloom password, anon key) are only sent to the station's own Bloom
 # URL. The log and the job summary are public, so Protect-DeployText replaces the station's
@@ -13,15 +13,6 @@ Set-StrictMode -Version Latest
 
 $script:CameraPingCount = 2
 $script:BloomRequestTimeoutSeconds = 30
-# The app's own time limit is 180 s; this is the backstop if the process hangs.
-$script:SelfTestTimeoutSeconds = 240
-# Electron's helper processes can outlive the main one by a moment after the self-test.
-$script:SelfTestExitWaitSeconds = 15
-$script:SelfTestPollMilliseconds = 500
-# The first release whose app has --deploy-self-test.
-$script:SelfTestMinVersion = [version]'0.2.1'
-# 0x80000003 (STATUS_BREAKPOINT) as a signed or unsigned exit code: Chromium couldn't start.
-$script:ChromiumStartupCrashCodes = @(-2147483645, 2147483651)
 # Below this, the scans drive's health line warns; it never stops a deploy.
 $script:MinScansDiskGB = 20
 # Room for two releases' installers (about 0.7 GB each) and a backup of bloom.db.
@@ -32,6 +23,9 @@ $script:MockVariables = @('BLOOM_USE_MOCK_HARDWARE', 'BLOOM_USE_MOCK_CAMERA', 'B
 $script:LogFileVariable = 'BLOOM_DEPLOY_LOG_FILE'
 # Values shorter than this are left alone, so redaction can't mangle ordinary words.
 $script:MinRedactedLength = 3
+# Settings that aren't station details (the app's mock camera, a local address) are left
+# alone, so a message like "CAMERA_IP_ADDRESS is mock" stays readable.
+$script:NotRedacted = @('mock', 'localhost', '127.0.0.1')
 # Set by Set-DeployRedactions from .env; the paths and account are read when used. Module
 # state: every caller must share this one instance, so StationData.psm1 and
 # deploy-station.ps1 import this module without -Force (BloomDeploy.psm1 loads it first).
@@ -47,7 +41,8 @@ function Set-DeployRedactions {
     param([Parameter(Mandatory)][hashtable]$Settings)
     $script:StationRedactions = @{}
     foreach ($key in 'CAMERA_IP_ADDRESS', 'BLOOM_SCANNER_USERNAME', 'BLOOM_SCANNER_PASSWORD', 'BLOOM_ANON_KEY') {
-        if ($Settings[$key]) { $script:StationRedactions[$Settings[$key]] = "<$key>" }
+        $value = $Settings[$key]
+        if ($value -and $script:NotRedacted -notcontains $value.Trim()) { $script:StationRedactions[$value] = "<$key>" }
     }
     $apiUrl = $null
     if ($Settings['BLOOM_API_URL'] -and [uri]::TryCreate($Settings['BLOOM_API_URL'], 'Absolute', [ref]$apiUrl)) {
@@ -318,82 +313,6 @@ function Update-StationDatabase {
     }
 }
 
-function Wait-SelfTestProcessesExit {
-    <#
-      Wait for the self-test's helper processes (same exe as the app) to exit, then stop any
-      left, so the deploy never takes them for an operator opening Bloom Desktop.
-    #>
-    param(
-        [Parameter(Mandatory)][int]$ParentId,
-        [int]$TimeoutSeconds = $script:SelfTestExitWaitSeconds
-    )
-    $filter = "ParentProcessId = $ParentId AND Name = 'Bloom Desktop.exe'"
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while ($true) {
-        $left = @(Get-CimInstance -ClassName Win32_Process -Filter $filter -ErrorAction SilentlyContinue)
-        if ($left.Count -eq 0) { return }
-        if ((Get-Date) -ge $deadline) { break }
-        Start-Sleep -Milliseconds $script:SelfTestPollMilliseconds
-    }
-    Write-DeployLog "Stopping $($left.Count) self-test process(es) that did not exit."
-    foreach ($child in $left) { Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue }
-    Wait-Process -Id ($left | ForEach-Object { $_.ProcessId }) -Timeout $TimeoutSeconds -ErrorAction SilentlyContinue
-}
-
-function Invoke-DeploySelfTest {
-    <#
-      Run the installed app's --deploy-self-test on a copy of bloom.db: it uploads a
-      3-frame synthetic scan to Bloom (experiment DEPLOY-TEST <scanner>). Returns
-      Status (passed | failed | not-supported), Detail and Problems.
-    #>
-    param(
-        [Parameter(Mandatory)][string]$Version,
-        [Parameter(Mandatory)][string]$LocalAppData,
-        [Parameter(Mandatory)][string]$ProfileDir,
-        [Parameter(Mandatory)][string]$Species,
-        [Parameter(Mandatory)][string]$WorkDir
-    )
-    if ((Get-ReleaseBaseVersion -Version $Version) -lt $script:SelfTestMinVersion) {
-        return [pscustomobject]@{ Status = 'not-supported'; Detail = "v$Version has no self-test (added in $($script:SelfTestMinVersion))"; Problems = @() }
-    }
-    # The versioned exe, not the Squirrel launcher in the folder above, which exits at once.
-    $exe = Join-Path $LocalAppData "bloom_desktop\app-$(ConvertTo-SquirrelVersion -Version $Version)\Bloom Desktop.exe"
-    New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
-    $copy = Join-Path $WorkDir 'self-test-copy.db'
-    $resultFile = Join-Path $WorkDir 'self-test-result.json'
-    Remove-Item -LiteralPath $copy, $resultFile -Force -ErrorAction SilentlyContinue
-    Copy-Item -LiteralPath (Join-Path $ProfileDir '.bloom\data\bloom.db') -Destination $copy
-
-    try {
-        $arguments = @('--deploy-self-test', "--database=`"$copy`"", "--species=`"$Species`"", "--result-file=`"$resultFile`"")
-        $process = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru
-        $null = $process.Handle
-        if (-not $process.WaitForExit($script:SelfTestTimeoutSeconds * 1000)) {
-            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-            $process.WaitForExit($script:SelfTestExitWaitSeconds * 1000) | Out-Null
-            Wait-SelfTestProcessesExit -ParentId $process.Id
-            return [pscustomobject]@{ Status = 'failed'; Detail = 'timed out'; Problems = @("Self-test did not finish within $($script:SelfTestTimeoutSeconds) seconds.") }
-        }
-        Wait-SelfTestProcessesExit -ParentId $process.Id
-        if (-not (Test-Path -LiteralPath $resultFile)) {
-            $problem = "Self-test wrote no result (exit code $($process.ExitCode))."
-            if ($process.ExitCode -in $script:ChromiumStartupCrashCodes) {
-                $problem += " The app couldn't start in the runner's session; see 'If the test upload reports that it wrote no result' in docs/STATION_SETUP.md."
-            }
-            return [pscustomobject]@{ Status = 'failed'; Detail = "exit code $($process.ExitCode)"; Problems = @($problem) }
-        }
-        $result = Get-Content -Raw -LiteralPath $resultFile | ConvertFrom-Json
-        if ($result.ok) {
-            return [pscustomobject]@{ Status = 'passed'; Detail = "uploaded $($result.uploaded) frames as plant $($result.plantId)"; Problems = @() }
-        }
-        $errors = @($result.errors) -join '; '
-        [pscustomobject]@{ Status = 'failed'; Detail = "plant $($result.plantId)"; Problems = @("Self-test upload failed: $errors") }
-    }
-    finally {
-        Remove-Item -LiteralPath $copy -Force -ErrorAction SilentlyContinue
-    }
-}
-
-Export-ModuleMember -Function Set-DeployLogFile, Set-DeployRedactions, Protect-DeployText, Write-DeployLog, Wait-SelfTestProcessesExit, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
+Export-ModuleMember -Function Set-DeployLogFile, Set-DeployRedactions, Protect-DeployText, Write-DeployLog, ConvertTo-SquirrelVersion, ConvertFrom-SquirrelVersion,
     Get-ReleaseBaseVersion, Sort-ReleaseVersions, Read-StationEnv, Get-UserEnvironmentVariable, Get-FreeDiskGB, Get-ScansDriveHealth, Test-StationReady, Test-CameraReachable, Test-BloomAccess, Get-DatabaseRowCounts,
-    Compare-RowCounts, Update-StationDatabase, Invoke-DeploySelfTest
+    Compare-RowCounts, Update-StationDatabase
