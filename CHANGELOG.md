@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Station deploys show their progress: each stage (download, station checks, backup, install, database upgrade, test upload, Bloom check, rollback) is a timed, collapsible section of the run's log, long waits log a "still waiting" line every minute, and the job summary has a row per stage with its result and time. The installer's own log is copied into the deploy log, and the test upload is looked up in Bloom afterwards (plant, experiment, scans and images) and reported as **Found in Bloom**.
+
 ### Fixed
 
 - Capture Scan: choosing a different experiment now clears the wave number and plant age, so the previous experiment's values can't be scanned under the new one without being noticed ([#407](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/407)). Coming back to Capture Scan keeps them.
+- Station deploys: a rollback no longer uninstalls first. It runs the previous version's `Setup.exe`, which replaces the newer one; on PC1 the uninstall was still deleting files when the reinstall started, and the reinstall's error dialog then hung the deploy, unseen, until its 10-minute limit. Installers left running are now stopped, and a failed reinstall deletes the app folder (not the data) and tries once more.
+- Station deploys: a placeholder setting such as `CAMERA_IP_ADDRESS=mock` is shown as is in the log instead of being redacted, so "not ready" messages say what's wrong.
 - Station deploys: free disk space on the scans drive is now a health line in the job summary and no longer stops a deploy (PC1's first deploy stopped with `error` because the check couldn't read the scans folder). Free disk space on the deploy drive is still required, measured from the drive itself, and a drive it can't measure is reported as `station-not-ready`.
 
 ## [0.2.1] - 2026-10-22
