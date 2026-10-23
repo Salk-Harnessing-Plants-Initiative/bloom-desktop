@@ -191,7 +191,7 @@ model Image {
 
 #### CylinderWave and CylinderWaveSowingDateChange
 
-Each CylinderScan wave's sowing date, a local calendar date stored as `"YYYY-MM-DD"`. Capture Scan calculates the plant age from it: the calendar days from the sowing date to the scan date. The rules:
+Each CylinderScan wave's start date, a local calendar date stored as `"YYYY-MM-DD"` in `sowing_date`. It is the day the plant age counts from, as day 0: the sowing date, the transfer date, or whichever day the experiment counts from (Capture Scan calls it the "start date"). Capture Scan calculates the plant age from it: the calendar days from that date to the scan date. The rules:
 
 - a future date is refused;
 - a date on or before an earlier wave's needs a `note`;

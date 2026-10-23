@@ -271,7 +271,7 @@ export async function createWave(
     if (existing.some((w) => w.wave_number === input.waveNumber)) {
       return {
         success: false,
-        error: `Wave ${input.waveNumber} already has a sowing date.`,
+        error: `Wave ${input.waveNumber} already has a start date.`,
       };
     }
     const check = checkNewWave(

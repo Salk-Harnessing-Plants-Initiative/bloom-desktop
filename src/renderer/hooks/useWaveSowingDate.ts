@@ -136,7 +136,7 @@ export function useWaveSowingDate(
   const changeDate = useCallback<UseWaveSowingDateResult['changeDate']>(
     async (sowingDate, reason) => {
       if (!wave)
-        return { success: false, error: 'This wave has no sowing date yet.' };
+        return { success: false, error: 'This wave has no start date yet.' };
       const result =
         await window.electron.database.cylinderWaves.changeSowingDate({
           waveId: wave.id,

@@ -74,11 +74,18 @@ describe('WaveSowingDatePanel', () => {
     expect(screen.getByTestId('sowing-date-save')).toBeDisabled();
   });
 
+  it('says what the start date is', () => {
+    renderPanel();
+    expect(screen.getByTestId('start-date-hint')).toHaveTextContent(
+      'The day the plant age counts from, as day 0: for example the sowing date or the transfer date.'
+    );
+  });
+
   it('refuses a future date', () => {
     const { setDate, save } = renderPanel();
     setDate(daysAgo(-2));
     expect(
-      screen.getByText("The sowing date can't be in the future.")
+      screen.getByText("The start date can't be in the future.")
     ).toBeInTheDocument();
     expect(save()).toBeDisabled();
   });
@@ -87,7 +94,7 @@ describe('WaveSowingDatePanel', () => {
     const { onSave, setDate, save } = renderPanel();
     setDate(daysAgo(90));
     expect(
-      screen.getByText(/^Wave 1 was sown on .+ Add a note saying why\.$/)
+      screen.getByText(/^Wave 1's start date is .+ Add a note saying why\.$/)
     ).toBeInTheDocument();
     expect(save()).toBeDisabled();
     fireEvent.change(screen.getByTestId('sowing-date-note'), {
@@ -140,7 +147,7 @@ describe('PlantAgeNote', () => {
       />
     );
     expect(screen.getByTestId('plant-age-note')).toHaveTextContent(
-      /Calculated from wave 1's sowing date/
+      /Calculated from wave 1's start date/
     );
   });
 
@@ -151,12 +158,12 @@ describe('PlantAgeNote', () => {
         calculatedAge={9}
         change={null}
         onChange={vi.fn()}
-        lockedMessage="The sowing date was changed."
+        lockedMessage="The start date was changed."
       />
     );
     expect(screen.queryByTestId('change-age')).not.toBeInTheDocument();
     expect(screen.getByTestId('change-age-locked')).toHaveTextContent(
-      'The sowing date was changed.'
+      'The start date was changed.'
     );
   });
 

@@ -36,7 +36,7 @@ describe('WaveSowingDateInfo', () => {
   it('shows the sowing date, who set it and when', () => {
     renderInfo();
     expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
-      /^Sowing date: .+ · set by Demo Phenotyper on .+Edit$/
+      /^Start date: .+ · set by Demo Phenotyper on .+Edit$/
     );
   });
 
@@ -55,7 +55,7 @@ describe('WaveSowingDateInfo', () => {
     ).toHaveTextContent(
       '3 scans in wave 2 are already saved. They keep the ages they were saved with: only new scans use the new date.'
     );
-    fireEvent.change(screen.getByLabelText('Sowing date'), {
+    fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2026-02-19' },
     });
     const save = screen.getByTestId('sowing-date-edit-save');
@@ -86,7 +86,7 @@ describe('WaveSowingDateInfo', () => {
     fireEvent.click(screen.getByTestId('sowing-date-edit'));
     const save = screen.getByTestId('sowing-date-edit-save');
     expect(save).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Sowing date'), {
+    fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2026-02-19' },
     });
     fireEvent.click(save);
@@ -103,7 +103,7 @@ describe('WaveSowingDateInfo', () => {
   it('needs a note when the edited date is on or before an earlier wave', async () => {
     const onChangeDate = renderInfo();
     fireEvent.click(screen.getByTestId('sowing-date-edit'));
-    fireEvent.change(screen.getByLabelText('Sowing date'), {
+    fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2025-11-26' },
     });
     const save = screen.getByTestId('sowing-date-edit-save');
@@ -130,7 +130,7 @@ describe('WaveSowingDateInfo', () => {
       />
     );
     fireEvent.click(screen.getByTestId('sowing-date-edit'));
-    fireEvent.change(screen.getByLabelText('Sowing date'), {
+    fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2026-02-19' },
     });
     fireEvent.click(screen.getByTestId('sowing-date-edit-save'));
@@ -148,7 +148,7 @@ describe('WaveSowingDateInfo', () => {
       />
     );
     fireEvent.click(screen.getByTestId('sowing-date-edit'));
-    fireEvent.change(screen.getByLabelText('Sowing date'), {
+    fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2026-02-19' },
     });
     fireEvent.click(screen.getByTestId('sowing-date-edit-save'));
@@ -193,7 +193,7 @@ describe('WaveSowingDateInfo', () => {
         disabled
       />
     );
-    expect(screen.getByLabelText('Sowing date')).toBeDisabled();
+    expect(screen.getByLabelText('Start date')).toBeDisabled();
     expect(screen.getByLabelText('Reason')).toBeDisabled();
     expect(screen.getByTestId('sowing-date-edit-save')).toBeDisabled();
     expect(screen.getByText('Cancel')).toBeDisabled();
@@ -226,7 +226,7 @@ describe('WaveSowingDateInfo', () => {
       />
     );
     fireEvent.click(screen.getByTestId('sowing-date-edit'));
-    fireEvent.change(screen.getByLabelText('Sowing date'), {
+    fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2026-02-19' },
     });
     expect(
@@ -245,7 +245,7 @@ describe('WaveSowingDateInfo', () => {
       />
     );
     expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
-      /^Sowing date: .+ \(set on .+\) Edit$/
+      /^Start date: .+ \(set on .+\) Edit$/
     );
   });
 });

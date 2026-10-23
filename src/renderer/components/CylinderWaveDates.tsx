@@ -67,7 +67,8 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
       <ul>
         {waves.map((wave) => (
           <li key={wave.id}>
-            Wave {wave.wave_number}: sown {formatSowingDate(wave.sowing_date)}
+            Wave {wave.wave_number}: start date{' '}
+            {formatSowingDate(wave.sowing_date)}
             {wave.scanCount > 0 &&
               ` (${wave.scanCount} ${wave.scanCount === 1 ? 'scan' : 'scans'})`}
             {wave.changes.length > 0 && (
