@@ -2,28 +2,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useEffect, useState } from 'react';
-
-/**
- * Hardcoded species list (from pilot fix/addnewspecies branch, deduplicated and sorted)
- * TODO: In the future, this should sync from bloom server
- */
-export const SPECIES_LIST = [
-  'Alfalfa',
-  'Amaranth',
-  'Arabidopsis',
-  'Canola',
-  'Lotus',
-  'Maize',
-  'Medicago',
-  'Pennycress',
-  'Rice',
-  'Sorghum',
-  'Soybean',
-  'Spinach',
-  'Sugar_Beet',
-  'Tomato',
-  'Wheat',
-] as const;
+import { useSpeciesList } from '../hooks/useSpeciesList';
+import { SpeciesSelect } from './SpeciesSelect';
 
 const experimentSchema = z.object({
   name: z
@@ -85,19 +65,33 @@ export function ExperimentForm({
     };
   }, [isGraviscan]);
 
+  // Species come from Bloom, so an experiment's species is one Bloom has.
+  const speciesList = useSpeciesList();
+
   const {
     register,
     handleSubmit,
     formState: { errors },
     reset,
+    setValue,
+    watch,
   } = useForm<ExperimentFormData>({
     resolver: zodResolver(experimentSchema),
     defaultValues: {
-      species: SPECIES_LIST[0],
+      species: '',
       scientist_id: '',
       accession_id: '',
     },
   });
+
+  // Choose the first species once the list is in, or if the chosen one left the list.
+  const chosenSpecies = watch('species');
+  const firstSpecies = speciesList.species[0] ?? '';
+  useEffect(() => {
+    if (firstSpecies && !speciesList.species.includes(chosenSpecies)) {
+      setValue('species', firstSpecies);
+    }
+  }, [chosenSpecies, firstSpecies, speciesList.species, setValue]);
 
   const onSubmit = async (data: ExperimentFormData) => {
     setIsSubmitting(true);
@@ -140,7 +134,7 @@ export function ExperimentForm({
       // Success - reset form and notify parent
       reset({
         name: '',
-        species: SPECIES_LIST[0],
+        species: firstSpecies,
         scientist_id: '',
         accession_id: '',
       });
@@ -185,29 +179,14 @@ export function ExperimentForm({
         )}
       </div>
 
-      <div className="mb-4">
-        <label
-          htmlFor="species-select"
-          className="block text-xs font-bold mb-1"
-        >
-          Species
-        </label>
-        <select
-          id="species-select"
-          {...register('species')}
-          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-[200px] border border-gray-300"
-          disabled={isSubmitting}
-        >
-          {SPECIES_LIST.map((species) => (
-            <option key={species} value={species}>
-              {species}
-            </option>
-          ))}
-        </select>
-        {errors.species && (
-          <p className="mt-1 text-xs text-red-600">{errors.species.message}</p>
-        )}
-      </div>
+      <SpeciesSelect
+        registration={register('species')}
+        value={chosenSpecies}
+        onChoose={(species) => setValue('species', species)}
+        list={speciesList}
+        disabled={isSubmitting}
+        error={errors.species?.message}
+      />
 
       <div className="mb-4">
         <label

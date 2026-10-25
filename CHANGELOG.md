@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The Experiments page's species list comes from Bloom, so a new experiment's species is always one Bloom has (its uploads need that). The app fetches the list when it starts, using the scanner's Bloom account, and saves a copy next to the database for when Bloom can't be reached; before the first fetch it uses the built-in list. The list's last option, **Need a new species? Add it in Bloom…**, opens Bloom's Species page in the browser, and **Refresh list** fetches the list again afterwards.
+
 ### Changed
 
 - Station deploys show their progress: each stage (download, station checks, backup, install, database upgrade, test upload, Bloom check, rollback) is a timed, collapsible section of the run's log, long waits log a "still waiting" line every minute, and the job summary has a row per stage with its result and time. The installer's own log is copied into the deploy log, and the test upload is looked up in Bloom afterwards (plant, experiment, scans and images) and reported as **Found in Bloom**.

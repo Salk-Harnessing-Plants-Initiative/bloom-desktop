@@ -95,5 +95,15 @@ if ((global as any).window) {
       getMode: vi.fn().mockResolvedValue({ mode: 'cylinderscan' }),
       browseDirectory: vi.fn().mockResolvedValue(null),
     },
+    // The species list from Bloom; by default, a saved copy of the built-in list.
+    species: {
+      list: vi.fn().mockResolvedValue({
+        species: ['Alfalfa', 'Arabidopsis', 'Rice', 'Sorghum'],
+        source: 'saved',
+        updatedAt: '2026-10-24T09:00:00.000Z',
+      }),
+      refresh: vi.fn(),
+      openAddPage: vi.fn().mockResolvedValue({ success: true }),
+    },
   };
 }

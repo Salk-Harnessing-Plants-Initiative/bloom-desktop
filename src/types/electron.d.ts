@@ -17,6 +17,7 @@ import {
   DAQStatusResponse,
 } from './daq';
 import { ScannerAPI } from './scanner';
+import type { SpeciesAPI } from './species';
 import {
   DatabaseResponse,
   ExperimentWithRelations,
@@ -866,6 +867,8 @@ export interface ElectronAPI {
   config: ConfigAPI;
   session: SessionAPI;
   gravi: GraviAPI;
+  /** The species list for new experiments, from Bloom. */
+  species: SpeciesAPI;
   /**
    * Resolves once main.ts's startup sequence (database + GraviScan
    * handler registration) has reached a definitive outcome. E2E tests

@@ -18,6 +18,7 @@ import {
 /* eslint-enable import/no-unresolved */
 // eslint-disable-next-line import/no-unresolved
 import type { MachineConfig } from './config-store';
+import type { SpeciesAPI } from '../types/species';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
@@ -575,6 +576,12 @@ const waitUntilReady = () =>
     error?: string;
   }>;
 
+const speciesAPI: SpeciesAPI = {
+  list: () => ipcRenderer.invoke('species:list'),
+  refresh: () => ipcRenderer.invoke('species:refresh'),
+  openAddPage: () => ipcRenderer.invoke('species:openAddPage'),
+};
+
 /**
  * Expose electron API to renderer process
  */
@@ -587,5 +594,6 @@ contextBridge.exposeInMainWorld('electron', {
   config: configAPI,
   session: sessionAPI,
   gravi: graviAPI,
+  species: speciesAPI,
   waitUntilReady,
 });

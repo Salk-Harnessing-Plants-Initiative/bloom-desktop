@@ -13,7 +13,7 @@ if (process.platform === 'linux') {
 }
 
 import { isDeployFirstRun } from './deploy-first-run';
-import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol, shell } from 'electron';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -46,8 +46,11 @@ import {
   initializeDatabaseAsync,
   closeDatabase,
   getDatabase,
+  getDatabasePath,
 } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
+import { createSpeciesStore, SAVED_SPECIES_FILE } from './species-list';
+import { fetchBloomSpecies, registerSpeciesHandlers } from './species-handlers';
 import {
   loadEnvConfig,
   saveEnvConfig,
@@ -1239,6 +1242,21 @@ app.on('ready', async () => {
       getMainWindow: () => mainWindow,
     });
     console.log('[Main] Database initialized and handlers registered');
+
+    // The species list for new experiments comes from Bloom: fetched now, in the
+    // background, and saved next to the database for when Bloom can't be reached.
+    // E2E runs use the built-in list and never call Bloom.
+    const speciesStore = createSpeciesStore({
+      file: path.join(path.dirname(getDatabasePath()), SAVED_SPECIES_FILE),
+      fetchFromBloom: () => fetchBloomSpecies(loadEnvConfig(ENV_PATH)),
+    });
+    registerSpeciesHandlers({
+      ipcMain,
+      store: speciesStore,
+      bloomApiUrl: () => loadEnvConfig(ENV_PATH).bloom_api_url,
+      openExternal: (url) => shell.openExternal(url),
+    });
+    if (process.env.E2E_TEST !== 'true') void speciesStore.refresh();
 
     // Initialize GraviScan handlers if mode is graviscan
     try {

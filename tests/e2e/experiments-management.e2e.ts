@@ -354,10 +354,13 @@ test.describe('Experiments Management', () => {
     // Navigate to Experiments page
     await window.click('text=Experiments');
 
-    // Get all options from species dropdown
-    const options = await window
+    // Get all options from species dropdown. E2E runs never call Bloom, so this is
+    // the built-in list, followed by the option to add a species in Bloom.
+    const all = await window
       .locator('select#species-select option')
       .allTextContents();
+    expect(all.at(-1)).toBe('Need a new species? Add it in Bloom…');
+    const options = all.slice(0, -1);
 
     // Verify all 15 species are present and sorted
     expect(options).toEqual(SPECIES_LIST);
