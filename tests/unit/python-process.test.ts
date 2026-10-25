@@ -407,4 +407,112 @@ describe('handleStdout', () => {
     // Stop the process — should not throw even with partial data buffered
     expect(() => pyProc.stop()).not.toThrow();
   });
+
+  describe('unrecognized-line warning (#318)', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it('logs a warning for a truly unrecognized line', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
+      mockProc.stdout.emit('data', Buffer.from('garbled-nonsense-line\n'));
+
+      expect(rawSpy).toHaveBeenCalledWith('garbled-nonsense-line');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy.mock.calls[0][0]).toContain('garbled-nonsense-line');
+    });
+
+    it('does not warn for a WARNING: line', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
+      mockProc.stdout.emit(
+        'data',
+        Buffer.from('WARNING:Error closing DAQ task: boom\n')
+      );
+
+      expect(rawSpy).toHaveBeenCalledWith(
+        'WARNING:Error closing DAQ task: boom'
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not warn for an INFO: line', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
+      mockProc.stdout.emit(
+        'data',
+        Buffer.from('INFO:Camera enumeration not available: no pypylon\n')
+      );
+
+      expect(rawSpy).toHaveBeenCalledWith(
+        'INFO:Camera enumeration not available: no pypylon'
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not warn for the known benign "Generating synthetic test patterns instead" line', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
+      mockProc.stdout.emit(
+        'data',
+        Buffer.from('Generating synthetic test patterns instead\n')
+      );
+
+      expect(rawSpy).toHaveBeenCalledWith(
+        'Generating synthetic test patterns instead'
+      );
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('warns for a lowercase "warning:" line (case-sensitive allowlist)', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
+      mockProc.stdout.emit('data', Buffer.from('warning:lowercase\n'));
+
+      expect(rawSpy).toHaveBeenCalledWith('warning:lowercase');
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('warns for a "WARNINGLY:" line (false-prefix trap)', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
+      mockProc.stdout.emit(
+        'data',
+        Buffer.from('WARNINGLY:not actually the WARNING: prefix\n')
+      );
+
+      expect(rawSpy).toHaveBeenCalledWith(
+        'WARNINGLY:not actually the WARNING: prefix'
+      );
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('an empty line does not warn (handleStdout already filters it before parseLine)', () => {
+      const rawSpy = vi.fn();
+      pyProc.on('raw', rawSpy);
+
+      expect(() =>
+        mockProc.stdout.emit('data', Buffer.from('\n'))
+      ).not.toThrow();
+
+      // handleStdout() trims each line and only calls parseLine() when
+      // truthy — a bare newline never reaches parseLine at all, so neither
+      // 'raw' nor the warning fires for it.
+      expect(rawSpy).not.toHaveBeenCalled();
+      expect(warnSpy).not.toHaveBeenCalled();
+    });
+  });
 });
