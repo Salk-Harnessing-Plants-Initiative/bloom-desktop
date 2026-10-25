@@ -19,7 +19,11 @@
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ScannerSubprocess, ScanWorkerEvent } from './scanner-subprocess';
+import {
+  ScannerSubprocess,
+  ScanWorkerEvent,
+  isValidSaneName,
+} from './scanner-subprocess';
 import { scanLog } from './scan-logger';
 import type { PlateConfig, ScannerConfig } from '../../types/graviscan';
 import type { ScanCoordinatorLike } from './session-handlers';
@@ -187,6 +191,45 @@ export class ScanCoordinator
   // reuse, respawn, or shut down — this is what prevents a second caller
   // from misdiagnosing a still-connecting worker as dead.
   private spawnInFlight: Map<string, Promise<void>> = new Map();
+
+  /**
+   * Per-scanner spawn generation, bumped whenever an in-flight spawn attempt
+   * for that scanner is invalidated (`stopScanner`, `shutdown`).
+   *
+   * Needed because `resolveSaneName` introduces the first `await` between
+   * entering the spawn path and registering the subprocess in
+   * `this.subprocesses`. `spawnSingleScanner()` installs its `spawnInFlight`
+   * guard only *after* the body's first synchronous segment, and
+   * `stopScanner()` deletes that guard first and then early-returns when the
+   * map has no entry — so an attempt suspended inside resolution sits in
+   * neither structure: nothing can cancel it and nothing awaits it. Without
+   * this token, two live workers for one scanner, or a worker spawned
+   * against an already-shut-down coordinator, are both reachable.
+   *
+   * The hazard is concentrated on the retry path, because only configs
+   * carrying a resolver take the new await at all.
+   */
+  private spawnGeneration: Map<string, number> = new Map();
+
+  /**
+   * Bound on `resolveSaneName`, separate from `SPAWN_READY_TIMEOUT_MS`.
+   *
+   * That constant wraps `sub.spawn()` only. An unbounded resolver would
+   * strand the `spawnInFlight` guard forever, making the scanner
+   * un-spawnable for the rest of the session while `retriesInFlight` holds
+   * the operator's Retry button dead.
+   *
+   * Sized for the worst realistic resolution: up to 3 detection attempts at
+   * a 5s `lsusb` timeout each, plus backoff.
+   */
+  private static readonly RESOLVE_NAME_TIMEOUT_MS = 20_000;
+
+  /** Invalidate any in-flight spawn attempt for `scannerId`. */
+  private bumpSpawnGeneration(scannerId: string): number {
+    const next = (this.spawnGeneration.get(scannerId) ?? 0) + 1;
+    this.spawnGeneration.set(scannerId, next);
+    return next;
+  }
 
   /**
    * Per-scanner hook that settles that scanner's in-flight row, if any, as
@@ -427,6 +470,13 @@ export class ScanCoordinator
     // in-flight attempt this call is going to strip listeners from below —
     // design.md Decision 1's fix for the retry-scanner regression.
     this.spawnInFlight.delete(scannerId);
+    // Invalidate any attempt currently suspended in spawn-time address
+    // resolution. That attempt is in neither `spawnInFlight` (cleared above)
+    // nor `subprocesses` (not registered yet), so without this it would
+    // construct a worker for a scanner the caller just stopped — see
+    // `spawnGeneration`. Bumped BEFORE the early return below, because the
+    // resolving attempt is exactly the case where the map has no entry.
+    this.bumpSpawnGeneration(scannerId);
 
     const sub = this.subprocesses.get(scannerId);
     if (!sub) return;
@@ -503,6 +553,63 @@ export class ScanCoordinator
    * inside `initialize()`'s loop propagated out of the whole method
    * uncaught, so remaining scanners in the list never got spawned).
    */
+  /**
+   * Resolve `config`'s device name, falling back to `config.saneName`.
+   *
+   * **Resolution can never fail a spawn** (`design.md` Decision 3a). A
+   * rejection, an empty result, a timeout, or a name that fails device-name
+   * validation all fall back — because failing here would strand the scanner
+   * for the rest of the session, after the operator has already been told
+   * the retry succeeded.
+   *
+   * Every *failure-caused* fallback is logged with its cause, and the
+   * absent-resolver case is not: an absent resolver is ordinary, and logging
+   * it as a failure would bury the real ones in noise.
+   */
+  private async resolveSaneNameForSpawn(
+    config: ScannerConfig
+  ): Promise<string> {
+    if (!config.resolveSaneName) return config.saneName;
+
+    let resolved: string;
+    try {
+      resolved = await withTimeout(
+        Promise.resolve(config.resolveSaneName()),
+        ScanCoordinator.RESOLVE_NAME_TIMEOUT_MS
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      scanLog(
+        `[ScanCoordinator] spawn-time saneName resolution failed scanner=${config.scannerId} falling back to ${config.saneName} cause=${message}`
+      );
+      return config.saneName;
+    }
+
+    if (!resolved) {
+      scanLog(
+        `[ScanCoordinator] spawn-time saneName resolution returned no name scanner=${config.scannerId} falling back to ${config.saneName}`
+      );
+      return config.saneName;
+    }
+
+    // The resolved name must pass the same rules the spawn itself applies,
+    // or a malformed one would fail a spawn that would otherwise have
+    // succeeded — the opposite of what resolution is for.
+    if (!isValidSaneName(resolved)) {
+      scanLog(
+        `[ScanCoordinator] spawn-time saneName resolution produced an invalid name scanner=${config.scannerId} resolved=${resolved} falling back to ${config.saneName}`
+      );
+      return config.saneName;
+    }
+
+    if (resolved !== config.saneName) {
+      console.log(
+        `[ScanCoordinator] Scanner ${config.scannerId} address re-resolved at spawn time: ${config.saneName} -> ${resolved}`
+      );
+    }
+    return resolved;
+  }
+
   private async doSpawnSingleScanner(config: ScannerConfig): Promise<void> {
     // Reuse existing subprocess if it's still alive and ready
     const existing = this.subprocesses.get(config.scannerId);
@@ -544,11 +651,56 @@ export class ScanCoordinator
       }
     }
 
+    // Re-resolve the device name at SPAWN time (design.md Decision 3).
+    //
+    // Placed here, immediately before the constructor, rather than at the
+    // top of this method: the reuse-if-ready no-op above must not pay a USB
+    // detection, which matters because `initialize()` runs per scanner.
+    // Only a config that actually carries a resolver takes the new await.
+    //
+    // This branch is load-bearing, not a micro-optimisation: awaiting
+    // unconditionally would insert a microtask into the spawn path for
+    // *every* scanner, including `initialize()`'s, which changes observable
+    // ordering for code that has none of this change's hazards. It also
+    // confines the resolution window — and therefore the generation-token
+    // machinery below — to exactly the retry and session-start paths, which
+    // is what `design.md` Decision 3 specifies.
+    let saneName = config.saneName;
+    if (config.resolveSaneName) {
+      // Registered eagerly, before the await, so `shutdown()`'s bulk
+      // invalidation can find this scanner even though it is in neither
+      // `spawnInFlight` (set by our caller only after this method's first
+      // await) nor `subprocesses` (not registered until below).
+      if (!this.spawnGeneration.has(config.scannerId)) {
+        this.spawnGeneration.set(config.scannerId, 0);
+      }
+      const generation = this.spawnGeneration.get(config.scannerId) as number;
+
+      saneName = await this.resolveSaneNameForSpawn(config);
+
+      // The token check. Anything that invalidated this attempt while it was
+      // suspended in resolution — stopScanner(), shutdown() — bumped the
+      // generation, and we must not construct a worker for it.
+      //
+      // `state` is checked too, not as belt-and-braces but because a
+      // shutdown racing the very first await could complete its bulk bump
+      // before this scanner's key was registered above.
+      if (
+        (this.spawnGeneration.get(config.scannerId) ?? 0) !== generation ||
+        this.state === 'shutting-down'
+      ) {
+        console.log(
+          `[ScanCoordinator] Spawn for ${config.scannerId} was superseded during address resolution; not spawning`
+        );
+        return;
+      }
+    }
+
     const sub = new ScannerSubprocess(
       this.pythonPath,
       this.isPackaged,
       config.scannerId,
-      config.saneName,
+      saneName,
       this.mock
     );
 
@@ -1415,6 +1567,18 @@ export class ScanCoordinator
   async shutdown(): Promise<void> {
     this.state = 'shutting-down';
     this.cancelled = true;
+
+    // Invalidate every in-flight spawn attempt, including any suspended in
+    // spawn-time address resolution. Those are not in `this.subprocesses`
+    // yet, so the per-subprocess loop below cannot reach them, and a worker
+    // spawned after shutdown is a leaked subprocess holding the USB device
+    // for the rest of the run.
+    for (const scannerId of this.spawnGeneration.keys()) {
+      this.bumpSpawnGeneration(scannerId);
+    }
+    for (const scannerId of this.spawnInFlight.keys()) {
+      this.bumpSpawnGeneration(scannerId);
+    }
 
     if (this.intervalTimer) {
       clearTimeout(this.intervalTimer);
