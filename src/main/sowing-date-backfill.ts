@@ -54,13 +54,33 @@ export interface SowingDateBackfillDbLike {
     findMany: (args: {
       where: { deleted: boolean; experiment: { experiment_type: string } };
       select: {
+        id: true;
         experiment_id: true;
         wave_number: true;
         plant_id: true;
+        accession_name: true;
+        phenotyper_id: true;
+        scanner_name: true;
+        path: true;
         capture_date: true;
         plant_age_days: true;
       };
     }) => Promise<EarlierScan[]>;
+  };
+  image: {
+    groupBy: (args: {
+      by: ['scan_id', 'status'];
+      where: { scan_id: { in: string[] } };
+      _count: { _all: true };
+    }) => Promise<
+      { scan_id: string; status: string; _count: { _all: number } }[]
+    >;
+  };
+  phenotyper: {
+    findMany: (args: {
+      where: { id: { in: string[] } };
+      select: { id: true; name: true };
+    }) => Promise<{ id: string; name: string }[]>;
   };
   cylinderWave: {
     findMany: (args: {
@@ -90,9 +110,14 @@ async function undatedWavePlans(
   const scans = await db.scan.findMany({
     where: { deleted: false, experiment: { experiment_type: CYLINDERSCAN } },
     select: {
+      id: true,
       experiment_id: true,
       wave_number: true,
       plant_id: true,
+      accession_name: true,
+      phenotyper_id: true,
+      scanner_name: true,
+      path: true,
       capture_date: true,
       plant_age_days: true,
     },
@@ -107,6 +132,79 @@ async function undatedWavePlans(
   return planBackfill(
     scans.filter((s) => !dated.has(waveKey(s.experiment_id, s.wave_number)))
   );
+}
+
+/** How many ids go in one `in` list, to stay well under SQLite's parameter limit. */
+const LOOKUP_CHUNK_SIZE = 500;
+
+function chunks<T>(items: T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += LOOKUP_CHUNK_SIZE) {
+    out.push(items.slice(i, i + LOOKUP_CHUNK_SIZE));
+  }
+  return out;
+}
+
+/**
+ * Each scan whose typed age doesn't fit its wave's date, with what's needed to find it
+ * here and in Bloom: its ids, who scanned it, its folder, its capture time (Bloom's
+ * date_scanned) and how many of its images were uploaded.
+ */
+async function describeMismatches(
+  db: SowingDateBackfillDbLike,
+  plans: WavePlan[],
+  experiment: (p: WavePlan) => string
+): Promise<AgeMismatch[]> {
+  const found = plans.flatMap((plan) =>
+    plan.mismatches.map((m) => ({ plan, m }))
+  );
+  if (found.length === 0) return [];
+  const scanIds = found.map(({ m }) => m.scan.id);
+  const phenotyperIds = [
+    ...new Set(found.map(({ m }) => m.scan.phenotyper_id)),
+  ];
+  const names = new Map<string, string>();
+  for (const ids of chunks(phenotyperIds)) {
+    for (const p of await db.phenotyper.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true },
+    })) {
+      names.set(p.id, p.name);
+    }
+  }
+  const images = new Map<string, { uploaded: number; total: number }>();
+  for (const ids of chunks(scanIds)) {
+    for (const g of await db.image.groupBy({
+      by: ['scan_id', 'status'],
+      where: { scan_id: { in: ids } },
+      _count: { _all: true },
+    })) {
+      const counts = images.get(g.scan_id) ?? { uploaded: 0, total: 0 };
+      counts.total += g._count._all;
+      if (g.status === 'uploaded') counts.uploaded += g._count._all;
+      images.set(g.scan_id, counts);
+    }
+  }
+  return found.map(({ plan, m }) => ({
+    scan_id: m.scan.id,
+    experiment_id: plan.experiment_id,
+    experiment: experiment(plan),
+    wave_number: plan.wave_number,
+    plant_id: m.scan.plant_id,
+    accession_name: m.scan.accession_name,
+    phenotyper: names.get(m.scan.phenotyper_id) ?? null,
+    scanner_name: m.scan.scanner_name,
+    path: m.scan.path,
+    capture_date: m.scan.capture_date.toISOString(),
+    captured: m.captured,
+    typed_age: m.scan.plant_age_days,
+    age_from_date: m.age_from_date,
+    implied_start_date: m.implied_start_date,
+    wave_start_date: plan.sowingDate,
+    wave_disputed: plan.disputed,
+    images_uploaded: images.get(m.scan.id)?.uploaded ?? 0,
+    images_total: images.get(m.scan.id)?.total ?? 0,
+  }));
 }
 
 /**
@@ -148,15 +246,6 @@ export async function backfillSowingDates(
     ageMismatches: [],
   };
   for (const plan of plans) {
-    result.ageMismatches.push(
-      ...plan.mismatches.map(
-        (m): AgeMismatch => ({
-          experiment: experiment(plan),
-          wave_number: plan.wave_number,
-          ...m,
-        })
-      )
-    );
     if (dryRun) {
       result.set.push(describe(plan));
       continue;
@@ -196,6 +285,7 @@ export async function backfillSowingDates(
       });
     }
   }
+  result.ageMismatches = await describeMismatches(db, plans, experiment);
   log(
     `[SowingDateBackfill] ${dryRun ? 'Would set' : 'Set'} ${result.set.length} wave(s); ` +
       `${result.failed.length} failed; ${result.ageMismatches.length} scan(s) with a mismatched age.`

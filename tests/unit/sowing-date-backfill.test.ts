@@ -7,15 +7,21 @@ import {
 } from '../../src/utils/sowing-date-backfill';
 import { plantAgeDays } from '../../src/utils/sowing-date';
 
+let nextScan = 0;
 /** A scan taken on a local calendar day, at `hour`, with a typed age. */
 const scan = (
   day: [number, number, number],
   age: number,
   { wave = 1, experiment = 'exp', hour = 10, plant = 'PLANT_001' } = {}
 ) => ({
+  id: `scan-${++nextScan}`,
   experiment_id: experiment,
   wave_number: wave,
   plant_id: plant,
+  accession_name: null,
+  phenotyper_id: 'ph-1',
+  scanner_name: 'Scanner1',
+  path: `2026-10-23/${plant}/uuid`,
   capture_date: new Date(day[0], day[1] - 1, day[2], hour),
   plant_age_days: age,
 });
@@ -137,9 +143,12 @@ describe('planWave', () => {
     expect(plan.sowingDate).toBe('2026-10-09');
     expect(plan.mismatches).toEqual([
       {
-        plant_id: 'PLANT_031',
+        scan: expect.objectContaining({
+          plant_id: 'PLANT_031',
+          plant_age_days: 21,
+        }),
         captured: '2026-10-23',
-        typed_age: 21,
+        implied_start_date: '2026-10-02',
         age_from_date: 14,
       },
     ]);

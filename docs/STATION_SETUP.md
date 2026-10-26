@@ -153,7 +153,13 @@ Run it signed in as the station's lab account, the one that runs Bloom Desktop. 
 
 - **Every wave with scans gets a start date:** the date most of its scans point to. It's logged as set by admin, with how it was worked out, and shows on the Experiments page, for example "Set to 12 Oct 2026 on 27 Oct 2026 by admin. Reason: Set from earlier scans (capture date minus typed age): 80 of 100 point to 12 Oct 2026; others point to 15 Oct 2026 (20 scans)."
 - **A wave whose scans disagree** (fewer than 90% within a day of that date), for example after a carried-over age (#407) or a wrong wave (#408), still gets the most common date, and its other dates are in that log entry. If you know the real date, change it with **Edit** on Capture Scan, giving a reason.
-- **Scans whose typed age doesn't match their wave's date** (more than a day off) are listed in the report: experiment, wave, plant, capture date, typed age, and the age the wave's date gives. Their age was probably typed wrongly. Nothing is changed: saved scans keep their age, here and in Bloom, so use the list to decide what to correct.
+- **Scans whose typed age doesn't match their wave's date** (more than a day off) are listed in the report, and also in a CSV next to it (`…-age-mismatches.csv`) to open in a spreadsheet. Each row has what's needed to find and fix the scan:
+  - **To find it here:** experiment and its id, wave, plant, accession, the scan id, the phenotyper and scanner, and the scan's folder.
+  - **To find it in Bloom:** the exact capture time (Bloom's `date_scanned`) and how many of its images were uploaded.
+  - **To decide the fix:** the typed age, the age the wave's date gives, the start date the typed age implies, the wave's date, and whether that wave's scans disagreed. If they did, the wave's date may be what's wrong, not the age.
+
+  Nothing is changed: saved scans keep their age, here and in Bloom.
+
 - **Every run, including a dry run, writes a report** to `%USERPROFILE%\.bloom\logs\sowing-date-backfill-<date>-<time>.json`, with the waves set, any that couldn't be set, and the scans with a mismatched age. Keep it as the record of what was done. If a wave couldn't be set (for example because the database was busy), the message says so; run the command again to retry it.
 
 ## Restoring a backup by hand

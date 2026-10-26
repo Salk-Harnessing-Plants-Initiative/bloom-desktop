@@ -20,18 +20,24 @@ export const AGREEMENT_TOLERANCE_DAYS = 1;
 export const MAX_OTHER_DATES_NAMED = 3;
 
 export interface EarlierScan {
+  id: string;
   experiment_id: string;
   wave_number: number;
   plant_id: string;
+  accession_name: string | null;
+  phenotyper_id: string;
+  scanner_name: string;
+  path: string;
   capture_date: Date;
   plant_age_days: number;
 }
 
 /** A scan whose typed age is more than a day off its wave's date. */
 export interface MismatchedScan {
-  plant_id: string;
+  scan: EarlierScan;
+  /** The local capture date, "YYYY-MM-DD". */
   captured: string;
-  typed_age: number;
+  implied_start_date: string;
   age_from_date: number;
 }
 
@@ -91,9 +97,9 @@ export function planWave(scans: EarlierScan[]): WavePlan {
         daysApart(impliedSowingDate(s), sowingDate) > AGREEMENT_TOLERANCE_DAYS
     )
     .map((s) => ({
-      plant_id: s.plant_id,
+      scan: s,
       captured: localDate(s.capture_date),
-      typed_age: s.plant_age_days,
+      implied_start_date: impliedSowingDate(s),
       age_from_date: plantAgeDays(sowingDate, s.capture_date),
     }));
   return {

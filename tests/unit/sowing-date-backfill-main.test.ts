@@ -5,22 +5,37 @@ import {
 } from '../../src/main/sowing-date-backfill';
 
 type Scan = {
+  id: string;
   experiment_id: string;
   wave_number: number;
   plant_id: string;
+  accession_name: string | null;
+  phenotyper_id: string;
+  scanner_name: string;
+  path: string;
   capture_date: Date;
   plant_age_days: number;
 };
 
+let nextScan = 0;
 const on = (day: number, age: number, wave = 1, plant = 'PLANT_001'): Scan => ({
+  id: `scan-${++nextScan}`,
   experiment_id: 'exp-A',
   wave_number: wave,
   plant_id: plant,
+  accession_name: 'Accession_A',
+  phenotyper_id: 'ph-1',
+  scanner_name: 'Scanner1',
+  path: `2026-10-${day}/${plant}/uuid`,
   capture_date: new Date(2026, 9, day, 10),
   plant_age_days: age,
 });
+/** `n` scans like `s`, each with its own id. */
 const times = (n: number, s: Scan) =>
-  Array.from({ length: n }, () => ({ ...s }));
+  Array.from({ length: n }, (_, i) => ({ ...s, id: `${s.id}-${i}` }));
+
+/** Image upload statuses per scan id; scans not listed have none. */
+let imageStatuses: Record<string, string[]> = {};
 
 /** A fake of the tables the backfill reads and writes. Writes are remembered. */
 function fakeDb(
@@ -46,6 +61,23 @@ function fakeDb(
       findMany: vi.fn(async () => [
         { id: 'exp-A', name: 'Sorghum_GWAS_Group1' },
       ]),
+    },
+    phenotyper: {
+      findMany: vi.fn(async () => [{ id: 'ph-1', name: 'Demo Phenotyper' }]),
+    },
+    image: {
+      groupBy: vi.fn(async ({ where }) =>
+        (where.scan_id.in as string[]).flatMap((scanId) => {
+          const counts = new Map<string, number>();
+          for (const s of imageStatuses[scanId] ?? [])
+            counts.set(s, (counts.get(s) ?? 0) + 1);
+          return [...counts].map(([status, n]) => ({
+            scan_id: scanId,
+            status,
+            _count: { _all: n },
+          }));
+        })
+      ),
     },
     $transaction: vi.fn(async (fn) =>
       fn({
@@ -121,20 +153,72 @@ describe('backfillSowingDates', () => {
   });
 
   it('lists scans whose typed age does not fit, and changes no scan', async () => {
-    const fake = fakeDb([...times(9, on(23, 14)), on(23, 21, 1, 'PLANT_031')]);
+    const wrong = on(23, 21, 1, 'PLANT_031');
+    imageStatuses = {
+      [wrong.id]: [...Array(70).fill('uploaded'), 'pending', 'failed'],
+    };
+    const fake = fakeDb([...times(9, on(23, 14)), wrong]);
     const result = await backfillSowingDates(fake.db, () => {});
+    // Everything needed to find the scan here and in Bloom, and to decide the fix.
     expect(result.ageMismatches).toEqual([
       {
+        scan_id: wrong.id,
+        experiment_id: 'exp-A',
         experiment: 'Sorghum_GWAS_Group1',
         wave_number: 1,
         plant_id: 'PLANT_031',
+        accession_name: 'Accession_A',
+        phenotyper: 'Demo Phenotyper',
+        scanner_name: 'Scanner1',
+        path: '2026-10-23/PLANT_031/uuid',
+        capture_date: new Date(2026, 9, 23, 10).toISOString(),
         captured: '2026-10-23',
         typed_age: 21,
         age_from_date: 14,
+        implied_start_date: '2026-10-02',
+        wave_start_date: '2026-10-09',
+        wave_disputed: false,
+        images_uploaded: 70,
+        images_total: 72,
       },
     ]);
     // The fake has no way to change a scan, and the backfill uses none.
     expect(Object.keys(fake.raw.scan)).toEqual(['findMany']);
+  });
+
+  it('marks mismatches from a wave whose scans disagreed', async () => {
+    const fake = fakeDb([
+      ...times(6, on(24, 12, 2)),
+      ...times(4, on(27, 12, 2)),
+    ]);
+    const result = await backfillSowingDates(fake.db, () => {});
+    expect(result.ageMismatches).toHaveLength(4);
+    expect(result.ageMismatches.every((m) => m.wave_disputed)).toBe(true);
+  });
+
+  it('looks up images and phenotypers in chunks, and only for mismatched scans', async () => {
+    imageStatuses = {};
+    const fake = fakeDb([
+      ...times(1200, on(23, 14)),
+      ...times(1100, on(23, 2)),
+    ]);
+    const result = await backfillSowingDates(fake.db, () => {});
+    expect(result.ageMismatches).toHaveLength(1100);
+    const asked = fake.raw.image.groupBy.mock.calls.map(
+      (c) => c[0].where.scan_id.in.length
+    );
+    expect(asked).toEqual([500, 500, 100]);
+    expect(result.ageMismatches[0]).toMatchObject({
+      images_uploaded: 0,
+      images_total: 0,
+    });
+  });
+
+  it("makes no lookups when there's nothing mismatched", async () => {
+    const fake = fakeDb(times(10, on(23, 14)));
+    await backfillSowingDates(fake.db, () => {});
+    expect(fake.raw.image.groupBy).not.toHaveBeenCalled();
+    expect(fake.raw.phenotyper.findMany).not.toHaveBeenCalled();
   });
 
   it('writes nothing in a dry run, but reports what it would set and the mismatches', async () => {

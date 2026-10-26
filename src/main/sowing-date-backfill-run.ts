@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type {
+  AgeMismatch,
   SowingDateBackfillResult,
   SowingDateBackfillWave,
 } from '../types/cylinder-wave';
@@ -58,6 +59,46 @@ export interface SowingDateBackfillOutcome {
   reportPath: string | null;
   /** Why the report couldn't be saved. */
   reportError?: string;
+  /** The mismatched scans as CSV, for a spreadsheet; null when there are none or it wasn't saved. */
+  mismatchesPath?: string | null;
+}
+
+/** The CSV's columns, in order: everything needed to find and fix each scan. */
+export const MISMATCH_COLUMNS: (keyof AgeMismatch)[] = [
+  'experiment',
+  'experiment_id',
+  'wave_number',
+  'plant_id',
+  'accession_name',
+  'scan_id',
+  'capture_date',
+  'captured',
+  'typed_age',
+  'age_from_date',
+  'implied_start_date',
+  'wave_start_date',
+  'wave_disputed',
+  'phenotyper',
+  'scanner_name',
+  'path',
+  'images_uploaded',
+  'images_total',
+];
+
+function csvCell(value: unknown): string {
+  const text = value === null || value === undefined ? '' : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+/** The mismatched scans as CSV, one row per scan. */
+export function mismatchesCsv(mismatches: AgeMismatch[]): string {
+  const rows = [
+    MISMATCH_COLUMNS.join(','),
+    ...mismatches.map((m) =>
+      MISMATCH_COLUMNS.map((c) => csvCell(m[c])).join(',')
+    ),
+  ];
+  return `${rows.join('\r\n')}\r\n`;
 }
 
 /** "20261023-140512" in local time, for the report's file name. */
@@ -85,14 +126,23 @@ export async function runSowingDateBackfill(
     databasePath: deps.databasePath,
     ...result,
   };
-  const reportPath = path.join(
+  const base = path.join(
     deps.logsDir,
-    `sowing-date-backfill-${stamp(ranAt)}${request.dryRun ? '-dry-run' : ''}.json`
+    `sowing-date-backfill-${stamp(ranAt)}${request.dryRun ? '-dry-run' : ''}`
   );
+  const reportPath = `${base}.json`;
   try {
     await fs.promises.mkdir(deps.logsDir, { recursive: true });
     await fs.promises.writeFile(reportPath, JSON.stringify(report, null, 2));
-    return { report, reportPath };
+    let mismatchesPath: string | null = null;
+    if (report.ageMismatches.length > 0) {
+      mismatchesPath = `${base}-age-mismatches.csv`;
+      await fs.promises.writeFile(
+        mismatchesPath,
+        mismatchesCsv(report.ageMismatches)
+      );
+    }
+    return { report, reportPath, mismatchesPath };
   } catch (error) {
     return {
       report,
@@ -165,8 +215,11 @@ export function summarizeSowingDateBackfill(
     ).size;
     lines.push(
       '',
-      `${report.ageMismatches.length} scan(s) in ${waves} wave(s) have a typed age that doesn't match their wave's date, so it was probably typed wrongly. They are listed in the report; nothing was changed.`
+      `${report.ageMismatches.length} scan(s) in ${waves} wave(s) have a typed age that doesn't match their wave's date, so it was probably typed wrongly. They are listed in the report, with what's needed to find each one here and in Bloom; nothing was changed.`
     );
+    if (outcome.mismatchesPath) {
+      lines.push(`For a spreadsheet: ${outcome.mismatchesPath}`);
+    }
   }
   lines.push(
     '',

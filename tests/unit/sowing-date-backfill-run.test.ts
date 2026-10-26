@@ -4,7 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   MAX_WAVES_SHOWN,
+  MISMATCH_COLUMNS,
   backfillHadProblems,
+  mismatchesCsv,
   parseSowingDateBackfillArgs,
   runSowingDateBackfill,
   summarizeSowingDateBackfill,
@@ -13,27 +15,39 @@ import {
 import type { SowingDateBackfillDbLike } from '../../src/main/sowing-date-backfill';
 
 type Scan = {
+  id: string;
   experiment_id: string;
   wave_number: number;
   plant_id: string;
+  accession_name: string | null;
+  phenotyper_id: string;
+  scanner_name: string;
+  path: string;
   capture_date: Date;
   plant_age_days: number;
 };
 
+let nextScan = 0;
 const on = (
   day: number,
   age: number,
   wave: number,
   plant = 'PLANT_001'
 ): Scan => ({
+  id: `scan-${++nextScan}`,
   experiment_id: 'exp-A',
   wave_number: wave,
   plant_id: plant,
+  accession_name: null,
+  phenotyper_id: 'ph-1',
+  scanner_name: 'Scanner1',
+  path: `2026-10-${day}/${plant}/uuid`,
   capture_date: new Date(2026, 9, day, 10),
   plant_age_days: age,
 });
+/** `n` scans like `s`, each with its own id. */
 const times = (n: number, s: Scan) =>
-  Array.from({ length: n }, () => ({ ...s }));
+  Array.from({ length: n }, (_, i) => ({ ...s, id: `${s.id}-${i}` }));
 
 /**
  * Wave 1's scans agree (sown 9 Oct) but one plant's age was typed wrongly; wave 2's
@@ -59,6 +73,10 @@ function fakeDb() {
         { id: 'exp-A', name: 'Sorghum_GWAS_Group1' },
       ]),
     },
+    phenotyper: {
+      findMany: vi.fn(async () => [{ id: 'ph-1', name: 'Demo, Phenotyper' }]),
+    },
+    image: { groupBy: vi.fn(async () => []) },
     $transaction: vi.fn(async (fn) =>
       fn({
         cylinderWave: { create },
@@ -200,6 +218,73 @@ describe('runSowingDateBackfill', () => {
   });
 });
 
+describe('the age-mismatch CSV', () => {
+  it('is saved next to the report, one row per scan, with everything needed to fix it', async () => {
+    const { db } = fakeDb();
+    const outcome = await runSowingDateBackfill({ dryRun: true }, deps(db));
+    expect(path.basename(outcome.mismatchesPath!)).toBe(
+      'sowing-date-backfill-20261023-140512-dry-run-age-mismatches.csv'
+    );
+    const lines = fs
+      .readFileSync(outcome.mismatchesPath!, 'utf-8')
+      .trimEnd()
+      .split('\r\n');
+    expect(lines[0]).toBe(MISMATCH_COLUMNS.join(','));
+    expect(lines).toHaveLength(4);
+    const first = lines[1].split(',');
+    expect(first.slice(0, 4)).toEqual([
+      'Sorghum_GWAS_Group1',
+      'exp-A',
+      '1',
+      'PLANT_031',
+    ]);
+    // A value with a comma is quoted.
+    expect(lines[1]).toContain('"Demo, Phenotyper"');
+  });
+
+  it('is not written when nothing is mismatched', async () => {
+    const outcome = await runSowingDateBackfill(
+      { dryRun: true },
+      deps({
+        ...fakeDb().db,
+        scan: { findMany: vi.fn(async () => times(5, on(23, 14, 1))) },
+      } as unknown as SowingDateBackfillDbLike)
+    );
+    expect(outcome.mismatchesPath).toBeNull();
+    expect(fs.readdirSync(logsDir)).toEqual([
+      'sowing-date-backfill-20261023-140512-dry-run.json',
+    ]);
+  });
+
+  it('quotes values with commas, quotes or line breaks', () => {
+    const csv = mismatchesCsv([
+      {
+        scan_id: 's1',
+        experiment_id: 'e1',
+        experiment: 'Exp "A", 2026',
+        wave_number: 1,
+        plant_id: 'P1',
+        accession_name: null,
+        phenotyper: 'Line\nbreak',
+        scanner_name: 'S',
+        path: 'p',
+        capture_date: '2026-10-23T17:00:00.000Z',
+        captured: '2026-10-23',
+        typed_age: 21,
+        age_from_date: 14,
+        implied_start_date: '2026-10-02',
+        wave_start_date: '2026-10-09',
+        wave_disputed: false,
+        images_uploaded: 72,
+        images_total: 72,
+      },
+    ]);
+    const row = csv.split('\r\n')[1];
+    expect(row.startsWith('"Exp ""A"", 2026",e1,1,P1,,s1,')).toBe(true);
+    expect(row).toContain('"Line\nbreak"');
+  });
+});
+
 describe('summarizeSowingDateBackfill', () => {
   it('lists the waves set, the disputed ones with their other dates, the mismatches and the report', async () => {
     const { db } = fakeDb();
@@ -215,7 +300,7 @@ describe('summarizeSowingDateBackfill', () => {
       '  Sorghum_GWAS_Group1, wave 2: 2026-10-12 (8 of 10 scans); others: 2026-10-15 (2)'
     );
     expect(text).toContain(
-      "3 scan(s) in 2 wave(s) have a typed age that doesn't match their wave's date, so it was probably typed wrongly. They are listed in the report; nothing was changed."
+      "3 scan(s) in 2 wave(s) have a typed age that doesn't match their wave's date, so it was probably typed wrongly. They are listed in the report, with what's needed to find each one here and in Bloom; nothing was changed."
     );
     expect(text).toMatch(
       /Report: .+sowing-date-backfill-20261023-140512-dry-run\.json$/

@@ -83,17 +83,37 @@ export interface SowingDateBackfillFailure {
 
 /**
  * A scan whose typed age doesn't fit its wave's date (more than a day off), so it was
- * probably typed wrongly. Listed only: saved scans keep their age.
+ * probably typed wrongly. Listed only: saved scans keep their age. It carries what's
+ * needed to find the scan here and in Bloom, and to decide the fix.
  */
 export interface AgeMismatch {
+  /** Bloom Desktop's Scan id. */
+  scan_id: string;
+  experiment_id: string;
   experiment: string;
   wave_number: number;
   plant_id: string;
-  /** The scan's local capture date, "YYYY-MM-DD". */
+  accession_name: string | null;
+  phenotyper: string | null;
+  scanner_name: string;
+  /** The scan's folder, relative to the scans directory. */
+  path: string;
+  /** When it was captured (ISO 8601): Bloom's date_scanned for this scan. */
+  capture_date: string;
+  /** The local capture date, "YYYY-MM-DD". */
   captured: string;
   typed_age: number;
   /** The age the wave's date gives for that capture date. */
   age_from_date: number;
+  /** The start date this scan's typed age implies. */
+  implied_start_date: string;
+  /** The start date the wave was given. */
+  wave_start_date: string;
+  /** The wave's scans disagreed: the chosen date, not this age, may be what's wrong. */
+  wave_disputed: boolean;
+  /** Of the scan's images, how many were uploaded to Bloom, and how many there are. */
+  images_uploaded: number;
+  images_total: number;
 }
 
 export interface SowingDateBackfillResult {
