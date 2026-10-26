@@ -89,13 +89,11 @@ describe('registerSpeciesHandlers', () => {
   function setUp(apiUrl = 'https://api.bloom.salk.edu/proxy') {
     const handle = vi.fn();
     const store: SpeciesStore = {
-      current: vi
-        .fn()
-        .mockResolvedValue({
-          species: ['Rice'],
-          source: 'saved',
-          updatedAt: null,
-        }),
+      current: vi.fn().mockResolvedValue({
+        species: ['Rice'],
+        source: 'saved',
+        updatedAt: null,
+      }),
       refresh: vi.fn().mockResolvedValue({
         list: { species: ['Rice'], source: 'bloom', updatedAt: 'now' },
       }),
