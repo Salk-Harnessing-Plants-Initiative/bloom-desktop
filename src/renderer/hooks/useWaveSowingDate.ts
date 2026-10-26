@@ -3,6 +3,7 @@ import { validateWaveNumber } from '../../utils/metadata-validation';
 import { plantAgeDays } from '../../utils/sowing-date';
 import type {
   CylinderWaveCreateInput,
+  CylinderWaveDateChangeInput,
   CylinderWaveInfo,
 } from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
@@ -43,10 +44,9 @@ export interface UseWaveSowingDateResult {
   saveWave: (
     input: Omit<CylinderWaveCreateInput, 'experimentId' | 'waveNumber'>
   ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
-  /** Change the entered wave's sowing date, then reload the waves. */
+  /** Change the entered wave's start date or its basis, then reload the waves. */
   changeDate: (
-    sowingDate: string,
-    reason?: string
+    change: Omit<CylinderWaveDateChangeInput, 'waveId' | 'phenotyperId'>
   ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
   /** Reload the waves, e.g. after a scan so the scan counts are current. */
   reload: () => Promise<void>;
@@ -134,14 +134,13 @@ export function useWaveSowingDate(
   );
 
   const changeDate = useCallback<UseWaveSowingDateResult['changeDate']>(
-    async (sowingDate, reason) => {
+    async (change) => {
       if (!wave)
         return { success: false, error: 'This wave has no start date yet.' };
       const result =
         await window.electron.database.cylinderWaves.changeSowingDate({
+          ...change,
           waveId: wave.id,
-          sowingDate,
-          reason,
           phenotyperId,
         });
       if (result.success) {

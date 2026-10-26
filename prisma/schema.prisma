@@ -309,15 +309,19 @@ model GraviExperimentWaveMetadata {
 // A CylinderScan wave's sowing date, from which Capture Scan calculates the plant age.
 // `sowing_date` is a local calendar date, "YYYY-MM-DD".
 model CylinderWave {
-  id                   String   @id @default(uuid())
-  experiment_id        String
-  wave_number          Int
-  sowing_date          String
+  id                     String   @id @default(uuid())
+  experiment_id          String
+  wave_number            Int
+  sowing_date            String
+  // What the date is: "transfer", "sowing", "germination" or "other" (described in
+  // start_date_basis_other). Null only for a wave the start-date backfill set.
+  start_date_basis       String?
+  start_date_basis_other String?
   // Why the date is on or before an earlier wave's sowing date, when it is.
-  note                 String?
-  set_by_phenotyper_id String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  note                   String?
+  set_by_phenotyper_id   String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   experiment Experiment                     @relation(fields: [experiment_id], references: [id], onDelete: Cascade)
   changes    CylinderWaveSowingDateChange[]
@@ -332,6 +336,9 @@ model CylinderWaveSowingDateChange {
   wave_id                  String
   old_sowing_date          String?
   new_sowing_date          String
+  // What the new date is, as on CylinderWave.
+  start_date_basis         String?
+  start_date_basis_other   String?
   reason                   String?
   changed_by_phenotyper_id String?
   changedAt                DateTime @default(now())

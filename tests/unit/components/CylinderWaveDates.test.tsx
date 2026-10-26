@@ -53,14 +53,17 @@ describe('CylinderWaveDates', () => {
     (global.window as any).electron.database.cylinderWaves.list = list;
   });
 
-  it('lists each wave with its current sowing date and scan count', async () => {
+  it('lists each wave in a section that starts closed, with its date, who set it and scan count', async () => {
     render(<CylinderWaveDates experimentId="exp" />);
-    expect(
-      await screen.findByText(/Wave 1: start date .+ \(72 scans\)/)
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Wave 2: start date .+ \(1 scan\)/)
-    ).toBeInTheDocument();
+    const wave = await screen.findByTestId('wave-1');
+    expect(wave).toHaveTextContent(
+      /^Wave 1 .+ · 72 scansSet by Demo Phenotyper on .+/
+    );
+    expect(screen.getByTestId('wave-2')).toHaveTextContent(/· 1 scanSet by/);
+    const section = screen.getByTestId('wave-dates-exp');
+    expect(section.tagName).toBe('DETAILS');
+    expect(section).not.toHaveAttribute('open');
+    expect(section.querySelector('summary')).toHaveTextContent('2 waves');
     expect(list).toHaveBeenCalledWith('exp');
   });
 
@@ -106,9 +109,85 @@ describe('CylinderWaveDates', () => {
     );
   });
 
+  it('says what each date is: on the wave, when set, when changed, and when only that changed', async () => {
+    const basis = (b: string, other: string | null = null) => ({
+      start_date_basis: b,
+      start_date_basis_other: other,
+    });
+    list.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          ...wave2,
+          ...basis('sowing'),
+          changes: [
+            {
+              id: 'c1',
+              old_sowing_date: null,
+              new_sowing_date: '2026-02-18',
+              ...basis('other', 'two days after germination'),
+              reason: null,
+              changed_by_name: 'Demo Phenotyper',
+              changed_at: '2026-02-21T10:00:00.000Z',
+            },
+            {
+              id: 'c2',
+              old_sowing_date: '2026-02-18',
+              new_sowing_date: '2026-02-20',
+              ...basis('transfer'),
+              reason: null,
+              changed_by_name: 'Demo Phenotyper',
+              changed_at: '2026-02-22T10:00:00.000Z',
+            },
+            {
+              id: 'c3',
+              old_sowing_date: '2026-02-20',
+              new_sowing_date: '2026-02-20',
+              ...basis('sowing'),
+              reason: 'Sown straight into the cylinder',
+              changed_by_name: 'Demo Phenotyper',
+              changed_at: '2026-02-23T10:00:00.000Z',
+            },
+          ],
+        },
+      ],
+    });
+    render(<CylinderWaveDates experimentId="exp" />);
+    expect(await screen.findByTestId('wave-2')).toHaveTextContent(
+      /^Wave 2 .+ · Sowing · 1 scan/
+    );
+    const entries = screen
+      .getByTestId('wave-date-log-2')
+      .querySelectorAll('li');
+    expect(entries[0]).toHaveTextContent(
+      /^Set to .+ \(other: two days after germination\) on /
+    );
+    expect(entries[1]).toHaveTextContent(
+      /^Changed from .+ to .+ \(transfer to cylinder\) on /
+    );
+    expect(entries[2]).toHaveTextContent(
+      /^.+ marked as sowing on .+ by Demo Phenotyper\. Reason: Sown straight into the cylinder$/
+    );
+  });
+
+  it("shows a wave's note, and leaves it out when there is none", async () => {
+    list.mockResolvedValue({
+      success: true,
+      data: [
+        { ...wave1, note: 'Waves 2 to 4 were scanned on another PC' },
+        wave2,
+      ],
+    });
+    render(<CylinderWaveDates experimentId="exp" />);
+    expect(await screen.findByTestId('wave-note-1')).toHaveTextContent(
+      'Note: Waves 2 to 4 were scanned on another PC'
+    );
+    expect(screen.queryByTestId('wave-note-2')).not.toBeInTheDocument();
+  });
+
   it('has no way to change a date here', async () => {
     render(<CylinderWaveDates experimentId="exp" />);
-    await screen.findByText(/Wave 1: start date/);
+    await screen.findByTestId('wave-1');
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 

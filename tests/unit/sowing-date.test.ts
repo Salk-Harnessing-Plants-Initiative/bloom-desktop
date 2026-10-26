@@ -81,15 +81,23 @@ describe('checkNewWave', () => {
   it('accepts the next wave sown after the earlier one', () => {
     expect(checkNewWave(2, '2026-02-20', [wave1], today)).toEqual({
       error: null,
+      dateWarning: null,
+      waveWarning: null,
       noteNeeded: null,
-      waveConfirmNeeded: null,
     });
   });
 
-  it('needs a note for a wave sown on or before an earlier wave', () => {
+  it('asks "Are you sure" and needs a note for a wave sown on or before an earlier wave', () => {
     for (const date of ['2025-11-26', '2025-11-20']) {
-      expect(checkNewWave(2, date, [wave1], today).noteNeeded).toMatch(
-        /^Wave 1's start date is .+, so wave 2 would start on or before it\. Add a note/
+      const check = checkNewWave(2, date, [wave1], today);
+      expect(check.dateWarning).toEqual({
+        question: "Are you sure wave 2's start date is correct?",
+        detail: expect.stringMatching(
+          /^It is on or before wave 1's start date \(.+\)\.$/
+        ),
+      });
+      expect(check.noteNeeded).toMatch(
+        /^Are you sure wave 2's start date is correct\? It is on or before .+ Add a note to proceed\.$/
       );
     }
   });
@@ -97,23 +105,27 @@ describe('checkNewWave', () => {
   it('needs a note for an earlier wave sown on or after a later one', () => {
     const wave3 = { wave_number: 3, sowing_date: '2026-01-10' };
     expect(
-      checkNewWave(2, '2026-01-15', [wave1, wave3], today).noteNeeded
-    ).toMatch(/^Wave 3's start date is .+ on or after it/);
+      checkNewWave(2, '2026-01-15', [wave1, wave3], today).dateWarning?.detail
+    ).toMatch(/^It is on or after wave 3's start date/);
   });
 
-  it('needs a confirmation for a wave number that skips ahead', () => {
-    expect(
-      checkNewWave(5, '2026-02-20', [wave1], today).waveConfirmNeeded
-    ).toBe(
-      'The highest wave of this experiment so far is 1. Is this really wave 5?'
-    );
-    expect(checkNewWave(3, '2026-02-20', [], today).waveConfirmNeeded).toMatch(
-      /first wave\. Is it really wave 3\?/
-    );
+  it('asks "Is the wave number correct?" and needs a note for a wave number that skips ahead', () => {
+    const check = checkNewWave(5, '2026-02-20', [wave1], today);
+    expect(check.waveWarning).toEqual({
+      question: 'Is the wave number correct?',
+      detail: 'Previous wave: wave 1.',
+      confirm: 'Are you sure you want to scan wave 5?',
+    });
+    expect(check.noteNeeded).toMatch(/Add a note to proceed\.$/);
+    expect(checkNewWave(3, '2026-02-20', [], today).waveWarning).toEqual({
+      question: 'Is the wave number correct?',
+      detail: "This is the experiment's first wave.",
+      confirm: 'Are you sure you want to scan wave 3?',
+    });
     for (const first of [0, 1]) {
-      expect(
-        checkNewWave(first, '2026-02-20', [], today).waveConfirmNeeded
-      ).toBeNull();
+      const firstCheck = checkNewWave(first, '2026-02-20', [], today);
+      expect(firstCheck.waveWarning).toBeNull();
+      expect(firstCheck.noteNeeded).toBeNull();
     }
   });
 
@@ -161,11 +173,13 @@ describe('checkSowingDateChange', () => {
 
   it('asks for a reason, not a note, when the date conflicts with another wave', () => {
     const check = checkSowingDateChange(change('2026-02-19'), [wave1], today);
-    expect(check.conflict).toMatch(
-      /^Wave 1's start date is .+, so wave 2 would start on or before it\. Give a reason for the change\.$/
+    expect(check.conflict?.question).toBe(
+      "Are you sure wave 2's start date is correct?"
     );
     expect(check.reasonNeeded).toBe(true);
-    expect(check.saveError).toBe(check.conflict);
+    expect(check.saveError).toMatch(
+      /^Are you sure wave 2's start date is correct\? It is on or before wave 1's start date \(.+\)\. Give a reason for the change\.$/
+    );
   });
 
   it('refuses the same date, a future date and an over-long reason', () => {

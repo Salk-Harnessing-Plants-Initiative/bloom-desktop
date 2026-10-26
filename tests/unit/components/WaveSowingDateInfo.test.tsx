@@ -11,6 +11,8 @@ const wave2 = {
   id: 'w2',
   wave_number: 2,
   sowing_date: '2026-02-20',
+  start_date_basis: 'transfer',
+  start_date_basis_other: null,
   note: null,
   set_by_name: 'Demo Phenotyper',
   set_at: '2026-02-21T09:00:00.000Z',
@@ -40,6 +42,49 @@ describe('WaveSowingDateInfo', () => {
     );
   });
 
+  it('says what the start date is', () => {
+    renderInfo({
+      ...wave2,
+      start_date_basis: 'other',
+      start_date_basis_other: 'two days after germination',
+    });
+    expect(screen.getByTestId('wave-sowing-date-info')).toHaveTextContent(
+      '(other: two days after germination)'
+    );
+  });
+
+  it('changes only what the date is, keeping the date', async () => {
+    const onChangeDate = renderInfo();
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    // It opens with the saved choice; keeping both the date and it can't be saved.
+    expect(screen.getByTestId('start-date-basis-transfer')).toBeChecked();
+    expect(screen.getByTestId('sowing-date-edit-save')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('start-date-basis-sowing'));
+    fireEvent.click(screen.getByTestId('sowing-date-edit-save'));
+    await waitFor(() =>
+      expect(onChangeDate).toHaveBeenCalledWith({
+        sowingDate: '2026-02-20',
+        startDateBasis: 'sowing',
+        startDateBasisOther: undefined,
+        reason: undefined,
+      })
+    );
+  });
+
+  it('asks for what the date is on a backfilled wave that has none', () => {
+    renderInfo({ ...wave2, start_date_basis: null });
+    expect(screen.getByTestId('wave-sowing-date-info')).not.toHaveTextContent(
+      '('
+    );
+    fireEvent.click(screen.getByTestId('sowing-date-edit'));
+    fireEvent.change(screen.getByLabelText('Start date'), {
+      target: { value: '2026-02-19' },
+    });
+    expect(screen.getByTestId('sowing-date-edit-save')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('start-date-basis-germination'));
+    expect(screen.getByTestId('sowing-date-edit-save')).not.toBeDisabled();
+  });
+
   it('leaves out "set by" when the setter is unknown', () => {
     renderInfo({ ...wave2, set_by_name: null });
     expect(screen.getByTestId('wave-sowing-date-info')).not.toHaveTextContent(
@@ -65,10 +110,12 @@ describe('WaveSowingDateInfo', () => {
     });
     fireEvent.click(save);
     await waitFor(() =>
-      expect(onChangeDate).toHaveBeenCalledWith(
-        '2026-02-19',
-        'Typo: sown a day earlier'
-      )
+      expect(onChangeDate).toHaveBeenCalledWith({
+        sowingDate: '2026-02-19',
+        startDateBasis: 'transfer',
+        startDateBasisOther: undefined,
+        reason: 'Typo: sown a day earlier',
+      })
     );
   });
 
@@ -91,7 +138,12 @@ describe('WaveSowingDateInfo', () => {
     });
     fireEvent.click(save);
     await waitFor(() =>
-      expect(onChangeDate).toHaveBeenCalledWith('2026-02-19', undefined)
+      expect(onChangeDate).toHaveBeenCalledWith({
+        sowingDate: '2026-02-19',
+        startDateBasis: 'transfer',
+        startDateBasisOther: undefined,
+        reason: undefined,
+      })
     );
     await waitFor(() =>
       expect(
@@ -113,7 +165,12 @@ describe('WaveSowingDateInfo', () => {
     });
     fireEvent.click(save);
     await waitFor(() =>
-      expect(onChangeDate).toHaveBeenCalledWith('2025-11-26', 'Sown together')
+      expect(onChangeDate).toHaveBeenCalledWith({
+        sowingDate: '2025-11-26',
+        startDateBasis: 'transfer',
+        startDateBasisOther: undefined,
+        reason: 'Sown together',
+      })
     );
   });
 

@@ -156,12 +156,15 @@ describe('useWaveSowingDate', () => {
     await waitFor(() => expect(result.current.wave).not.toBeNull());
     list.mockClear();
     await act(async () => {
-      await result.current.changeDate(daysAgo(8));
+      await result.current.changeDate({
+        sowingDate: daysAgo(8),
+        startDateBasis: 'sowing',
+      });
     });
     expect(changeSowingDate).toHaveBeenCalledWith({
       waveId: 'w1',
       sowingDate: daysAgo(8),
-      reason: undefined,
+      startDateBasis: 'sowing',
       phenotyperId: 'ph-1',
     });
     expect(list).toHaveBeenCalledWith('exp');

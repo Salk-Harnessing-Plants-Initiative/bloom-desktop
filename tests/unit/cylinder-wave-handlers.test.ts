@@ -12,6 +12,8 @@ interface Row {
   experiment_id: string;
   wave_number: number;
   sowing_date: string;
+  start_date_basis: string | null;
+  start_date_basis_other: string | null;
   note: string | null;
   set_by_phenotyper_id: string | null;
   updatedAt: Date;
@@ -101,6 +103,8 @@ const wave1: Row = {
   experiment_id: 'exp',
   wave_number: 1,
   sowing_date: '2025-11-26',
+  start_date_basis: 'transfer',
+  start_date_basis_other: null,
   note: null,
   set_by_phenotyper_id: 'ph-1',
   updatedAt: SET_AT,
@@ -117,6 +121,8 @@ describe('listWaves', () => {
           id: 'w1',
           wave_number: 1,
           sowing_date: '2025-11-26',
+          start_date_basis: 'transfer',
+          start_date_basis_other: null,
           note: null,
           set_by_name: 'Demo Phenotyper',
           set_at: SET_AT.toISOString(),
@@ -175,12 +181,14 @@ describe('listWaves: the change log', () => {
     await changeSowingDate(deps, {
       waveId: 'w1',
       sowingDate: '2025-11-27',
+      startDateBasis: 'transfer',
       reason: 'Typo',
       phenotyperId: 'ph-2',
     });
     await changeSowingDate(deps, {
       waveId: 'w1',
       sowingDate: '2025-11-25',
+      startDateBasis: 'transfer',
       reason: 'Checked the seed log',
       phenotyperId: 'ph-1',
     });
@@ -191,6 +199,8 @@ describe('listWaves: the change log', () => {
         id: 'c1',
         old_sowing_date: '2025-11-26',
         new_sowing_date: '2025-11-27',
+        start_date_basis: 'transfer',
+        start_date_basis_other: null,
         reason: 'Typo',
         changed_by_name: 'Second Phenotyper',
         changed_at: EDITED_AT.toISOString(),
@@ -199,6 +209,8 @@ describe('listWaves: the change log', () => {
         id: 'c2',
         old_sowing_date: '2025-11-27',
         new_sowing_date: '2025-11-25',
+        start_date_basis: 'transfer',
+        start_date_basis_other: null,
         reason: 'Checked the seed log',
         changed_by_name: 'Demo Phenotyper',
         changed_at: EDITED_AT.toISOString(),
@@ -226,6 +238,7 @@ describe('createWave', () => {
       experimentId: 'exp',
       waveNumber: 2,
       sowingDate: '2026-02-20',
+      startDateBasis: 'transfer',
       phenotyperId: 'ph-1',
       ...input,
     } as never);
@@ -238,6 +251,8 @@ describe('createWave', () => {
         experiment_id: 'exp',
         wave_number: 2,
         sowing_date: '2026-02-20',
+        start_date_basis: 'transfer',
+        start_date_basis_other: null,
         note: null,
         set_by_phenotyper_id: 'ph-1',
       },
@@ -248,6 +263,7 @@ describe('createWave', () => {
     const result = await create({
       phenotyperId: 'ph-1',
       sowingDate: '2026-02-20',
+      startDateBasis: 'transfer',
     });
     expect(fake.raw.$transaction).toHaveBeenCalledTimes(1);
     expect(fake.changes).toEqual([
@@ -256,6 +272,8 @@ describe('createWave', () => {
         wave_id: 'w2',
         old_sowing_date: null,
         new_sowing_date: '2026-02-20',
+        start_date_basis: 'transfer',
+        start_date_basis_other: null,
         reason: null,
         changed_by_phenotyper_id: 'ph-1',
       },
@@ -265,6 +283,8 @@ describe('createWave', () => {
         id: 'c1',
         old_sowing_date: null,
         new_sowing_date: '2026-02-20',
+        start_date_basis: 'transfer',
+        start_date_basis_other: null,
         reason: null,
         changed_by_name: 'Demo Phenotyper',
         changed_at: EDITED_AT.toISOString(),
@@ -275,6 +295,7 @@ describe('createWave', () => {
   it("logs the first date's note as its reason", async () => {
     await create({
       sowingDate: '2025-11-26',
+      startDateBasis: 'transfer',
       note: 'Sown the same day, scanned later',
     });
     expect(fake.changes[0]).toMatchObject({
@@ -292,7 +313,9 @@ describe('createWave', () => {
   });
 
   it('refuses a future date', async () => {
-    expect(await create({ sowingDate: '2026-03-11' })).toEqual({
+    expect(
+      await create({ sowingDate: '2026-03-11', startDateBasis: 'transfer' })
+    ).toEqual({
       success: false,
       error: "The start date can't be in the future.",
     });
@@ -300,23 +323,32 @@ describe('createWave', () => {
   });
 
   it('needs a note for a date on or before wave 1, and saves it with one', async () => {
-    const without = await create({ sowingDate: '2025-11-26' });
+    const without = await create({
+      sowingDate: '2025-11-26',
+      startDateBasis: 'transfer',
+    });
     expect(without.success).toBe(false);
-    expect(without.error).toMatch(/Add a note/);
+    expect(without.error).toMatch(/Add a note to proceed/);
     const withNote = await create({
       sowingDate: '2025-11-26',
+      startDateBasis: 'transfer',
       note: ' Sown the same day, scanned later ',
     });
     expect(withNote.success).toBe(true);
     expect(fake.rows.at(-1)?.note).toBe('Sown the same day, scanned later');
   });
 
-  it('needs the operator to confirm a wave number that skips ahead', async () => {
+  it('needs a note to proceed with a wave number that skips ahead', async () => {
     expect((await create({ waveNumber: 5 })).error).toMatch(
-      /Is this really wave 5\?/
+      /^Is the wave number correct\? Previous wave: wave 1\. Are you sure you want to scan wave 5\? Add a note to proceed\.$/
     );
-    expect((await create({ waveNumber: 5, waveConfirmed: true })).success).toBe(
-      true
+    const withNote = await create({
+      waveNumber: 5,
+      note: 'Waves 2 to 4 were scanned on another PC',
+    });
+    expect(withNote.success).toBe(true);
+    expect(fake.rows.at(-1)?.note).toBe(
+      'Waves 2 to 4 were scanned on another PC'
     );
   });
 
@@ -356,6 +388,7 @@ describe('a phenotyper is required to set or change a date', () => {
       experimentId: 'exp',
       waveNumber: 2,
       sowingDate: '2026-02-20',
+      startDateBasis: 'transfer',
     };
     expect(
       await createWave({ db: fake.db, now }, { ...base, phenotyperId: ' ' })
@@ -375,7 +408,12 @@ describe('a phenotyper is required to set or change a date', () => {
     const fake = fakeDb([{ ...wave1 }]);
     const result = await changeSowingDate(
       { db: fake.db, now },
-      { waveId: 'w1', sowingDate: '2025-11-27', phenotyperId: '' }
+      {
+        waveId: 'w1',
+        sowingDate: '2025-11-27',
+        startDateBasis: 'transfer',
+        phenotyperId: '',
+      }
     );
     expect(result).toEqual({
       success: false,
@@ -390,7 +428,12 @@ describe('changeSowingDate', () => {
     const fake = fakeDb([{ ...wave1 }]);
     const result = await changeSowingDate(
       { db: fake.db, now },
-      { phenotyperId: 'ph-1', waveId: 'w1', sowingDate: '2025-11-27' }
+      {
+        phenotyperId: 'ph-1',
+        waveId: 'w1',
+        sowingDate: '2025-11-27',
+        startDateBasis: 'transfer',
+      }
     );
     expect(result.success).toBe(true);
     expect(result.data?.sowing_date).toBe('2025-11-27');
@@ -400,6 +443,8 @@ describe('changeSowingDate', () => {
         wave_id: 'w1',
         old_sowing_date: '2025-11-26',
         new_sowing_date: '2025-11-27',
+        start_date_basis: 'transfer',
+        start_date_basis_other: null,
         reason: null,
         changed_by_phenotyper_id: 'ph-1',
       },
@@ -410,7 +455,12 @@ describe('changeSowingDate', () => {
     const fake = fakeDb([{ ...wave1 }]);
     const result = await changeSowingDate(
       { db: fake.db, now },
-      { waveId: 'w1', sowingDate: '2025-11-27', phenotyperId: 'ph-2' }
+      {
+        waveId: 'w1',
+        sowingDate: '2025-11-27',
+        startDateBasis: 'transfer',
+        phenotyperId: 'ph-2',
+      }
     );
     expect(result.data).toMatchObject({
       sowing_date: '2025-11-27',
@@ -427,7 +477,12 @@ describe('changeSowingDate', () => {
     const fake = fakeDb([{ ...wave1 }], { 1: 3 });
     const without = await changeSowingDate(
       { db: fake.db, now },
-      { phenotyperId: 'ph-1', waveId: 'w1', sowingDate: '2025-11-27' }
+      {
+        phenotyperId: 'ph-1',
+        waveId: 'w1',
+        sowingDate: '2025-11-27',
+        startDateBasis: 'transfer',
+      }
     );
     expect(without.error).toMatch(/give a reason/);
     expect(fake.changes).toHaveLength(0);
@@ -436,6 +491,7 @@ describe('changeSowingDate', () => {
       {
         waveId: 'w1',
         sowingDate: '2025-11-27',
+        startDateBasis: 'transfer',
         reason: 'Typo',
         phenotyperId: 'ph-2',
       }
@@ -457,9 +513,16 @@ describe('changeSowingDate', () => {
     const fake = fakeDb([{ ...wave1 }, wave2]);
     const result = await changeSowingDate(
       { db: fake.db, now },
-      { phenotyperId: 'ph-1', waveId: 'w2', sowingDate: '2025-11-01' }
+      {
+        phenotyperId: 'ph-1',
+        waveId: 'w2',
+        sowingDate: '2025-11-01',
+        startDateBasis: 'transfer',
+      }
     );
-    expect(result.error).toMatch(/^Wave 1's start date is/);
+    expect(result.error).toMatch(
+      /^Are you sure wave 2's start date is correct\? .+ Give a reason for the change\.$/
+    );
   });
 
   it('returns the error when the change cannot be saved', async () => {
@@ -469,7 +532,12 @@ describe('changeSowingDate', () => {
     expect(
       await changeSowingDate(
         { db: fake.db, now },
-        { phenotyperId: 'ph-1', waveId: 'w1', sowingDate: '2025-11-27' }
+        {
+          phenotyperId: 'ph-1',
+          waveId: 'w1',
+          sowingDate: '2025-11-27',
+          startDateBasis: 'transfer',
+        }
       )
     ).toEqual({ success: false, error: 'database is locked' });
     expect(fake.rows[0].sowing_date).toBe('2025-11-26');
@@ -484,7 +552,12 @@ describe('changeSowingDate', () => {
     expect(
       await changeSowingDate(
         { db: fake.db, now },
-        { phenotyperId: 'ph-1', waveId: 'w1', sowingDate: '2025-11-27' }
+        {
+          phenotyperId: 'ph-1',
+          waveId: 'w1',
+          sowingDate: '2025-11-27',
+          startDateBasis: 'transfer',
+        }
       )
     ).toEqual({ success: false, error: 'disk I/O error' });
     expect(fake.raw.$transaction).not.toHaveBeenCalled();
@@ -499,6 +572,7 @@ describe('changeSowingDate', () => {
           phenotyperId: 'ph-1',
           waveId: 'nope',
           sowingDate: '2025-11-27',
+          startDateBasis: 'transfer',
         })
       ).error
     ).toBe('That wave no longer exists.');
@@ -508,6 +582,7 @@ describe('changeSowingDate', () => {
           phenotyperId: 'ph-1',
           waveId: 'w1',
           sowingDate: '2025-11-26',
+          startDateBasis: 'transfer',
         })
       ).error
     ).toBe('That is already the start date.');
@@ -517,9 +592,149 @@ describe('changeSowingDate', () => {
           phenotyperId: 'ph-1',
           waveId: 'w1',
           sowingDate: '2026-04-01',
+          startDateBasis: 'transfer',
         })
       ).error
     ).toMatch(/future/);
+  });
+});
+
+describe('what the start date is (its basis)', () => {
+  const newWave = {
+    experimentId: 'exp',
+    waveNumber: 2,
+    sowingDate: '2026-02-20',
+    phenotyperId: 'ph-1',
+  };
+
+  it('is required for a new wave, and "other" needs a description', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    const deps = { db: fake.db, now };
+    expect(await createWave(deps, { ...newWave, startDateBasis: '' })).toEqual({
+      success: false,
+      error: 'Choose what the start date is.',
+    });
+    expect(
+      await createWave(deps, { ...newWave, startDateBasis: 'harvest' })
+    ).toEqual({ success: false, error: 'Choose what the start date is.' });
+    expect(
+      await createWave(deps, {
+        ...newWave,
+        startDateBasis: 'other',
+        startDateBasisOther: '  ',
+      })
+    ).toEqual({ success: false, error: 'Say what the start date is.' });
+    expect(fake.raw.cylinderWave.create).not.toHaveBeenCalled();
+  });
+
+  it('saves "other" with its description on the wave and its first log entry', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    const result = await createWave(
+      { db: fake.db, now },
+      {
+        ...newWave,
+        startDateBasis: 'other',
+        startDateBasisOther: ' two days after germination ',
+      }
+    );
+    expect(result.data).toMatchObject({
+      start_date_basis: 'other',
+      start_date_basis_other: 'two days after germination',
+    });
+    expect(fake.changes[0]).toMatchObject({
+      start_date_basis: 'other',
+      start_date_basis_other: 'two days after germination',
+    });
+  });
+
+  it('keeps a description only for "other"', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    const result = await createWave(
+      { db: fake.db, now },
+      { ...newWave, startDateBasis: 'sowing', startDateBasisOther: 'stray' }
+    );
+    expect(result.data).toMatchObject({
+      start_date_basis: 'sowing',
+      start_date_basis_other: null,
+    });
+  });
+
+  it('can change on its own, with the same date, and is logged', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    const result = await changeSowingDate(
+      { db: fake.db, now },
+      {
+        phenotyperId: 'ph-1',
+        waveId: 'w1',
+        sowingDate: '2025-11-26',
+        startDateBasis: 'sowing',
+      }
+    );
+    expect(result.success).toBe(true);
+    expect(fake.rows[0]).toMatchObject({
+      sowing_date: '2025-11-26',
+      start_date_basis: 'sowing',
+    });
+    expect(fake.changes).toEqual([
+      expect.objectContaining({
+        old_sowing_date: '2025-11-26',
+        new_sowing_date: '2025-11-26',
+        start_date_basis: 'sowing',
+      }),
+    ]);
+  });
+
+  it('needs a reason to change once the wave has scans', async () => {
+    const fake = fakeDb([{ ...wave1 }], { 1: 3 });
+    const change = {
+      phenotyperId: 'ph-1',
+      waveId: 'w1',
+      sowingDate: '2025-11-26',
+      startDateBasis: 'germination',
+    };
+    expect(await changeSowingDate({ db: fake.db, now }, change)).toEqual({
+      success: false,
+      error: 'This wave already has scans: give a reason for the change.',
+    });
+    expect(
+      (
+        await changeSowingDate(
+          { db: fake.db, now },
+          { ...change, reason: 'It was the germination date' }
+        )
+      ).success
+    ).toBe(true);
+  });
+
+  it('refuses a change that keeps both the date and the basis', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    expect(
+      await changeSowingDate(
+        { db: fake.db, now },
+        {
+          phenotyperId: 'ph-1',
+          waveId: 'w1',
+          sowingDate: '2025-11-26',
+          startDateBasis: 'transfer',
+        }
+      )
+    ).toEqual({ success: false, error: 'That is already the start date.' });
+  });
+
+  it('must be chosen when changing a backfilled wave that has none', async () => {
+    const fake = fakeDb([{ ...wave1, start_date_basis: null }]);
+    expect(
+      await changeSowingDate(
+        { db: fake.db, now },
+        {
+          phenotyperId: 'ph-1',
+          waveId: 'w1',
+          sowingDate: '2025-11-27',
+          startDateBasis: '',
+        }
+      )
+    ).toEqual({ success: false, error: 'Choose what the start date is.' });
+    expect(fake.changes).toEqual([]);
   });
 });
 

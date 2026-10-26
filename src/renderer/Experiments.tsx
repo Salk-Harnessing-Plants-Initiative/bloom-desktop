@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { ExperimentForm } from './components/ExperimentForm';
 import { CylinderWaveDates } from './components/CylinderWaveDates';
+import { ExperimentWaveLinks } from './components/ExperimentWaveLinks';
 import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
 
 interface Scientist {
@@ -27,50 +28,10 @@ interface ExperimentsProps {
   mode?: string;
 }
 
-function ExperimentWaveLinks({ experimentId }: { experimentId: string }) {
-  const { links, linkError, unlink } = useWaveMetadataLinks(experimentId);
-  const [unlinkingWave, setUnlinkingWave] = useState<number | null>(null);
-
-  const handleUnlink = async (waveNumber: number, accessionName: string) => {
-    if (unlinkingWave !== null) return;
-    const message =
-      waveNumber === 0
-        ? `Unlink wave ${waveNumber} from "${accessionName}"? This does not preserve a record of what was linked at scan time. This experiment's default accession was originally set to this same file; unlinking wave 0 does not change that default.`
-        : `Unlink wave ${waveNumber} from "${accessionName}"? This does not preserve a record of what was linked at scan time.`;
-    if (window.confirm(message)) {
-      setUnlinkingWave(waveNumber);
-      try {
-        await unlink(waveNumber);
-      } finally {
-        setUnlinkingWave(null);
-      }
-    }
-  };
-
-  if (links.length === 0 && !linkError) return null;
-
-  return (
-    <>
-      <ul>
-        {links.map((l) => (
-          <li key={l.wave_number}>
-            Wave {l.wave_number}: {l.accession.name}
-            <button
-              onClick={() => handleUnlink(l.wave_number, l.accession.name)}
-              disabled={unlinkingWave !== null}
-            >
-              {unlinkingWave === l.wave_number ? 'Unlinking...' : 'Unlink'}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {linkError && <p className="text-sm text-red-600">{linkError}</p>}
-    </>
-  );
-}
-
 export function Experiments({ mode }: ExperimentsProps = {}) {
   const [experiments, setExperiments] = useState<ExperimentWithScientist[]>([]);
+  // The list box: a fixed height that scrolls, or expanded to show everything.
+  const [listExpanded, setListExpanded] = useState(false);
   const [scientists, setScientists] = useState<Scientist[]>([]);
   const [accessions, setAccessions] = useState<Accession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -221,7 +182,17 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
 
       {/* List Section */}
       <div className="mb-8">
-        <h2 className="text-xs font-bold mb-2">Experiments</h2>
+        <div className="flex items-center gap-3 mb-2">
+          <h2 className="text-xs font-bold">Experiments</h2>
+          <button
+            type="button"
+            onClick={() => setListExpanded((v) => !v)}
+            className="text-xs font-semibold text-green-800 underline"
+            data-testid="experiments-list-toggle"
+          >
+            {listExpanded ? 'Shrink' : 'Expand'}
+          </button>
+        </div>
 
         {isLoading ? (
           <div className="h-64 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center">
@@ -236,7 +207,11 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
             <p className="text-sm text-gray-500">No experiments yet</p>
           </div>
         ) : (
-          <ul className="experiments-list h-64 overflow-auto border rounded-md max-w-full mr-10 text-sm">
+          <ul
+            // Remounted on toggle, so a height dragged by hand is reset.
+            key={listExpanded ? 'expanded' : 'shrunk'}
+            className={`experiments-list overflow-auto resize-y border rounded-md max-w-full mr-10 text-sm ${listExpanded ? 'min-h-64' : 'h-64 min-h-32'}`}
+          >
             {experiments.map((experiment) => (
               <li key={experiment.id} className="mb-2 p-2">
                 <div className="flex justify-between items-center">

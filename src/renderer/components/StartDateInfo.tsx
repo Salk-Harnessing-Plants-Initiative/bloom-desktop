@@ -1,12 +1,13 @@
 /**
  * A small ⓘ next to the start date on Capture Scan (#407). Hovering or clicking it
- * opens a short note on which day to use: the plant age is counted from it.
+ * opens a short note on how the plant age is computed from it (the choice under the
+ * date says which day it is).
  */
 
 import { useState } from 'react';
 
 export const START_DATE_HELP =
-  'You can use the sowing date, the germination date, or the date of transfer to the cylinder. The plant age for this wave is counted from it, as day 0.';
+  'Plant age = days since this date. This date is day 0, so 12 Oct → 9 days old on 21 Oct.';
 
 export function StartDateInfo() {
   const [open, setOpen] = useState(false);
@@ -19,7 +20,7 @@ export function StartDateInfo() {
       {/* The "i" is drawn by CSS so it stays out of the line's text. */}
       <button
         type="button"
-        aria-label="What is the start date?"
+        aria-label="How is the plant age computed?"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         onBlur={() => setOpen(false)}

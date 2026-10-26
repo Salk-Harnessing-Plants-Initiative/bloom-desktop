@@ -1,7 +1,8 @@
 /**
  * Under the wave number on Capture Scan, once the wave has a sowing date (#407):
- * the date, who set it and when, and Edit. Before the wave's first scan the date
- * changes freely. After that a change needs a reason, and the scans already saved
+ * the date, what it is (transfer, sowing, germination or other), who set it and
+ * when, and Edit, which changes the date, what it is, or both. Before the wave's
+ * first scan they change freely. After that a change needs a reason, and the scans already saved
  * keep the age they were saved with. Every change is logged (Experiments page).
  */
 
@@ -13,17 +14,27 @@ import {
   toIsoDate,
   type WaveSowingDate,
 } from '../../utils/sowing-date';
-import type { CylinderWaveInfo } from '../../types/cylinder-wave';
+import type {
+  CylinderWaveDateChangeInput,
+  CylinderWaveInfo,
+} from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
 import { StartDateInfo } from './StartDateInfo';
+import { WaveWarnings } from './WaveWarnings';
+import { StartDateBasisField } from './StartDateBasisField';
+import {
+  describeStartDateBasis,
+  isStartDateBasis,
+  startDateBasisError,
+  type StartDateBasis,
+} from '../../utils/start-date-basis';
 
 export interface WaveSowingDateInfoProps {
   wave: CylinderWaveInfo;
   /** The experiment's waves, to check the edited date against the others. */
   waves: WaveSowingDate[];
   onChangeDate: (
-    sowingDate: string,
-    reason?: string
+    change: Omit<CylinderWaveDateChangeInput, 'waveId' | 'phenotyperId'>
   ) => Promise<DatabaseResponse<unknown>>;
   /** A phenotyper is chosen: needed to save a change, so the log can say who. */
   phenotyperChosen: boolean;
@@ -58,15 +69,30 @@ export function WaveSowingDateInfo({
   // A box that goes away (another wave or experiment) no longer holds up Start Scan.
   useEffect(() => () => onOpenChange?.(false), [onOpenChange]);
   const [sowingDate, setSowingDate] = useState(wave.sowing_date);
+  const savedBasis = isStartDateBasis(wave.start_date_basis)
+    ? wave.start_date_basis
+    : '';
+  const [basis, setBasis] = useState<StartDateBasis | ''>(savedBasis);
+  const [basisOther, setBasisOther] = useState(
+    wave.start_date_basis_other ?? ''
+  );
   const [reason, setReason] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const hasScans = wave.scanCount > 0;
+  const describedBasis = describeStartDateBasis(
+    wave.start_date_basis,
+    wave.start_date_basis_other
+  );
 
   const others = waves.filter((w) => w.wave_number !== wave.wave_number);
   // The same rules the main process applies when saving.
+  const basisChanged =
+    basis !== savedBasis ||
+    (basis === 'other' &&
+      basisOther.trim() !== (wave.start_date_basis_other ?? ''));
   const check =
-    editing && sowingDate !== wave.sowing_date
+    editing && (sowingDate !== wave.sowing_date || basisChanged)
       ? checkSowingDateChange(
           {
             waveNumber: wave.wave_number,
@@ -74,6 +100,7 @@ export function WaveSowingDateInfo({
             newDate: sowingDate,
             reason,
             waveHasScans: hasScans,
+            basisChanged,
           },
           others,
           new Date()
@@ -85,10 +112,13 @@ export function WaveSowingDateInfo({
     !saving &&
     phenotyperChosen &&
     check !== null &&
-    !check.saveError;
+    !check.saveError &&
+    !startDateBasisError(basis, basisOther);
 
   const open = () => {
     setSowingDate(wave.sowing_date);
+    setBasis(savedBasis);
+    setBasisOther(wave.start_date_basis_other ?? '');
     setReason('');
     setSaveError(null);
     setEditing(true);
@@ -97,7 +127,12 @@ export function WaveSowingDateInfo({
     setSaving(true);
     setSaveError(null);
     try {
-      const result = await onChangeDate(sowingDate, reason.trim() || undefined);
+      const result = await onChangeDate({
+        sowingDate,
+        startDateBasis: basis,
+        startDateBasisOther: basis === 'other' ? basisOther.trim() : undefined,
+        reason: reason.trim() || undefined,
+      });
       if (result.success) setEditing(false);
       else setSaveError(result.error ?? 'Could not change the start date.');
     } catch (error) {
@@ -115,6 +150,7 @@ export function WaveSowingDateInfo({
       <p>
         Start date to compute age
         <StartDateInfo />: {formatSowingDate(wave.sowing_date)}
+        {describedBasis && ` (${describedBasis})`}
         {wave.set_by_name
           ? ` · set by ${wave.set_by_name} on ${formatSetAt(wave.set_at)}`
           : ` (set on ${formatSetAt(wave.set_at)})`}
@@ -153,6 +189,15 @@ export function WaveSowingDateInfo({
             disabled={saving || disabled}
             className="w-full px-3 py-2 border border-gray-300 rounded-md"
           />
+          <StartDateBasisField
+            basis={basis}
+            other={basisOther}
+            onChange={(next, other) => {
+              setBasis(next);
+              setBasisOther(other);
+            }}
+            disabled={saving || disabled}
+          />
           {hasScans && (
             <div
               className="text-amber-800 space-y-1"
@@ -170,7 +215,13 @@ export function WaveSowingDateInfo({
             </div>
           )}
           {check?.error && <p className="text-red-600">{check.error}</p>}
-          {check?.conflict && <p className="text-gray-700">{check.conflict}</p>}
+          {check?.conflict && (
+            <WaveWarnings warnings={[check.conflict]} otherWaves={others}>
+              <p>
+                If it is correct, give a reason for the change, then proceed.
+              </p>
+            </WaveWarnings>
+          )}
           {reasonNeeded && (
             <textarea
               aria-label="Reason"
@@ -199,7 +250,9 @@ export function WaveSowingDateInfo({
               className="px-3 py-1.5 rounded-md bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50"
               data-testid="sowing-date-edit-save"
             >
-              Save start date
+              {check?.conflict
+                ? 'Proceed with this start date'
+                : 'Save start date'}
             </button>
             <button
               type="button"

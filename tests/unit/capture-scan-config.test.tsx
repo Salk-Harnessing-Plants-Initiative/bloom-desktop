@@ -144,6 +144,8 @@ beforeEach(() => {
               id: 'wave-1',
               wave_number: 1,
               sowing_date: sownDaysAgo(14),
+              start_date_basis: 'transfer',
+              start_date_basis_other: null,
               note: null,
               set_by_name: 'Demo Phenotyper',
               set_at: '2026-01-02T09:00:00.000Z',
@@ -958,7 +960,7 @@ describe('CaptureScan plant age from the sowing date (#407)', () => {
     expect(
       await screen.findByTestId('wave-sowing-date-panel')
     ).toHaveTextContent(
-      'Please set the start date for wave 1. The plant age is counted from it.'
+      'Please set the start date for wave 1. The plant age is computed from it.'
     );
     expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
     expect(
@@ -1184,6 +1186,8 @@ describe('CaptureScan: an open age or date box holds up Start Scan (#407)', () =
           id: 'wave-1',
           wave_number: 1,
           sowing_date: sownDaysAgo(13),
+          start_date_basis: 'transfer',
+          start_date_basis_other: null,
           note: null,
           set_by_name: 'Demo Phenotyper',
           set_at: '2026-01-02T09:00:00.000Z',

@@ -107,19 +107,61 @@ export function sowingDateError(
   return null;
 }
 
+/** Something unusual the phenotyper confirms, with a note, before saving. */
+export interface WaveWarning {
+  /** "Are you sure wave 3's start date is correct?" */
+  question: string;
+  /** Why it is asked. */
+  detail: string;
+  /** What to confirm, shown in bold: "Are you sure you want to scan wave 3?" */
+  confirm?: string;
+}
+
+/** The whole warning as one sentence, for the main process's error message. */
+export function warningText(warning: WaveWarning): string {
+  return [warning.question, warning.detail, warning.confirm]
+    .filter(Boolean)
+    .join(' ');
+}
+
 export interface NewWaveCheck {
   /** The date can't be used. */
   error: string | null;
-  /** Another wave's date conflicts with this one: saving needs a note. */
+  /** The date is out of order with another wave's. */
+  dateWarning: WaveWarning | null;
+  /** The wave number skips ahead of the experiment's waves. */
+  waveWarning: WaveWarning | null;
+  /** Either warning applies, so saving needs a note: what to say without one. */
   noteNeeded: string | null;
-  /** The wave number skips ahead: saving needs the operator to confirm it. */
-  waveConfirmNeeded: string | null;
+}
+
+/**
+ * "Is the wave number correct?" when a new wave's number skips ahead of the
+ * experiment's waves (wave 3 after wave 1), or null. Asked before the start date.
+ */
+export function waveNumberWarning(
+  waveNumber: number,
+  existing: WaveSowingDate[]
+): WaveWarning | null {
+  const highest = existing.reduce(
+    (max, w) => Math.max(max, w.wave_number),
+    existing.length > 0 ? -1 : 0
+  );
+  if (waveNumber <= highest + 1) return null;
+  return {
+    question: 'Is the wave number correct?',
+    detail:
+      existing.length > 0
+        ? `Previous wave: wave ${highest}.`
+        : "This is the experiment's first wave.",
+    confirm: `Are you sure you want to scan wave ${waveNumber}?`,
+  };
 }
 
 /**
  * Checks for a new wave's sowing date against the experiment's other waves. A wave
- * sown on or before an earlier-numbered wave (or on or after a later-numbered one)
- * needs a note; a wave number that skips ahead needs a confirmation.
+ * sown on or before an earlier-numbered wave (or on or after a later-numbered one),
+ * or a wave number that skips ahead, can be saved, but only with a note.
  */
 export function checkNewWave(
   waveNumber: number,
@@ -129,36 +171,31 @@ export function checkNewWave(
 ): NewWaveCheck {
   const result: NewWaveCheck = {
     error: sowingDateError(sowingDate, today),
+    dateWarning: null,
+    waveWarning: null,
     noteNeeded: null,
-    waveConfirmNeeded: null,
   };
   if (result.error) return result;
 
-  const conflict = waveConflict(waveNumber, sowingDate, existing);
-  if (conflict) result.noteNeeded = `${conflict} Add a note saying why.`;
+  result.dateWarning = waveConflict(waveNumber, sowingDate, existing);
 
-  const highest = existing.reduce(
-    (max, w) => Math.max(max, w.wave_number),
-    existing.length > 0 ? -1 : 0
-  );
-  if (waveNumber > highest + 1) {
-    result.waveConfirmNeeded =
-      existing.length > 0
-        ? `The highest wave of this experiment so far is ${highest}. Is this really wave ${waveNumber}?`
-        : `This is the experiment's first wave. Is it really wave ${waveNumber}?`;
+  result.waveWarning = waveNumberWarning(waveNumber, existing);
+  const first = result.dateWarning ?? result.waveWarning;
+  if (first) {
+    result.noteNeeded = `${warningText(first)} Add a note to proceed.`;
   }
   return result;
 }
 
 /**
- * The first other wave whose date conflicts with this one: an earlier-numbered
+ * The first other wave whose date is out of order with this one: an earlier-numbered
  * wave sown on or after it, or a later-numbered one sown on or before it.
  */
 function waveConflict(
   waveNumber: number,
   sowingDate: string,
   others: WaveSowingDate[]
-): string | null {
+): WaveWarning | null {
   const conflict = [...others]
     .sort((a, b) => a.wave_number - b.wave_number)
     .find((w) =>
@@ -169,17 +206,17 @@ function waveConflict(
   if (!conflict) return null;
   const when =
     conflict.wave_number < waveNumber ? 'on or before' : 'on or after';
-  return (
-    `Wave ${conflict.wave_number}'s start date is ${formatSowingDate(conflict.sowing_date)}, ` +
-    `so wave ${waveNumber} would start ${when} it.`
-  );
+  return {
+    question: `Are you sure wave ${waveNumber}'s start date is correct?`,
+    detail: `It is ${when} wave ${conflict.wave_number}'s start date (${formatSowingDate(conflict.sowing_date)}).`,
+  };
 }
 
 export interface SowingDateChangeCheck {
   /** The new date can't be used, whatever the reason. */
   error: string | null;
-  /** The new date conflicts with another wave's: saving needs a reason. */
-  conflict: string | null;
+  /** The new date is out of order with another wave's: saving needs a reason. */
+  conflict: WaveWarning | null;
   /** A reason is needed: the wave has scans, or the date conflicts. */
   reasonNeeded: boolean;
   /** Why the change can't be saved with this reason, or null when it can. */
@@ -187,9 +224,10 @@ export interface SowingDateChangeCheck {
 }
 
 /**
- * The rules for changing a wave's sowing date, shared by the Edit box and the
- * main process. Before the wave's first scan no reason is needed, unless the new
- * date conflicts with another wave; after it, a reason always is.
+ * The rules for changing a wave's sowing date or what it is (its basis), shared by
+ * the Edit box and the main process. Before the wave's first scan no reason is
+ * needed, unless the new date conflicts with another wave; after it, a reason
+ * always is.
  */
 export function checkSowingDateChange(
   change: {
@@ -198,25 +236,31 @@ export function checkSowingDateChange(
     newDate: string;
     reason: string;
     waveHasScans: boolean;
+    /** What the date is changes too (or alone, with the same date). */
+    basisChanged?: boolean;
   },
   otherWaves: WaveSowingDate[],
   today: Date
 ): SowingDateChangeCheck {
   const reason = change.reason.trim();
-  const error =
-    change.newDate === change.currentDate
-      ? 'That is already the start date.'
-      : sowingDateError(change.newDate, today);
-  const found = error
-    ? null
-    : waveConflict(change.waveNumber, change.newDate, otherWaves);
-  const conflict = found ? `${found} Give a reason for the change.` : null;
+  const dateChanged = change.newDate !== change.currentDate;
+  const error = dateChanged
+    ? sowingDateError(change.newDate, today)
+    : change.basisChanged
+      ? null
+      : 'That is already the start date.';
+  // Only a new date can conflict with another wave's.
+  const conflict =
+    error || !dateChanged
+      ? null
+      : waveConflict(change.waveNumber, change.newDate, otherWaves);
   const reasonNeeded = change.waveHasScans || conflict !== null;
   const saveError =
     error ??
     (reasonNeeded && !reason
-      ? (conflict ??
-        'This wave already has scans: give a reason for the change.')
+      ? conflict
+        ? `${warningText(conflict)} Give a reason for the change.`
+        : 'This wave already has scans: give a reason for the change.'
       : reason.length > MAX_REASON_LENGTH
         ? `Keep the reason under ${MAX_REASON_LENGTH} characters.`
         : null);
