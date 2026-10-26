@@ -49,10 +49,6 @@ import {
 } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
 import { registerCylinderWaveHandlers } from './cylinder-wave-handlers';
-import {
-  earlierScans,
-  registerSowingDateBackfillHandlers,
-} from './sowing-date-backfill';
 import { parseSowingDateBackfillArgs } from './sowing-date-backfill-run';
 import { startSowingDateBackfill } from './sowing-date-backfill-cli';
 import {
@@ -110,8 +106,9 @@ if (isDeployFirstRun(process.argv, process.env)) {
 // synthetic scan to Bloom and exits, with no window, hardware or single-instance
 // lock. It writes only to the database copy it is given. See deploy-self-test.ts.
 const deploySelfTest = parseDeploySelfTestArgs(process.argv);
-// Sowing-date backfill, run by hand once after installing (#407): fills in older
-// waves' sowing dates from their earlier scans, shows the result and exits.
+// Start-date backfill, run by hand once after installing (#407): fills in older
+// waves' start dates from their earlier scans, shows the result and exits, with no
+// window or hardware (see isHeadlessRun).
 const sowingDateBackfill = parseSowingDateBackfillArgs(process.argv);
 
 // Single-instance lock (#249): two instances running concurrently against
@@ -1214,8 +1211,13 @@ ipcMain.handle('session:reset', async (): Promise<void> => {
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
+// The deploy self-test and the start-date backfill run headless: they do their own
+// start-up, so the normal app (window, database, hardware) never starts with them.
+const isHeadlessRun = (): boolean =>
+  deploySelfTest !== null || sowingDateBackfill !== null;
+
 app.on('ready', async () => {
-  if (deploySelfTest) return;
+  if (isHeadlessRun()) return;
 
   // Register the bloom-scan:// protocol handler BEFORE createWindow()'s
   // loadURL() call, closing the narrow race where the renderer could
@@ -1250,13 +1252,7 @@ app.on('ready', async () => {
       markMetadataDeleted,
       getMainWindow: () => mainWindow,
     });
-    registerCylinderWaveHandlers({
-      ipcMain,
-      db: getDatabase(),
-      earlierScans: (experimentId, waveNumber) =>
-        earlierScans(getDatabase(), experimentId, waveNumber),
-    });
-    registerSowingDateBackfillHandlers({ ipcMain, db: getDatabase() });
+    registerCylinderWaveHandlers({ ipcMain, db: getDatabase() });
     console.log('[Main] Database initialized and handlers registered');
 
     // Initialize GraviScan handlers if mode is graviscan
@@ -1356,7 +1352,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (deploySelfTest) return;
+  if (isHeadlessRun()) return;
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {

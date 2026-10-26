@@ -1,14 +1,17 @@
 /**
  * The `--backfill-sowing-dates` command (#407), without Electron so it can be
- * tested: run once by hand after installing the version that added sowing dates.
- * Waves scanned before then get the sowing date their scans imply (see
+ * tested: run once by hand after installing the version that added start dates.
+ * Waves scanned before then get the start date their scans imply (see
  * sowing-date-backfill.ts); `--dry-run` only reports. Every run, dry or not,
  * writes a report to ~/.bloom/logs so there's a record of what it did.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SowingDateBackfillResult } from '../types/cylinder-wave';
+import type {
+  SowingDateBackfillResult,
+  SowingDateBackfillWave,
+} from '../types/cylinder-wave';
 import {
   backfillSowingDates,
   type SowingDateBackfillDbLike,
@@ -16,6 +19,10 @@ import {
 
 export const BACKFILL_FLAG = '--backfill-sowing-dates';
 export const DRY_RUN_FLAG = '--dry-run';
+/** How many waves the message box lists before pointing to the report. */
+export const MAX_WAVES_SHOWN = 20;
+/** How many of a disputed wave's other dates the message box names. */
+const MAX_OTHER_DATES_SHOWN = 3;
 
 export interface SowingDateBackfillRequest {
   dryRun: boolean;
@@ -45,6 +52,14 @@ export interface SowingDateBackfillRunDeps {
   log?: (message: string) => void;
 }
 
+export interface SowingDateBackfillOutcome {
+  report: SowingDateBackfillReport;
+  /** Where the report was saved, or null if it couldn't be. */
+  reportPath: string | null;
+  /** Why the report couldn't be saved. */
+  reportError?: string;
+}
+
 /** "20261023-140512" in local time, for the report's file name. */
 function stamp(date: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -54,11 +69,11 @@ function stamp(date: Date): string {
   );
 }
 
-/** Run the backfill (or the dry run) and write its report; returns the report and its path. */
+/** Run the backfill (or the dry run) and save its report, even if some waves failed. */
 export async function runSowingDateBackfill(
   request: SowingDateBackfillRequest,
   deps: SowingDateBackfillRunDeps
-): Promise<{ report: SowingDateBackfillReport; reportPath: string }> {
+): Promise<SowingDateBackfillOutcome> {
   const ranAt = deps.now();
   const result = await backfillSowingDates(deps.db, deps.log ?? console.log, {
     dryRun: request.dryRun,
@@ -70,45 +85,94 @@ export async function runSowingDateBackfill(
     databasePath: deps.databasePath,
     ...result,
   };
-  await fs.promises.mkdir(deps.logsDir, { recursive: true });
   const reportPath = path.join(
     deps.logsDir,
     `sowing-date-backfill-${stamp(ranAt)}${request.dryRun ? '-dry-run' : ''}.json`
   );
-  await fs.promises.writeFile(reportPath, JSON.stringify(report, null, 2));
-  return { report, reportPath };
+  try {
+    await fs.promises.mkdir(deps.logsDir, { recursive: true });
+    await fs.promises.writeFile(reportPath, JSON.stringify(report, null, 2));
+    return { report, reportPath };
+  } catch (error) {
+    return {
+      report,
+      reportPath: null,
+      reportError: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+}
+
+/** True when something needs attention: a wave couldn't be set, or the report wasn't saved. */
+export function backfillHadProblems(
+  outcome: SowingDateBackfillOutcome
+): boolean {
+  return outcome.report.failed.length > 0 || outcome.reportPath === null;
+}
+
+function waveLine(w: SowingDateBackfillWave): string {
+  const base = `  ${w.experiment}, wave ${w.wave_number}: ${w.sowingDate} (${w.agreeing} of ${w.scanCount} scans)`;
+  if (!w.disputed) return base;
+  const others = w.candidates
+    .filter((c) => c.date !== w.sowingDate)
+    .slice(0, MAX_OTHER_DATES_SHOWN)
+    .map((c) => `${c.date} (${c.count})`);
+  return `${base}; others: ${others.join(', ')}`;
+}
+
+/** At most MAX_WAVES_SHOWN lines, then a pointer to the report. */
+function capped(lines: string[]): string[] {
+  if (lines.length <= MAX_WAVES_SHOWN) return lines;
+  return [
+    ...lines.slice(0, MAX_WAVES_SHOWN),
+    `  …and ${lines.length - MAX_WAVES_SHOWN} more (see the report)`,
+  ];
 }
 
 /** A short summary for the message shown at the end. */
 export function summarizeSowingDateBackfill(
-  report: SowingDateBackfillReport,
-  reportPath: string
+  outcome: SowingDateBackfillOutcome
 ): string {
-  const verb = report.dryRun ? 'Would set' : 'Set';
-  const lines = [
-    `${verb} the start date of ${report.set.length} wave(s) from their earlier scans.`,
-    ...report.set.map(
-      (w) =>
-        `  ${w.experiment}, wave ${w.wave_number}: ${w.sowingDate} (${w.agreeing} of ${w.scanCount} scans)`
-    ),
-  ];
-  if (report.leftForOperator.length > 0) {
+  const { report } = outcome;
+  const lines: string[] = [];
+  if (report.set.length === 0 && report.failed.length === 0) {
     lines.push(
-      `${report.leftForOperator.length} wave(s) left for the operator (earlier scans disagree):`,
-      ...report.leftForOperator.map(
-        (w) =>
-          `  ${w.experiment}, wave ${w.wave_number}: ` +
-          w.candidates.map((c) => `${c.date} (${c.count})`).join(', ')
+      'Every wave with scans already has a start date. Nothing to do.'
+    );
+  } else if (report.set.length > 0) {
+    const disputed = report.set.filter((w) => w.disputed).length;
+    lines.push(
+      `${report.dryRun ? 'Would set' : 'Set'} the start date of ${report.set.length} wave(s) from their earlier scans` +
+        (disputed > 0
+          ? `. In ${disputed} of them the scans disagree; the other dates are logged with the wave on the Experiments page.`
+          : '.'),
+      ...capped(report.set.map(waveLine))
+    );
+  }
+  if (report.failed.length > 0) {
+    lines.push(
+      '',
+      `Couldn't set ${report.failed.length} wave(s). Run this again to retry them:`,
+      ...capped(
+        report.failed.map(
+          (f) => `  ${f.experiment}, wave ${f.wave_number}: ${f.error}`
+        )
       )
     );
   }
-  if (report.set.length === 0 && report.leftForOperator.length === 0) {
-    lines.splice(
-      0,
-      lines.length,
-      'Every wave with scans already has a start date. Nothing to do.'
+  if (report.ageMismatches.length > 0) {
+    const waves = new Set(
+      report.ageMismatches.map((m) => `${m.experiment}\u0000${m.wave_number}`)
+    ).size;
+    lines.push(
+      '',
+      `${report.ageMismatches.length} scan(s) in ${waves} wave(s) have a typed age that doesn't match their wave's date, so it was probably typed wrongly. They are listed in the report; nothing was changed.`
     );
   }
-  lines.push('', `Report: ${reportPath}`);
+  lines.push(
+    '',
+    outcome.reportPath
+      ? `Report: ${outcome.reportPath}`
+      : `The report couldn't be saved (${outcome.reportError}). The waves above were ${report.dryRun ? 'not changed' : 'still set'}.`
+  );
   return lines.join('\n');
 }

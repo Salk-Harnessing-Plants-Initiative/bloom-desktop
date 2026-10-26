@@ -27,6 +27,11 @@ const phenotypers = [
 /** An in-memory fake of the tables the handlers use. */
 function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
   const changes: Record<string, unknown>[] = [];
+  const createWaveRow = vi.fn(async ({ data }) => {
+    const row = { id: `w${rows.length + 1}`, ...data, updatedAt: SET_AT };
+    rows.push(row);
+    return row;
+  });
   const db = {
     cylinderWave: {
       findMany: vi.fn(async ({ where }) =>
@@ -37,11 +42,7 @@ function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
       findUnique: vi.fn(
         async ({ where }) => rows.find((r) => r.id === where.id) ?? null
       ),
-      create: vi.fn(async ({ data }) => {
-        const row = { id: `w${rows.length + 1}`, ...data, updatedAt: SET_AT };
-        rows.push(row);
-        return row;
-      }),
+      create: createWaveRow,
     },
     scan: {
       groupBy: vi.fn(async ({ where }) =>
@@ -69,6 +70,7 @@ function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
     $transaction: vi.fn(async (fn) =>
       fn({
         cylinderWave: {
+          create: createWaveRow,
           update: async ({
             where,
             data,
@@ -206,10 +208,10 @@ describe('listWaves: the change log', () => {
 });
 
 describe('listWaves: who set the date', () => {
-  it('has no name when the setter is unknown', async () => {
+  it('names a date set with no phenotyper (the backfill) as set by admin', async () => {
     const { db, raw } = fakeDb([{ ...wave1, set_by_phenotyper_id: null }]);
     const result = await listWaves({ db, now }, 'exp');
-    expect(result.data?.[0].set_by_name).toBeNull();
+    expect(result.data?.[0].set_by_name).toBe('admin');
     expect(raw.phenotyper.findMany).not.toHaveBeenCalled();
   });
 });
@@ -239,6 +241,53 @@ describe('createWave', () => {
         note: null,
         set_by_phenotyper_id: 'ph-1',
       },
+    });
+  });
+
+  it('logs the first date too, in the same transaction, so the history shows who set it', async () => {
+    const result = await create({
+      phenotyperId: 'ph-1',
+      sowingDate: '2026-02-20',
+    });
+    expect(fake.raw.$transaction).toHaveBeenCalledTimes(1);
+    expect(fake.changes).toEqual([
+      {
+        id: 'c1',
+        wave_id: 'w2',
+        old_sowing_date: null,
+        new_sowing_date: '2026-02-20',
+        reason: null,
+        changed_by_phenotyper_id: 'ph-1',
+      },
+    ]);
+    expect(result.data?.changes).toEqual([
+      {
+        id: 'c1',
+        old_sowing_date: null,
+        new_sowing_date: '2026-02-20',
+        reason: null,
+        changed_by_name: 'Demo Phenotyper',
+        changed_at: EDITED_AT.toISOString(),
+      },
+    ]);
+  });
+
+  it("logs the first date's note as its reason", async () => {
+    await create({
+      sowingDate: '2025-11-26',
+      note: 'Sown the same day, scanned later',
+    });
+    expect(fake.changes[0]).toMatchObject({
+      reason: 'Sown the same day, scanned later',
+    });
+  });
+
+  it('saves nothing if the date or its log entry fails', async () => {
+    fake.raw.$transaction.mockRejectedValue(new Error('database is locked'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await create({})).toEqual({
+      success: false,
+      error: 'database is locked',
     });
   });
 
@@ -297,83 +346,6 @@ describe('createWave', () => {
       success: false,
       error: 'database is locked',
     });
-  });
-});
-
-describe('createWave and earlier scans (#407)', () => {
-  const earlier = {
-    scanCount: 100,
-    agreeing: 80,
-    candidates: [
-      { date: '2025-11-26', count: 80 },
-      { date: '2025-11-29', count: 20 },
-    ],
-    scannedWaveNumbers: [1, 2, 3],
-  };
-  const input = {
-    experimentId: 'exp',
-    waveNumber: 2,
-    phenotyperId: 'ph-1',
-  };
-
-  it('needs a note when the date is far from what the earlier scans point to', async () => {
-    const fake = fakeDb([]);
-    const deps = { db: fake.db, now, earlierScans: async () => earlier };
-    const without = await createWave(deps, {
-      ...input,
-      sowingDate: '2025-12-05',
-    });
-    expect(without.success).toBe(false);
-    expect(without.error).toMatch(
-      /^Earlier scans in wave 2 \(100\) point to a start date of .+ Add a note saying why this date is different\.$/
-    );
-    expect(
-      (
-        await createWave(deps, {
-          ...input,
-          sowingDate: '2025-12-05',
-          note: 'Checked the seed log',
-        })
-      ).success
-    ).toBe(true);
-  });
-
-  it('accepts a date within a day of what the earlier scans point to', async () => {
-    const fake = fakeDb([]);
-    const deps = { db: fake.db, now, earlierScans: async () => earlier };
-    expect(
-      (await createWave(deps, { ...input, sowingDate: '2025-11-27' })).success
-    ).toBe(true);
-  });
-
-  it('counts waves with only earlier scans when judging a skip', async () => {
-    const fake = fakeDb([]);
-    const deps = {
-      db: fake.db,
-      now,
-      earlierScans: async () => ({ ...earlier, candidates: [] }),
-    };
-    // Waves 1-3 have earlier scans, so wave 4 is not a skip, but wave 6 is.
-    expect(
-      (
-        await createWave(deps, {
-          ...input,
-          waveNumber: 4,
-          sowingDate: '2026-02-20',
-        })
-      ).success
-    ).toBe(true);
-    expect(
-      (
-        await createWave(deps, {
-          ...input,
-          waveNumber: 6,
-          sowingDate: '2026-02-21',
-        })
-      ).error
-    ).toBe(
-      'The highest wave of this experiment so far is 4. Is this really wave 6?'
-    );
   });
 });
 

@@ -64,7 +64,6 @@ import type {
   CylinderWaveCreateInput,
   CylinderWaveDateChangeInput,
   CylinderWaveInfo,
-  EarlierScansInfo,
 } from './cylinder-wave';
 import type {
   GraviScanCreateInput,
@@ -415,11 +414,6 @@ export interface DatabaseAPI {
     changeSowingDate: (
       input: CylinderWaveDateChangeInput
     ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
-    /** What a wave's scans from before sowing dates existed point to. */
-    earlierScans: (
-      experimentId: string,
-      waveNumber: number
-    ) => Promise<DatabaseResponse<EarlierScansInfo>>;
   };
   scans: {
     /**

@@ -93,15 +93,6 @@ beforeEach(() => {
         }),
         create: vi.fn(),
         changeSowingDate: vi.fn(),
-        earlierScans: vi.fn().mockResolvedValue({
-          success: true,
-          data: {
-            scanCount: 0,
-            agreeing: 0,
-            candidates: [],
-            scannedWaveNumbers: [],
-          },
-        }),
       },
       scans: {
         ...win.electron?.database?.scans,

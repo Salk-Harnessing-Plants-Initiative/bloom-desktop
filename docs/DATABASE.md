@@ -195,7 +195,7 @@ Each CylinderScan wave's start date, a local calendar date stored as `"YYYY-MM-D
 
 - a future date is refused;
 - a date on or before an earlier wave's needs a `note`;
-- once the wave has scans, the date only changes with a reason. Every change is recorded in `CylinderWaveSowingDateChange` with the old and new date, and saved scans keep their age.
+- once the wave has scans, the date only changes with a reason. Every change is recorded in `CylinderWaveSowingDateChange` with the old and new date, and saved scans keep their age. The first date is recorded too, with no old date, so the history shows who set it. An entry with no phenotyper was written by the start-date backfill, and is shown as set by admin.
 
 ```prisma
 model CylinderWave {
@@ -214,7 +214,7 @@ model CylinderWave {
 model CylinderWaveSowingDateChange {
   id                       String   @id @default(uuid())
   wave_id                  String
-  old_sowing_date          String
+  old_sowing_date          String?  // null for the wave's first date
   new_sowing_date          String
   reason                   String?
   changed_by_phenotyper_id String?

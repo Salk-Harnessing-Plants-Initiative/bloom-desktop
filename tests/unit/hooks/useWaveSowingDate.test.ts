@@ -245,26 +245,6 @@ describe('useWaveSowingDate', () => {
     expect(list).toHaveBeenCalledTimes(1);
   });
 
-  it("fetches a wave's earlier scans when it needs a sowing date", async () => {
-    const info = {
-      scanCount: 10,
-      agreeing: 10,
-      candidates: [{ date: daysAgo(14), count: 10 }],
-      scannedWaveNumbers: [2],
-    };
-    const earlierScans = vi
-      .fn()
-      .mockResolvedValue({ success: true, data: info });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global.window as any).electron.database.cylinderWaves.earlierScans =
-      earlierScans;
-    const { result } = renderHook(() =>
-      useWaveSowingDate('exp', '2', 'Sorghum_1')
-    );
-    await waitFor(() => expect(result.current.earlier).toEqual(info));
-    expect(earlierScans).toHaveBeenCalledWith('exp', 2);
-  });
-
   it('reports a failed load instead of asking for a sowing date', async () => {
     list.mockRejectedValue(new Error('ipc failed'));
     vi.spyOn(console, 'error').mockImplementation(() => {});

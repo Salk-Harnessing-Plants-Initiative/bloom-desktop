@@ -12,6 +12,7 @@ import * as path from 'path';
 import { app, dialog } from 'electron';
 import type { PrismaClient } from '@prisma/client';
 import {
+  backfillHadProblems,
   runSowingDateBackfill,
   summarizeSowingDateBackfill,
   type SowingDateBackfillRequest,
@@ -42,14 +43,17 @@ export async function startSowingDateBackfill(
   let code = EXIT_OK;
   try {
     const db = (await initializeDatabaseAsync()) as PrismaClient;
-    const { report, reportPath } = await runSowingDateBackfill(request, {
+    const outcome = await runSowingDateBackfill(request, {
       db,
       databasePath: getDatabasePath(),
       logsDir: path.join(os.homedir(), '.bloom', 'logs'),
       appVersion: app.getVersion(),
       now: () => new Date(),
     });
-    show('info', summarizeSowingDateBackfill(report, reportPath));
+    // A wave that couldn't be set, or a report that wasn't saved, needs attention.
+    const problems = backfillHadProblems(outcome);
+    show(problems ? 'error' : 'info', summarizeSowingDateBackfill(outcome));
+    if (problems) code = EXIT_FAILED;
   } catch (error) {
     show(
       'error',
@@ -59,7 +63,13 @@ export async function startSowingDateBackfill(
     );
     code = EXIT_FAILED;
   } finally {
-    await closeDatabase().catch((): undefined => undefined);
+    await closeDatabase().catch((error: unknown) =>
+      console.log(
+        `[SowingDateBackfill] Couldn't close the database: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      )
+    );
   }
   app.exit(code);
 }

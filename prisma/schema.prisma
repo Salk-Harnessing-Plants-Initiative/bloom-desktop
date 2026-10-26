@@ -330,7 +330,7 @@ model CylinderWave {
 model CylinderWaveSowingDateChange {
   id                       String   @id @default(uuid())
   wave_id                  String
-  old_sowing_date          String
+  old_sowing_date          String?
   new_sowing_date          String
   reason                   String?
   changed_by_phenotyper_id String?

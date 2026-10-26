@@ -6,7 +6,8 @@
 /** One change to a wave's sowing date, for the log on the Experiments page. */
 export interface CylinderWaveDateChange {
   id: string;
-  old_sowing_date: string;
+  /** Null for the wave's first date. */
+  old_sowing_date: string | null;
   new_sowing_date: string;
   reason: string | null;
   changed_by_name: string | null;
@@ -51,36 +52,52 @@ export interface CylinderWaveDateChangeInput {
   phenotyperId: string;
 }
 
-/** A date one or more earlier scans imply, and how many. */
-export interface ImpliedSowingDate {
+/** A start date one or more earlier scans imply, and how many. */
+export interface ImpliedStartDate {
+  /** "YYYY-MM-DD" */
   date: string;
   count: number;
 }
 
-/** What a wave's scans from before sowing dates existed point to (#407). */
-export interface EarlierScansInfo {
-  /** Earlier scans in the wave (0 when it has none, or already has a date). */
-  scanCount: number;
-  /** Scans within a day of the most common implied date. */
-  agreeing: number;
-  /** Implied sowing dates, most common first. */
-  candidates: ImpliedSowingDate[];
-  /** Every wave number of the experiment that has scans, dated or not. */
-  scannedWaveNumbers: number[];
-}
-
-/** One wave in the start-up backfill's report. */
+/** One wave in the start-date backfill's report. */
 export interface SowingDateBackfillWave {
   experiment: string;
   wave_number: number;
   scanCount: number;
+  /** Scans within a day of the date set. */
   agreeing: number;
-  /** The date set, or null when left for the operator. */
-  sowingDate: string | null;
-  candidates: ImpliedSowingDate[];
+  /** The date set: the one most of the wave's scans point to. */
+  sowingDate: string;
+  /** Fewer than 90% of the scans agree: the other dates are in the log entry's reason. */
+  disputed: boolean;
+  /** Implied dates, most common first. */
+  candidates: ImpliedStartDate[];
+}
+
+/** A wave the backfill couldn't set, and why. */
+export interface SowingDateBackfillFailure {
+  experiment: string;
+  wave_number: number;
+  error: string;
+}
+
+/**
+ * A scan whose typed age doesn't fit its wave's date (more than a day off), so it was
+ * probably typed wrongly. Listed only: saved scans keep their age.
+ */
+export interface AgeMismatch {
+  experiment: string;
+  wave_number: number;
+  plant_id: string;
+  /** The scan's local capture date, "YYYY-MM-DD". */
+  captured: string;
+  typed_age: number;
+  /** The age the wave's date gives for that capture date. */
+  age_from_date: number;
 }
 
 export interface SowingDateBackfillResult {
   set: SowingDateBackfillWave[];
-  leftForOperator: SowingDateBackfillWave[];
+  failed: SowingDateBackfillFailure[];
+  ageMismatches: AgeMismatch[];
 }
