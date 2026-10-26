@@ -132,6 +132,36 @@ Adding more stations needs no code change: steps 1–6 and 8 for each.
 
 If the test upload reports that it wrote no result while the runner runs as a service, the app may not be able to start in the service's session on that station. Run the runner from the lab account's desktop instead (`run.cmd` at sign-in) and tell the maintainers.
 
+## Start dates for experiments scanned before the update
+
+The version that calculates plant age from each wave's start date (the day the age counts from, as day 0) needs a start date for every wave. Waves scanned before that update have none. Their scans already imply it: each scan's date minus the age typed for it. Run this **once by hand** on each scanner PC **right after installing that version, before anyone scans on it**: a wave someone gives a date on Capture Scan first is skipped, so its old scans aren't checked for wrong ages. Running it again changes nothing, because waves that already have a date are never touched.
+
+Run it signed in as the station's lab account, the one that runs Bloom Desktop. To find `<version>`, list the installed versions with `dir "%LOCALAPPDATA%\bloom_desktop"` and use the newest `app-…` folder.
+
+1. Close Bloom Desktop; the command refuses to run while it's open, and it opens no window of its own.
+2. In a Command Prompt, preview what it would do. Nothing is changed:
+
+   ```
+   "%LOCALAPPDATA%\bloom_desktop\app-<version>\Bloom Desktop.exe" --backfill-sowing-dates --dry-run
+   ```
+
+3. Read the message it shows, then run it for real:
+
+   ```
+   "%LOCALAPPDATA%\bloom_desktop\app-<version>\Bloom Desktop.exe" --backfill-sowing-dates
+   ```
+
+- **Every wave with scans gets a start date:** the date most of its scans point to. It's logged as set by admin, with how it was worked out, and shows on the Experiments page, for example "Set to 12 Oct 2026 on 27 Oct 2026 by admin. Reason: Set from earlier scans (capture date minus typed age): 80 of 100 point to 12 Oct 2026; others point to 15 Oct 2026 (20 scans)."
+- **A wave whose scans disagree** (fewer than 90% within a day of that date), for example after a carried-over age (#407) or a wrong wave (#408), still gets the most common date, and its other dates are in that log entry. If you know the real date, change it with **Edit** on Capture Scan, giving a reason.
+- **Scans whose typed age doesn't match their wave's date** (more than a day off) are listed in the report, and also in a CSV next to it (`…-age-mismatches.csv`) to open in a spreadsheet. Each row has what's needed to find and fix the scan:
+  - **To find it here:** experiment and its id, wave, plant, accession, the scan id, the phenotyper and scanner, and the scan's folder.
+  - **To find it in Bloom:** the exact capture time (Bloom's `date_scanned`) and how many of its images were uploaded.
+  - **To decide the fix:** the typed age, the age the wave's date gives, the start date the typed age implies, the wave's date, and whether that wave's scans disagreed. If they did, the wave's date may be what's wrong, not the age.
+
+  Nothing is changed: saved scans keep their age, here and in Bloom.
+
+- **Every run, including a dry run, writes a report** to `%USERPROFILE%\.bloom\logs\sowing-date-backfill-<date>-<time>.json`, with the waves set, any that couldn't be set, and the scans with a mismatched age. Keep it as the record of what was done. If a wave couldn't be set (for example because the database was busy), the message says so; run the command again to retry it.
+
 ## Restoring a backup by hand
 
 Signed in as the station's lab account, use the backup folder named in the job summary (in `C:\BloomDeploy\backups\`). Scans saved on the station after that backup was made aren't in it, so stop scanning first.
