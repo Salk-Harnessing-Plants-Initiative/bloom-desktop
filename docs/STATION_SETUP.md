@@ -134,7 +134,7 @@ If the test upload reports that it wrote no result while the runner runs as a se
 
 ## Start dates for experiments scanned before the update
 
-The version that calculates plant age from each wave's start date (the day the age counts from, as day 0) needs a start date for every wave. Waves scanned before that update have none. Their scans already imply it: each scan's date minus the age typed for it. Run this **once by hand** on each scanner PC after installing that version. Running it again changes nothing, because waves that already have a date are never touched.
+The version that calculates plant age from each wave's start date (the day the age counts from, as day 0) needs a start date for every wave. Waves scanned before that update have none. Their scans already imply it: each scan's date minus the age typed for it. Run this **once by hand** on each scanner PC **right after installing that version, before anyone scans on it**: a wave someone gives a date on Capture Scan first is skipped, so its old scans aren't checked for wrong ages. Running it again changes nothing, because waves that already have a date are never touched.
 
 Run it signed in as the station's lab account, the one that runs Bloom Desktop. To find `<version>`, list the installed versions with `dir "%LOCALAPPDATA%\bloom_desktop"` and use the newest `app-…` folder.
 

@@ -302,7 +302,14 @@ describe('summarizeSowingDateBackfill', () => {
       `  Sorghum_GWAS_Group1, wave 2: ${formatSowingDate('2026-10-12')} (8 of 10 scans); others point to ${formatSowingDate('2026-10-15')} (2 scans)`
     );
     expect(text).toContain(
-      "3 scan(s) in 2 wave(s) have a typed age that doesn't match their wave's date, so it was probably typed wrongly. They are listed in the report, with what's needed to find each one here and in Bloom; nothing was changed."
+      "3 scan(s) in 2 wave(s) have a typed age that doesn't match their wave's date. They are listed in the report, with what's needed to find each one here and in Bloom; nothing was changed."
+    );
+    // PLANT_031 is in wave 1, whose other scans agree; wave 2's two are in a disputed wave.
+    expect(text).toContain(
+      '  1 in waves whose other scans agree: the typed age was probably wrong.'
+    );
+    expect(text).toContain(
+      "  2 in waves whose scans disagreed: the wave's date may be what's wrong, not the age. Check those waves on the Experiments page."
     );
     expect(text).toMatch(
       /Report: .+sowing-date-backfill-20261023-140512-dry-run\.json$/

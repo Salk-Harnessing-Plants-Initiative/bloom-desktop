@@ -210,10 +210,25 @@ export function summarizeSowingDateBackfill(
     const waves = new Set(
       report.ageMismatches.map((m) => `${m.experiment}\u0000${m.wave_number}`)
     ).size;
+    // In a wave whose scans disagreed, the date chosen may be what's wrong, not the age.
+    const inDisputed = report.ageMismatches.filter(
+      (m) => m.wave_disputed
+    ).length;
+    const inAgreeing = report.ageMismatches.length - inDisputed;
     lines.push(
       '',
-      `${report.ageMismatches.length} scan(s) in ${waves} wave(s) have a typed age that doesn't match their wave's date, so it was probably typed wrongly. They are listed in the report, with what's needed to find each one here and in Bloom; nothing was changed.`
+      `${report.ageMismatches.length} scan(s) in ${waves} wave(s) have a typed age that doesn't match their wave's date. They are listed in the report, with what's needed to find each one here and in Bloom; nothing was changed.`
     );
+    if (inAgreeing > 0) {
+      lines.push(
+        `  ${inAgreeing} in waves whose other scans agree: the typed age was probably wrong.`
+      );
+    }
+    if (inDisputed > 0) {
+      lines.push(
+        `  ${inDisputed} in waves whose scans disagreed: the wave's date may be what's wrong, not the age. Check those waves on the Experiments page.`
+      );
+    }
     if (outcome.mismatchesPath) {
       lines.push(`For a spreadsheet: ${outcome.mismatchesPath}`);
     }

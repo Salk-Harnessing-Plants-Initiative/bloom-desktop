@@ -83,7 +83,8 @@ export interface SowingDateBackfillFailure {
 
 /**
  * A scan whose typed age doesn't fit its wave's date (more than a day off), so it was
- * probably typed wrongly. Listed only: saved scans keep their age. It carries what's
+ * probably typed wrongly (or, in a wave whose scans disagreed, the wave's date is).
+ * Listed only: saved scans keep their age. It carries what's
  * needed to find the scan here and in Bloom, and to decide the fix.
  */
 export interface AgeMismatch {
