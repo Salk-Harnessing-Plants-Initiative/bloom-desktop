@@ -92,7 +92,7 @@ export function CaptureScan() {
     string | null
   >(null);
 
-  // The plant age comes from the wave's germination date (#407).
+  // The plant age comes from the plant's germination date (#407, #428).
   const setPlantAgeDays = useCallback((age: string) => {
     setMetadata((prev) =>
       prev.plantAgeDays === age ? prev : { ...prev, plantAgeDays: age }
@@ -100,7 +100,6 @@ export function CaptureScan() {
   }, []);
   const { waveDates, holdsStartScan, startScanHold, waveNote, plantAgeNote } =
     useWaveDateFields(metadata, setPlantAgeDays, isScanning);
-  const { clearForNextScan } = waveDates;
   // The scan listeners are registered once: reach the latest reload through a ref.
   const reloadWavesRef = useRef(waveDates.reload);
   reloadWavesRef.current = waveDates.reload;
@@ -430,9 +429,8 @@ export function CaptureScan() {
           setTimeout(() => setShowSuccessMessage(false), 5000);
         }
 
-        // A changed age or germination date was for this scan only.
-        clearForNextScan();
-        // The wave now has a scan: a germination-date change now needs a reason.
+        // The wave and plant now have a scan (and the plant its row): changing their
+        // dates now needs a reason.
         void reloadWavesRef.current();
 
         // Reset metadata for next scan (optional)
@@ -498,6 +496,13 @@ export function CaptureScan() {
   };
 
   const errors = validateMetadata();
+  // In a per-plant wave the age is computed from the plant's dates, entered above it:
+  // a blank age there isn't the operator's to fix, so it isn't flagged (Start Scan
+  // still waits for it).
+  const shownErrors =
+    waveDates.wave?.dates_per_plant && !metadata.plantAgeDays
+      ? { ...errors, plantAgeDays: undefined }
+      : errors;
   const isFormValid = Object.keys(errors).length === 0;
   const canStartScan =
     isFormValid &&
@@ -553,8 +558,10 @@ export function CaptureScan() {
           accession_name: metadata.accessionName || undefined,
           plant_age_days: parseInt(metadata.plantAgeDays, 10),
           wave_number: parseInt(metadata.waveNumber, 10),
-          calculated_plant_age_days: waveDates.calculatedAge ?? undefined,
-          plant_age_change_reason: waveDates.change?.reason,
+          // The plant's dates the age was computed from, for metadata.json.
+          germination_date: waveDates.plantDates?.germination_date,
+          sowing_date: waveDates.plantDates?.sowing_date ?? undefined,
+          transfer_date: waveDates.plantDates?.transfer_date ?? undefined,
           scan_path: relativePath,
         },
       });
@@ -699,11 +706,16 @@ export function CaptureScan() {
                 values={metadata}
                 onChange={setMetadata}
                 disabled={isScanning}
-                errors={errors}
+                errors={shownErrors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
                 waveNote={waveNote}
                 plantAgeReadOnly={waveDates.wave !== null}
                 plantAgeNote={plantAgeNote}
+                plantAgeLabel={
+                  waveDates.wave?.dates_per_plant
+                    ? 'Compute Plant Age (Days)'
+                    : undefined
+                }
               />
 
               {/* Duplicate Scan Warning */}

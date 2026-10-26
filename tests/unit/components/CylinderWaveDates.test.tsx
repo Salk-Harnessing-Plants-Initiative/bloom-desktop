@@ -11,6 +11,7 @@ import { CylinderWaveDates } from '../../../src/renderer/components/CylinderWave
 const wave1 = {
   id: 'w1',
   wave_number: 1,
+  dates_per_plant: false,
   germination_date: '2025-11-25',
   sowing_date: '2025-11-20',
   transfer_date: null,
@@ -44,6 +45,7 @@ const wave1 = {
       changed_at: '2025-12-02T10:00:00.000Z',
     },
   ],
+  plantsWithOwnDates: [] as unknown[],
 };
 const wave2 = {
   ...wave1,
@@ -184,6 +186,56 @@ describe('CylinderWaveDates', () => {
     );
     expect(entries[2]).toHaveTextContent(
       /^Changed: transfer the germination day → .+2026 on /
+    );
+  });
+
+  it('shows a per-plant wave, and the plants with their own dates with their history', async () => {
+    const plant = {
+      id: 'p1',
+      wave_id: 'w2',
+      plant_barcode: 'SB_017',
+      germination_date: '2026-02-22',
+      sowing_date: '2026-02-16',
+      transfer_date: null,
+      uses_wave_dates: false,
+      reason: 'Germinated two days late',
+      set_by_name: 'Demo Phenotyper',
+      set_at: '2026-02-23T09:00:00.000Z',
+      scanCount: 1,
+      changes: [
+        {
+          id: 'pc1',
+          old_germination_date: '2026-02-20',
+          new_germination_date: '2026-02-22',
+          old_sowing_date: '2026-02-16',
+          new_sowing_date: '2026-02-16',
+          old_transfer_date: null,
+          new_transfer_date: null,
+          reason: 'Germinated two days late',
+          changed_by_name: 'Demo Phenotyper',
+          changed_at: '2026-02-23T09:00:00.000Z',
+        },
+      ],
+    };
+    list.mockResolvedValue({
+      success: true,
+      data: [
+        { ...wave1, plantsWithOwnDates: [plant] },
+        {
+          ...wave2,
+          dates_per_plant: true,
+          germination_date: null,
+          sowing_date: null,
+        },
+      ],
+    });
+    render(<CylinderWaveDates experimentId="exp" />);
+    expect(await screen.findByTestId('wave-2')).toHaveTextContent(
+      /^Wave 2 Dates set for each plant · 1 scan/
+    );
+    const plants = screen.getByTestId('wave-plants-1');
+    expect(plants).toHaveTextContent(
+      /^SB_017: germinated .+ · sown .+ · transferred the germination day\. Reason: Germinated two days lateChanged: germination .+ → .+ on .+ by Demo Phenotyper/
     );
   });
 

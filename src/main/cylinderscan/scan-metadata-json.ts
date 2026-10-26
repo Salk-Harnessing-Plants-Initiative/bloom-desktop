@@ -25,10 +25,12 @@ export interface ScanMetadataJson {
   accession_name?: string;
   plant_age_days: number;
   wave_number: number;
-  /** Age calculated from the wave's germination date, when it has one (#407) */
-  calculated_plant_age_days?: number;
-  /** Why the operator changed the age from the calculated one */
-  plant_age_change_reason?: string;
+  /** The plant's germination date the age was computed from (#428) */
+  germination_date?: string;
+  /** The plant's sowing date, when known */
+  sowing_date?: string;
+  /** The plant's transfer date; absent when it's the germination day */
+  transfer_date?: string;
   capture_date: string;
   num_frames: number;
   /**
@@ -107,11 +109,12 @@ export function buildMetadataObject(
   if (meta.accession_name !== undefined) {
     result.accession_name = meta.accession_name;
   }
-  if (meta.calculated_plant_age_days !== undefined) {
-    result.calculated_plant_age_days = meta.calculated_plant_age_days;
-  }
-  if (meta.plant_age_change_reason !== undefined) {
-    result.plant_age_change_reason = meta.plant_age_change_reason;
+  for (const key of [
+    'germination_date',
+    'sowing_date',
+    'transfer_date',
+  ] as const) {
+    if (meta[key] !== undefined) result[key] = meta[key];
   }
   const scanPath = meta.scan_path ?? settings.output_path;
   if (scanPath !== undefined) {

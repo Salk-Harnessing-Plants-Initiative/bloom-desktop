@@ -167,30 +167,30 @@ describe('scan-metadata-json', () => {
       expect(metadata.accession_name).toBeUndefined();
     });
 
-    it('includes the calculated age and the reason for a changed age (#407)', () => {
+    it("records the plant's dates the age was computed from (#428)", () => {
       const base = makeScannerSettings();
       const settings = makeScannerSettings({
         metadata: {
           ...base.metadata!,
-          plant_age_days: 13,
-          calculated_plant_age_days: 14,
-          plant_age_change_reason: 'Experiment was sown later',
+          plant_age_days: 9,
+          germination_date: '2026-10-01',
+          sowing_date: '2026-09-28',
         },
       });
       const metadata = buildMetadataObject(settings, new Date());
 
-      expect(metadata.plant_age_days).toBe(13);
-      expect(metadata.calculated_plant_age_days).toBe(14);
-      expect(metadata.plant_age_change_reason).toBe(
-        'Experiment was sown later'
-      );
+      expect(metadata.plant_age_days).toBe(9);
+      expect(metadata.germination_date).toBe('2026-10-01');
+      expect(metadata.sowing_date).toBe('2026-09-28');
+      // Transferred the germination day: left out.
+      expect(metadata).not.toHaveProperty('transfer_date');
     });
 
-    it('omits the calculated age and reason for a scan without a germination date', () => {
+    it('omits the dates when none were given', () => {
       const metadata = buildMetadataObject(makeScannerSettings(), new Date());
 
-      expect(metadata).not.toHaveProperty('calculated_plant_age_days');
-      expect(metadata).not.toHaveProperty('plant_age_change_reason');
+      expect(metadata).not.toHaveProperty('germination_date');
+      expect(metadata).not.toHaveProperty('sowing_date');
     });
 
     it('prefers metadata.scan_path (relative) over output_path (absolute)', () => {

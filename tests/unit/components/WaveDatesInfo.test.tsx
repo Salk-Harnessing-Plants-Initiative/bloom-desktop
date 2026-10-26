@@ -3,7 +3,13 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { WaveDatesInfo } from '../../../src/renderer/components/WaveDatesInfo';
 
@@ -11,6 +17,7 @@ const wave2 = {
   id: 'w2',
   wave_number: 2,
   germination_date: '2026-02-20',
+  dates_per_plant: false,
   sowing_date: '2026-02-16',
   transfer_date: null,
   note: null,
@@ -18,6 +25,7 @@ const wave2 = {
   set_at: '2026-02-21T09:00:00.000Z',
   scanCount: 0,
   changes: [],
+  plantsWithOwnDates: [],
 };
 const wave1 = { wave_number: 1, germination_date: '2025-11-26' };
 
@@ -218,20 +226,125 @@ describe('WaveDatesInfo', () => {
     expect(screen.getByTestId('wave-dates-edit-save')).toBeInTheDocument();
   });
 
-  it('offers no Edit while the age is changed for this scan, and says why', () => {
-    render(
-      <WaveDatesInfo
-        wave={wave2}
-        waves={[wave1, wave2]}
-        onChangeDate={vi.fn()}
-        phenotyperChosen
-        lockedMessage="The age was changed for this scan."
-      />
-    );
-    expect(screen.queryByTestId('wave-dates-edit')).not.toBeInTheDocument();
-    expect(screen.getByTestId('wave-dates-edit-locked')).toHaveTextContent(
-      'The age was changed for this scan.'
-    );
+  describe("Edit: how the wave's dates are set", () => {
+    const perPlant = {
+      ...wave2,
+      dates_per_plant: true,
+      germination_date: null,
+      sowing_date: null,
+    };
+    const plants = [
+      {
+        id: 'p1',
+        wave_id: 'w2',
+        plant_barcode: 'SB_001',
+        germination_date: '2026-02-20',
+        sowing_date: '2026-02-16',
+        transfer_date: null,
+        uses_wave_dates: false,
+        reason: null,
+        set_by_name: 'Demo Phenotyper',
+        set_at: '2026-02-21T09:00:00.000Z',
+        scanCount: 1,
+        changes: [],
+      },
+    ];
+    function renderEdit(
+      wave: Record<string, unknown>,
+      props: Record<string, unknown> = {}
+    ) {
+      const handlers = {
+        onChangeDate: vi.fn().mockResolvedValue({ success: true }),
+        onUseSameDates: vi.fn().mockResolvedValue({ success: true }),
+        onUseDatesPerPlant: vi.fn().mockResolvedValue({ success: true }),
+        onOpenChange: vi.fn(),
+      };
+      render(
+        <WaveDatesInfo
+          wave={{ ...wave2, ...wave } as typeof wave2}
+          waves={[wave1]}
+          phenotyperChosen
+          plants={[]}
+          canUseSameDates
+          sharedPlantDates={null}
+          {...handlers}
+          {...props}
+        />
+      );
+      fireEvent.click(screen.getByTestId('wave-dates-edit'));
+      return handlers;
+    }
+
+    it('shows a per-plant wave with how many plants are set, and Edit', () => {
+      render(
+        <WaveDatesInfo
+          wave={perPlant}
+          waves={[wave1]}
+          onChangeDate={vi.fn()}
+          phenotyperChosen
+          plants={plants}
+        />
+      );
+      expect(screen.getByTestId('wave-dates-info')).toHaveTextContent(
+        /^Wave 2's dates are set for each plant1 plant set so farSet up by Demo Phenotyper on .+ · Edit$/
+      );
+    });
+
+    it("opens on the current answer, with the plants' dates set so far", () => {
+      renderEdit(perPlant, { plants });
+      expect(screen.getByTestId('dates-mode-per-plant')).toBeChecked();
+      expect(screen.getByTestId('plants-dates-list')).toHaveTextContent(
+        'SB_001: germinated Feb 20, 2026 · sown Feb 16, 2026 · transferred the same day'
+      );
+    });
+
+    it("switches a per-plant wave to the same dates for all plants, filled in with the plants' shared dates", async () => {
+      const { onUseSameDates, onOpenChange } = renderEdit(perPlant, {
+        plants,
+        sharedPlantDates: plants[0],
+      });
+      expect(onOpenChange).toHaveBeenLastCalledWith(true);
+      fireEvent.click(screen.getByTestId('dates-mode-same'));
+      expect(screen.getByLabelText('Germination date')).toHaveValue(
+        '2026-02-20'
+      );
+      fireEvent.click(screen.getByTestId('wave-dates-edit-save'));
+      await waitFor(() =>
+        expect(onUseSameDates).toHaveBeenCalledWith({
+          germinationDate: '2026-02-20',
+          sowingDate: '2026-02-16',
+          transferDate: undefined,
+          reason: undefined,
+        })
+      );
+    });
+
+    it("after scans, locks the shared dates; and can't go back when plants differ", () => {
+      renderEdit(
+        { ...perPlant, scanCount: 3 },
+        { plants, sharedPlantDates: plants[0] }
+      );
+      fireEvent.click(screen.getByTestId('dates-mode-same'));
+      expect(screen.getByTestId('same-dates-locked')).toBeInTheDocument();
+      expect(screen.getByLabelText('Germination date')).toBeDisabled();
+      cleanup();
+      renderEdit({ ...perPlant, scanCount: 3 }, { canUseSameDates: false });
+      expect(screen.getByTestId('dates-mode-same')).toBeDisabled();
+      expect(screen.getByTestId('dates-mode-question')).toHaveTextContent(
+        "This wave's plants were scanned with different dates."
+      );
+    });
+
+    it('switches a wave with the same dates to per plant, saying scanned plants keep theirs', async () => {
+      const { onUseDatesPerPlant } = renderEdit({});
+      expect(screen.getByTestId('dates-mode-same')).toBeChecked();
+      fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
+      expect(screen.getByTestId('dates-per-plant')).toHaveTextContent(
+        'Plants already scanned keep the dates they were scanned with.'
+      );
+      fireEvent.click(screen.getByTestId('wave-dates-edit-save'));
+      await waitFor(() => expect(onUseDatesPerPlant).toHaveBeenCalled());
+    });
   });
 
   it('greys out everything inside an open Edit box while scanning', () => {

@@ -13,13 +13,15 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const mockScanCreate = vi.fn().mockResolvedValue({ id: 'new-scan-id' });
+const mockScanCreate = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ id: 'new-scan-id' })
+);
 
-vi.mock('../../src/main/database', () => ({
-  getDatabase: vi.fn(() => ({
-    scan: { create: mockScanCreate },
-  })),
-}));
+vi.mock('../../src/main/database', async () => {
+  const { fakeScannerDb } = await import('./helpers/fake-scanner-db');
+  const db = fakeScannerDb(mockScanCreate, 14);
+  return { getDatabase: vi.fn(() => db) };
+});
 
 import { ScannerProcess } from '../../src/main/cylinderscan/scanner-process';
 

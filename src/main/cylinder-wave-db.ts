@@ -1,13 +1,23 @@
 /**
- * The rows and the part of the Prisma client that the CylinderScan wave handlers
- * use (cylinder-wave-handlers.ts), so tests can pass a fake.
+ * The rows and the part of the Prisma client that the CylinderScan wave and plant
+ * handlers use (cylinder-wave-handlers.ts, cylinder-plant-handlers.ts), so tests can
+ * pass a fake.
  */
+
+/** A set of dates as stored: "YYYY-MM-DD"; a null transfer date is the germination day. */
+export interface DateColumns {
+  germination_date: string;
+  sowing_date: string | null;
+  transfer_date: string | null;
+}
 
 export interface WaveRow {
   id: string;
   experiment_id: string;
   wave_number: number;
-  germination_date: string;
+  dates_per_plant: boolean;
+  /** Null when the dates are per plant. */
+  germination_date: string | null;
   sowing_date: string | null;
   transfer_date: string | null;
   note: string | null;
@@ -19,6 +29,30 @@ export interface ChangeRow {
   id: string;
   wave_id: string;
   old_germination_date: string | null;
+  new_germination_date: string | null;
+  old_sowing_date: string | null;
+  new_sowing_date: string | null;
+  old_transfer_date: string | null;
+  new_transfer_date: string | null;
+  reason: string | null;
+  changed_by_phenotyper_id: string | null;
+  changedAt: Date;
+}
+
+export interface PlantRow extends DateColumns {
+  id: string;
+  wave_id: string;
+  plant_barcode: string;
+  uses_wave_dates: boolean;
+  reason: string | null;
+  set_by_phenotyper_id: string | null;
+  updatedAt: Date;
+}
+
+export interface PlantChangeRow {
+  id: string;
+  plant_id: string;
+  old_germination_date: string | null;
   new_germination_date: string;
   old_sowing_date: string | null;
   new_sowing_date: string | null;
@@ -29,6 +63,27 @@ export interface ChangeRow {
   changedAt: Date;
 }
 
+type WaveCreateData = {
+  experiment_id: string;
+  wave_number: number;
+  dates_per_plant: boolean;
+  germination_date: string | null;
+  sowing_date: string | null;
+  transfer_date: string | null;
+  note: string | null;
+  set_by_phenotyper_id: string | null;
+};
+
+type PlantKey = {
+  wave_id_plant_barcode: { wave_id: string; plant_barcode: string };
+};
+
+type PlantData = DateColumns & {
+  uses_wave_dates: boolean;
+  reason: string | null;
+  set_by_phenotyper_id: string | null;
+};
+
 /** The part of the Prisma client the handlers use. */
 export interface CylinderWaveDbLike {
   cylinderWave: {
@@ -37,17 +92,7 @@ export interface CylinderWaveDbLike {
       orderBy: { wave_number: 'asc' };
     }) => Promise<WaveRow[]>;
     findUnique: (args: { where: { id: string } }) => Promise<WaveRow | null>;
-    create: (args: {
-      data: {
-        experiment_id: string;
-        wave_number: number;
-        germination_date: string;
-        sowing_date: string;
-        transfer_date: string | null;
-        note: string | null;
-        set_by_phenotyper_id: string | null;
-      };
-    }) => Promise<WaveRow>;
+    create: (args: { data: WaveCreateData }) => Promise<WaveRow>;
   };
   scan: {
     groupBy: (args: {
@@ -61,12 +106,28 @@ export interface CylinderWaveDbLike {
     }) => Promise<
       { experiment_id: string; wave_number: number; _count: { _all: number } }[]
     >;
+    count: (args: {
+      where: { cylinder_plant_id: { in: string[] }; deleted: boolean };
+    }) => Promise<number>;
   };
   cylinderWaveDateChange: {
     findMany: (args: {
       where: { wave_id: { in: string[] } };
       orderBy: { changedAt: 'asc' };
     }) => Promise<ChangeRow[]>;
+  };
+  cylinderPlant: {
+    findMany: (args: {
+      where: { wave_id: { in: string[] }; uses_wave_dates?: boolean };
+      orderBy: { updatedAt: 'desc' };
+    }) => Promise<PlantRow[]>;
+    findUnique: (args: { where: PlantKey }) => Promise<PlantRow | null>;
+  };
+  cylinderPlantDateChange: {
+    findMany: (args: {
+      where: { plant_id: { in: string[] } };
+      orderBy: { changedAt: 'asc' };
+    }) => Promise<PlantChangeRow[]>;
   };
   phenotyper: {
     findMany: (args: {
@@ -83,10 +144,13 @@ export interface CylinderWaveTxLike {
     update: (args: {
       where: { id: string };
       data: {
-        germination_date: string;
-        sowing_date: string;
+        /** Null when the wave's dates become per plant. */
+        germination_date: string | null;
+        sowing_date: string | null;
         transfer_date: string | null;
         set_by_phenotyper_id?: string;
+        /** Switching between one set of dates for all plants and dates per plant. */
+        dates_per_plant?: boolean;
       };
     }) => Promise<WaveRow>;
   };
@@ -95,14 +159,31 @@ export interface CylinderWaveTxLike {
       data: {
         wave_id: string;
         old_germination_date: string | null;
-        new_germination_date: string;
+        new_germination_date: string | null;
         old_sowing_date: string | null;
-        new_sowing_date: string;
+        new_sowing_date: string | null;
         old_transfer_date: string | null;
         new_transfer_date: string | null;
         reason: string | null;
         changed_by_phenotyper_id: string | null;
       };
+    }) => Promise<unknown>;
+  };
+  cylinderPlant: {
+    create: (args: {
+      data: PlantData & { wave_id: string; plant_barcode: string };
+    }) => Promise<PlantRow>;
+    update: (args: { where: PlantKey; data: PlantData }) => Promise<PlantRow>;
+    /** A correction to the wave's dates reaches the plants still on them. */
+    updateMany: (args: {
+      where: { wave_id: string; uses_wave_dates: true };
+      /** The wave's corrected dates, or uses_wave_dates: false when it goes per plant. */
+      data: DateColumns | { uses_wave_dates: false };
+    }) => Promise<{ count: number }>;
+  };
+  cylinderPlantDateChange: {
+    create: (args: {
+      data: Omit<PlantChangeRow, 'id' | 'changedAt'>;
     }) => Promise<unknown>;
   };
 }

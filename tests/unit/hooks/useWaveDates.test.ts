@@ -13,10 +13,28 @@ const daysAgo = (n: number) => {
 const wave = (n: number, sownDaysAgo: number) => ({
   id: `w${n}`,
   wave_number: n,
+  dates_per_plant: false,
   germination_date: daysAgo(sownDaysAgo),
+  sowing_date: daysAgo(sownDaysAgo + 3),
+  transfer_date: null,
   note: null,
   set_by_name: 'Demo Phenotyper',
   set_at: '2026-01-02T09:00:00.000Z',
+  scanCount: 0,
+  changes: [],
+  plantsWithOwnDates: [],
+});
+const plant = (barcode: string, germinatedDaysAgo: number) => ({
+  id: `p-${barcode}`,
+  wave_id: 'w1',
+  plant_barcode: barcode,
+  germination_date: daysAgo(germinatedDaysAgo),
+  sowing_date: daysAgo(12),
+  transfer_date: null,
+  uses_wave_dates: false,
+  reason: 'Germinated late',
+  set_by_name: 'Demo Phenotyper',
+  set_at: '2026-01-03T09:00:00.000Z',
   scanCount: 0,
   changes: [],
 });
@@ -24,6 +42,8 @@ const wave = (n: number, sownDaysAgo: number) => ({
 describe('useWaveDates', () => {
   let list: ReturnType<typeof vi.fn>;
   let create: ReturnType<typeof vi.fn>;
+  let plants: ReturnType<typeof vi.fn>;
+  let setDates: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     list = vi.fn().mockResolvedValue({ success: true, data: [wave(1, 9)] });
@@ -34,6 +54,16 @@ describe('useWaveDates', () => {
       create,
       changeDates: vi.fn(),
     };
+    plants = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: [plant('Sorghum_2', 7)] });
+    setDates = vi.fn().mockResolvedValue({ success: true, data: null });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (global.window as any).electron.database.cylinderPlants = {
+      list: plants,
+      setDates,
+      useWaveDates: vi.fn().mockResolvedValue({ success: true, data: null }),
+    };
   });
 
   it('calculates the age from the entered wave germination date', async () => {
@@ -41,9 +71,85 @@ describe('useWaveDates', () => {
     expect(result.current.loading).toBe(true);
     await waitFor(() => expect(result.current.wave?.wave_number).toBe(1));
     expect(list).toHaveBeenCalledWith('exp');
+    // Sorghum_1 has no row of its own: the wave's germination date.
     expect(result.current.calculatedAge).toBe(9);
-    expect(result.current.ageToUse).toBe(9);
+    expect(result.current.plant).toBeNull();
     expect(result.current.needsWaveDates).toBe(false);
+    expect(plants).toHaveBeenCalledWith('w1');
+  });
+
+  it("uses a plant's own germination date when it has one", async () => {
+    const { result } = renderHook(() => useWaveDates('exp', '1', 'Sorghum_2'));
+    await waitFor(() => expect(result.current.plant).not.toBeNull());
+    expect(result.current.calculatedAge).toBe(7);
+    expect(result.current.plantDates?.germination_date).toBe(daysAgo(7));
+  });
+
+  it("asks for a plant's dates in a per-plant wave, offering the previous plant's", async () => {
+    list.mockResolvedValue({
+      success: true,
+      data: [{ ...wave(1, 9), dates_per_plant: true, germination_date: null }],
+    });
+    const { result } = renderHook(() => useWaveDates('exp', '1', 'Sorghum_9'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.needsPlantDates).toBe(true);
+    expect(result.current.calculatedAge).toBeNull();
+    expect(result.current.previousPlantDates?.germination_date).toBe(
+      daysAgo(7)
+    );
+  });
+
+  it('offers "same dates for all plants" on a per-plant wave before its first scan, or when its plants share their dates', async () => {
+    const perPlant = (scanCount: number) => ({
+      ...wave(1, 9),
+      dates_per_plant: true,
+      germination_date: null,
+      scanCount,
+    });
+    list.mockResolvedValue({ success: true, data: [perPlant(0)] });
+    const { result, rerender } = renderHook(
+      ({ exp }) => useWaveDates(exp, '1', 'Sorghum_2'),
+      { initialProps: { exp: 'exp' } }
+    );
+    await waitFor(() => expect(result.current.plant).not.toBeNull());
+    expect(result.current.canUseSameDates).toBe(true);
+    // One plant: its dates are the shared ones.
+    expect(result.current.sharedPlantDates?.germination_date).toBe(daysAgo(7));
+
+    // Scanned, with plants on different dates: not offered.
+    list.mockResolvedValue({ success: true, data: [perPlant(4)] });
+    plants.mockResolvedValue({
+      success: true,
+      data: [plant('Sorghum_2', 7), plant('Sorghum_3', 8)],
+    });
+    rerender({ exp: 'exp-2' });
+    await waitFor(() => expect(result.current.plant).not.toBeNull());
+    expect(result.current.sharedPlantDates).toBeNull();
+    expect(result.current.canUseSameDates).toBe(false);
+  });
+
+  it("saves the entered plant's dates as the phenotyper, then reloads", async () => {
+    const { result } = renderHook(() =>
+      useWaveDates('exp', '1', ' Sorghum_1 ', 'ph-1')
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    plants.mockClear();
+    await act(async () => {
+      await result.current.savePlantDates({
+        germinationDate: daysAgo(8),
+        sowingDate: daysAgo(12),
+        reason: 'Germinated a day late',
+      });
+    });
+    expect(setDates).toHaveBeenCalledWith({
+      germinationDate: daysAgo(8),
+      sowingDate: daysAgo(12),
+      reason: 'Germinated a day late',
+      waveId: 'w1',
+      plantBarcode: 'Sorghum_1',
+      phenotyperId: 'ph-1',
+    });
+    expect(plants).toHaveBeenCalledWith('w1');
   });
 
   it('asks for the germination date of a wave that has none', async () => {
@@ -58,57 +164,6 @@ describe('useWaveDates', () => {
     expect(result.current.needsWaveDates).toBe(false);
     expect(result.current.loading).toBe(false);
     expect(list).not.toHaveBeenCalled();
-  });
-
-  it('uses a changed age for one plant only', async () => {
-    const { result, rerender } = renderHook((props) => useWaveDates(...props), {
-      initialProps: ['exp', '1', 'Sorghum_1'] as [string, string, string],
-    });
-    await waitFor(() => expect(result.current.calculatedAge).toBe(9));
-    act(() =>
-      result.current.setChange({ age: 8, reason: 'Experiment was sown later' })
-    );
-    expect(result.current.ageToUse).toBe(8);
-    rerender(['exp', '1', 'Sorghum_2']);
-    await waitFor(() => expect(result.current.change).toBeNull());
-    expect(result.current.ageToUse).toBe(9);
-  });
-
-  it('drops a changed age when the phenotyper changes', async () => {
-    const { result, rerender } = renderHook((props) => useWaveDates(...props), {
-      initialProps: ['exp', '1', 'Sorghum_1', 'ph-1'] as [
-        string,
-        string,
-        string,
-        string,
-      ],
-    });
-    await waitFor(() => expect(result.current.calculatedAge).toBe(9));
-    act(() =>
-      result.current.setChange({ age: 8, reason: 'Experiment was sown later' })
-    );
-    rerender(['exp', '1', 'Sorghum_1', 'ph-2']);
-    await waitFor(() => expect(result.current.change).toBeNull());
-  });
-
-  it('drops a changed age when the experiment or the wave changes', async () => {
-    list.mockResolvedValue({ success: true, data: [wave(1, 9), wave(2, 5)] });
-    const { result, rerender } = renderHook((props) => useWaveDates(...props), {
-      initialProps: ['exp', '1', 'Sorghum_1'] as [string, string, string],
-    });
-    await waitFor(() => expect(result.current.calculatedAge).toBe(9));
-    const changed = { age: 8, reason: 'Experiment was sown later' };
-
-    act(() => result.current.setChange(changed));
-    rerender(['exp', '2', 'Sorghum_1']);
-    await waitFor(() => expect(result.current.calculatedAge).toBe(5));
-    expect(result.current.change).toBeNull();
-    expect(result.current.ageToUse).toBe(5);
-
-    act(() => result.current.setChange(changed));
-    rerender(['exp-2', '2', 'Sorghum_1']);
-    await waitFor(() => expect(list).toHaveBeenCalledWith('exp-2'));
-    expect(result.current.change).toBeNull();
   });
 
   it('saves a new wave for the entered experiment and wave, then reloads', async () => {
@@ -153,69 +208,6 @@ describe('useWaveDates', () => {
       phenotyperId: 'ph-1',
     });
     expect(list).toHaveBeenCalledWith('exp');
-  });
-
-  it('after a date change, drops a changed age and records that the date changed', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global.window as any).electron.database.cylinderWaves.changeDates = vi
-      .fn()
-      .mockResolvedValue({ success: true });
-    const { result, rerender } = renderHook((props) => useWaveDates(...props), {
-      initialProps: ['exp', '1', 'Sorghum_1', 'ph-1'] as [
-        string,
-        string,
-        string,
-        string,
-      ],
-    });
-    await waitFor(() => expect(result.current.wave).not.toBeNull());
-    expect(result.current.dateChanged).toBe(false);
-    act(() =>
-      result.current.setChange({ age: 8, reason: 'Experiment was sown later' })
-    );
-    list.mockResolvedValue({ success: true, data: [wave(1, 8)] });
-    await act(async () => {
-      await result.current.changeDate(daysAgo(8));
-    });
-    expect(result.current.change).toBeNull();
-    expect(result.current.dateChanged).toBe(true);
-    expect(result.current.ageToUse).toBe(8);
-
-    // The next plant starts with nothing changed.
-    rerender(['exp', '1', 'Sorghum_2', 'ph-1']);
-    await waitFor(() => expect(result.current.dateChanged).toBe(false));
-  });
-
-  it('clears both changes for the next scan', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global.window as any).electron.database.cylinderWaves.changeDates = vi
-      .fn()
-      .mockResolvedValue({ success: true });
-    const { result } = renderHook(() =>
-      useWaveDates('exp', '1', 'Sorghum_1', 'ph-1')
-    );
-    await waitFor(() => expect(result.current.wave).not.toBeNull());
-    await act(async () => {
-      await result.current.changeDate(daysAgo(8));
-    });
-    expect(result.current.dateChanged).toBe(true);
-    act(() => result.current.clearForNextScan());
-    expect(result.current.dateChanged).toBe(false);
-  });
-
-  it('does not record a date change that was refused', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global.window as any).electron.database.cylinderWaves.changeDates = vi
-      .fn()
-      .mockResolvedValue({ success: false, error: 'database is locked' });
-    const { result } = renderHook(() =>
-      useWaveDates('exp', '1', 'Sorghum_1', 'ph-1')
-    );
-    await waitFor(() => expect(result.current.wave).not.toBeNull());
-    await act(async () => {
-      await result.current.changeDate(daysAgo(8));
-    });
-    expect(result.current.dateChanged).toBe(false);
   });
 
   it('reloads the waves on request', async () => {

@@ -10,6 +10,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { formatWaveDate } from '../../utils/wave-dates';
 import type {
+  CylinderPlantDateChange,
+  CylinderPlantInfo,
   CylinderWaveDateChange,
   CylinderWaveInfo,
 } from '../../types/cylinder-wave';
@@ -38,7 +40,10 @@ function transferText(date: string | null): string {
 }
 
 /** What a log entry set or changed, e.g. "germination 9 Oct → 12 Oct; sowing 5 Oct → 6 Oct". */
-function changedDates(change: CylinderWaveDateChange): string {
+function changedDates(
+  change: CylinderWaveDateChange | CylinderPlantDateChange
+): string {
+  if (change.new_germination_date === null) return 'dates per plant';
   if (change.old_germination_date === null) {
     return [
       `germination ${formatWaveDate(change.new_germination_date)}`,
@@ -52,7 +57,7 @@ function changedDates(change: CylinderWaveDateChange): string {
   const parts: string[] = [];
   if (change.old_germination_date !== change.new_germination_date) {
     parts.push(
-      `germination ${formatWaveDate(change.old_germination_date)} → ${formatWaveDate(change.new_germination_date)}`
+      `germination ${formatWaveDate(change.old_germination_date)} → ${formatWaveDate(change.new_germination_date ?? '')}`
     );
   }
   if (change.old_sowing_date !== change.new_sowing_date) {
@@ -68,7 +73,11 @@ function changedDates(change: CylinderWaveDateChange): string {
   return parts.join('; ');
 }
 
-function ChangeLogEntry({ change }: { change: CylinderWaveDateChange }) {
+function ChangeLogEntry({
+  change,
+}: {
+  change: CylinderWaveDateChange | CylinderPlantDateChange;
+}) {
   return (
     <li>
       {change.old_germination_date === null ? 'Set: ' : 'Changed: '}
@@ -76,6 +85,51 @@ function ChangeLogEntry({ change }: { change: CylinderWaveDateChange }) {
       {change.changed_by_name ? ` by ${change.changed_by_name}` : ''}
       {change.reason ? `. Reason: ${change.reason}` : ''}
     </li>
+  );
+}
+
+/** A wave's plants with their own dates, each with its dates, reason and history. */
+function PlantsWithOwnDates({
+  waveNumber,
+  plants,
+  perPlant,
+}: {
+  waveNumber: number;
+  plants: CylinderPlantInfo[];
+  perPlant: boolean;
+}) {
+  return (
+    <details className="text-xs text-gray-600">
+      <summary className="cursor-pointer font-semibold text-green-800">
+        {perPlant ? 'Plants' : 'Plants with their own dates'} ({plants.length})
+      </summary>
+      <ul
+        className="ml-4 mt-1 space-y-1"
+        data-testid={`wave-plants-${waveNumber}`}
+      >
+        {[...plants]
+          .sort((a, b) => a.plant_barcode.localeCompare(b.plant_barcode))
+          .map((plant) => (
+            <li key={plant.id}>
+              <span className="font-semibold text-gray-800">
+                {plant.plant_barcode}
+              </span>
+              : germinated {formatWaveDate(plant.germination_date)}
+              {plant.sowing_date &&
+                ` · sown ${formatWaveDate(plant.sowing_date)}`}
+              {` · transferred ${transferText(plant.transfer_date)}`}
+              {plant.reason ? `. Reason: ${plant.reason}` : ''}
+              {plant.changes.length > 0 && (
+                <ul className="ml-4 text-gray-500">
+                  {plant.changes.map((change) => (
+                    <ChangeLogEntry key={change.id} change={change} />
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+      </ul>
+    </details>
   );
 }
 
@@ -125,13 +179,21 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
                 Wave {wave.wave_number}
               </span>
               {'  '}
-              Germinated {formatWaveDate(wave.germination_date)}
+              {wave.dates_per_plant || !wave.germination_date ? (
+                'Dates set for each plant'
+              ) : (
+                <>
+                  Germinated {formatWaveDate(wave.germination_date)}
+                  <span className="text-gray-500">
+                    {wave.sowing_date &&
+                      ` · sown ${formatWaveDate(wave.sowing_date)}`}
+                    {wave.transfer_date
+                      ? ` · transferred ${formatWaveDate(wave.transfer_date)}`
+                      : ' · transferred the same day'}
+                  </span>
+                </>
+              )}
               <span className="text-gray-500">
-                {wave.sowing_date &&
-                  ` · sown ${formatWaveDate(wave.sowing_date)}`}
-                {wave.transfer_date
-                  ? ` · transferred ${formatWaveDate(wave.transfer_date)}`
-                  : ' · transferred the same day'}
                 {wave.scanCount > 0 &&
                   ` · ${wave.scanCount} ${wave.scanCount === 1 ? 'scan' : 'scans'}`}
               </span>
@@ -161,6 +223,13 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
                   ))}
                 </ul>
               </details>
+            )}
+            {wave.plantsWithOwnDates.length > 0 && (
+              <PlantsWithOwnDates
+                waveNumber={wave.wave_number}
+                plants={wave.plantsWithOwnDates}
+                perPlant={wave.dates_per_plant}
+              />
             )}
           </li>
         ))}

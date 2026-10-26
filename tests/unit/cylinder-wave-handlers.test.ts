@@ -4,104 +4,24 @@ import {
   createWave,
   listWaves,
   registerCylinderWaveHandlers,
-  type CylinderWaveDbLike,
 } from '../../src/main/cylinder-wave-handlers';
 
-interface Row {
-  id: string;
-  experiment_id: string;
-  wave_number: number;
-  germination_date: string;
-  sowing_date: string | null;
-  transfer_date: string | null;
-  note: string | null;
-  set_by_phenotyper_id: string | null;
-  updatedAt: Date;
-}
+import {
+  fakeCylinderDb,
+  SET_AT,
+  EDITED_AT,
+  type FakeWave as Row,
+} from './helpers/fake-cylinder-db';
 
-const SET_AT = new Date(2026, 0, 2, 9);
-const EDITED_AT = new Date(2026, 2, 10, 12);
-const phenotypers = [
-  { id: 'ph-1', name: 'Demo Phenotyper' },
-  { id: 'ph-2', name: 'Second Phenotyper' },
-];
-
-/** An in-memory fake of the tables the handlers use. */
-function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
-  const changes: Record<string, unknown>[] = [];
-  const createWaveRow = vi.fn(async ({ data }) => {
-    const row = { id: `w${rows.length + 1}`, ...data, updatedAt: SET_AT };
-    rows.push(row);
-    return row;
-  });
-  const db = {
-    cylinderWave: {
-      findMany: vi.fn(async ({ where }) =>
-        rows
-          .filter((r) => r.experiment_id === where.experiment_id)
-          .sort((a, b) => a.wave_number - b.wave_number)
-      ),
-      findUnique: vi.fn(
-        async ({ where }) => rows.find((r) => r.id === where.id) ?? null
-      ),
-      create: createWaveRow,
-    },
-    scan: {
-      groupBy: vi.fn(async ({ where }) =>
-        Object.entries(scanCounts)
-          .map(([wave, n]) => ({
-            experiment_id: 'exp',
-            wave_number: Number(wave),
-            _count: { _all: n },
-          }))
-          .filter((c) => where.wave_number.in.includes(c.wave_number))
-      ),
-    },
-    cylinderWaveDateChange: {
-      findMany: vi.fn(async ({ where }) =>
-        changes
-          .filter((c) => where.wave_id.in.includes(c.wave_id))
-          .map((c) => ({ changedAt: EDITED_AT, ...c }))
-      ),
-    },
-    phenotyper: {
-      findMany: vi.fn(async ({ where }) =>
-        phenotypers.filter((p) => where.id.in.includes(p.id))
-      ),
-    },
-    $transaction: vi.fn(async (fn) =>
-      fn({
-        cylinderWave: {
-          create: createWaveRow,
-          update: async ({
-            where,
-            data,
-          }: {
-            where: { id: string };
-            data: Record<string, unknown>;
-          }) => {
-            const row = rows.find((r) => r.id === where.id)!;
-            Object.assign(row, data, { updatedAt: EDITED_AT });
-            return row;
-          },
-        },
-        cylinderWaveDateChange: {
-          create: async ({ data }: { data: Record<string, unknown> }) => {
-            changes.push({ id: `c${changes.length + 1}`, ...data });
-            return data;
-          },
-        },
-      })
-    ),
-  };
-  return { db: db as unknown as CylinderWaveDbLike, raw: db, rows, changes };
-}
+const fakeDb = (rows: Row[], scanCounts: Record<number, number> = {}) =>
+  fakeCylinderDb(rows, scanCounts);
 
 const now = () => new Date(2026, 2, 10, 12);
 const wave1: Row = {
   id: 'w1',
   experiment_id: 'exp',
   wave_number: 1,
+  dates_per_plant: false,
   germination_date: '2025-11-26',
   sowing_date: '2025-10-01',
   transfer_date: null,
@@ -120,6 +40,7 @@ describe('listWaves', () => {
         {
           id: 'w1',
           wave_number: 1,
+          dates_per_plant: false,
           germination_date: '2025-11-26',
           sowing_date: '2025-10-01',
           transfer_date: null,
@@ -128,6 +49,7 @@ describe('listWaves', () => {
           set_at: SET_AT.toISOString(),
           scanCount: 72,
           changes: [],
+          plantsWithOwnDates: [],
         },
       ],
     });
@@ -253,6 +175,7 @@ describe('createWave', () => {
     expect(fake.raw.cylinderWave.create).toHaveBeenCalledWith({
       data: {
         experiment_id: 'exp',
+        dates_per_plant: false,
         wave_number: 2,
         germination_date: '2026-02-20',
         sowing_date: '2025-10-01',
@@ -723,6 +646,128 @@ describe('the three dates', () => {
       )
     ).toEqual({ success: false, error: 'Enter the sowing date.' });
     expect(fake.changes).toEqual([]);
+  });
+});
+
+describe('waves whose dates are per plant, and plants following the wave', () => {
+  const plant = (
+    id: string,
+    barcode: string,
+    usesWaveDates: boolean,
+    germination: string
+  ) => ({
+    id,
+    wave_id: 'w1',
+    plant_barcode: barcode,
+    germination_date: germination,
+    sowing_date: '2025-10-01',
+    transfer_date: null,
+    uses_wave_dates: usesWaveDates,
+    reason: usesWaveDates ? null : 'Germinated late',
+    set_by_phenotyper_id: 'ph-1',
+    updatedAt: SET_AT,
+  });
+
+  it('saves a per-plant wave with no dates, logged as set up', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    const result = await createWave(
+      { db: fake.db, now },
+      {
+        experimentId: 'exp',
+        waveNumber: 2,
+        datesPerPlant: true,
+        phenotyperId: 'ph-1',
+      }
+    );
+    expect(result.data).toMatchObject({
+      dates_per_plant: true,
+      germination_date: null,
+      sowing_date: null,
+      transfer_date: null,
+    });
+    expect(fake.changes[0]).toMatchObject({
+      old_germination_date: null,
+      new_germination_date: null,
+    });
+  });
+
+  it('still needs a note for a per-plant wave whose number skips ahead', async () => {
+    const fake = fakeDb([{ ...wave1 }]);
+    const deps = { db: fake.db, now };
+    const input = {
+      experimentId: 'exp',
+      waveNumber: 4,
+      datesPerPlant: true,
+      phenotyperId: 'ph-1',
+    };
+    expect((await createWave(deps, input)).error).toMatch(
+      /^Is the wave number correct\? .+ Add a note to proceed\.$/
+    );
+    expect(
+      (await createWave(deps, { ...input, note: 'Waves 2 and 3 elsewhere' }))
+        .success
+    ).toBe(true);
+  });
+
+  it("refuses to change a per-plant wave's dates", async () => {
+    const fake = fakeDb([
+      {
+        ...wave1,
+        dates_per_plant: true,
+        germination_date: null,
+        sowing_date: null,
+      },
+    ]);
+    expect(
+      await changeDates(
+        { db: fake.db, now },
+        {
+          phenotyperId: 'ph-1',
+          waveId: 'w1',
+          germinationDate: '2025-11-27',
+          sowingDate: '2025-10-01',
+        }
+      )
+    ).toEqual({
+      success: false,
+      error: "This wave's dates are per plant: change them for each plant.",
+    });
+  });
+
+  it("passes a correction on to plants still on the wave's dates, not to plants with their own", async () => {
+    const plants = [
+      plant('p1', 'SB_001', true, '2025-11-26'),
+      plant('p2', 'SB_002', false, '2025-11-29'),
+    ];
+    const fake = fakeCylinderDb([{ ...wave1 }], {}, plants);
+    const result = await changeDates(
+      { db: fake.db, now },
+      {
+        phenotyperId: 'ph-1',
+        waveId: 'w1',
+        germinationDate: '2025-11-27',
+        sowingDate: '2025-10-01',
+      }
+    );
+    expect(result.success).toBe(true);
+    expect(plants[0].germination_date).toBe('2025-11-27');
+    expect(plants[1].germination_date).toBe('2025-11-29');
+  });
+
+  it('lists the plants with their own dates under each wave', async () => {
+    const fake = fakeCylinderDb([{ ...wave1 }], {}, [
+      plant('p1', 'SB_001', true, '2025-11-26'),
+      plant('p2', 'SB_002', false, '2025-11-29'),
+    ]);
+    const result = await listWaves({ db: fake.db, now }, 'exp');
+    expect(result.data?.[0].plantsWithOwnDates).toEqual([
+      expect.objectContaining({
+        plant_barcode: 'SB_002',
+        germination_date: '2025-11-29',
+        reason: 'Germinated late',
+        set_by_name: 'Demo Phenotyper',
+      }),
+    ]);
   });
 });
 

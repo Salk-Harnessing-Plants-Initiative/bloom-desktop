@@ -4,7 +4,6 @@ import {
   checkWaveDateChange,
   formatDays,
   isIsoDate,
-  plantAgeChangeError,
   plantAgeDays,
   germinationDateError,
   waveDatesError,
@@ -315,56 +314,6 @@ describe('checkWaveDateChange: sowing and transfer', () => {
         today
       ).error
     ).toBe('The sowing date must be before the germination date.');
-  });
-});
-
-describe('plantAgeChangeError', () => {
-  it('accepts the calculated age, and a changed age with a reason', () => {
-    expect(
-      plantAgeChangeError({ plant_age_days: 9, calculated_plant_age_days: 9 })
-    ).toBeNull();
-    expect(
-      plantAgeChangeError({
-        plant_age_days: 8,
-        calculated_plant_age_days: 9,
-        plant_age_change_reason: 'Sown a day later',
-      })
-    ).toBeNull();
-    // Scans without a germination date (e.g. older callers) have nothing to check.
-    expect(plantAgeChangeError({ plant_age_days: 9 })).toBeNull();
-  });
-
-  it('refuses a changed age without a reason, and a reason without a change', () => {
-    expect(
-      plantAgeChangeError({
-        plant_age_days: 8,
-        calculated_plant_age_days: 9,
-        plant_age_change_reason: ' ',
-      })
-    ).toBe('A changed plant age needs a reason.');
-    expect(
-      plantAgeChangeError({
-        plant_age_days: 9,
-        calculated_plant_age_days: 9,
-        plant_age_change_reason: 'Sown a day later',
-      })
-    ).toBe("A reason was given, but the age wasn't changed.");
-    expect(
-      plantAgeChangeError({
-        plant_age_days: 9,
-        plant_age_change_reason: 'Sown a day later',
-      })
-    ).toMatch(/without a calculated age/);
-  });
-
-  it('refuses an over-long reason', () => {
-    expect(
-      plantAgeChangeError({
-        plant_age_days: 8,
-        calculated_plant_age_days: 9,
-        plant_age_change_reason: 'x'.repeat(501),
-      })
-    ).toMatch(/under 500/);
   });
 });
 

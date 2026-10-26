@@ -43,6 +43,8 @@ export interface MetadataFormProps {
   plantAgeReadOnly?: boolean;
   /** Shown under the plant age, e.g. where it came from */
   plantAgeNote?: ReactNode;
+  /** The plant age field's label, e.g. "Compute Plant Age (Days)" for a per-plant wave */
+  plantAgeLabel?: string;
   /** Shown under the wave number, e.g. the box asking for its germination date */
   waveNote?: ReactNode;
 }
@@ -55,6 +57,7 @@ export function MetadataForm({
   onBarcodeValidationChange,
   plantAgeReadOnly = false,
   plantAgeNote,
+  plantAgeLabel = 'Plant Age (Days)',
   waveNote,
 }: MetadataFormProps) {
   // State for experiment's accession ID (fetched when experiment changes)
@@ -214,7 +217,7 @@ export function MetadataForm({
       {/* Plant Age (Days) */}
       <div>
         <label htmlFor="plantAgeDays" className={labelClassName}>
-          Plant Age (Days) <span className="text-red-500">*</span>
+          {plantAgeLabel} <span className="text-red-500">*</span>
         </label>
         <input
           id="plantAgeDays"

@@ -47,6 +47,10 @@ import type { GraviWedgeEvent } from '../types/graviscan';
 import type {
   CylinderWaveCreateInput,
   CylinderWaveDateChangeInput,
+  CylinderPlantDatesInput,
+  CylinderPlantUseWaveDatesInput,
+  CylinderWaveSameDatesInput,
+  CylinderWaveDatesPerPlantInput,
 } from '../types/cylinder-wave';
 
 /**
@@ -224,6 +228,18 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:cylinderWaves:create', input),
     changeDates: (input: CylinderWaveDateChangeInput) =>
       ipcRenderer.invoke('db:cylinderWaves:changeDates', input),
+    useSameDates: (input: CylinderWaveSameDatesInput) =>
+      ipcRenderer.invoke('db:cylinderWaves:useSameDates', input),
+    useDatesPerPlant: (input: CylinderWaveDatesPerPlantInput) =>
+      ipcRenderer.invoke('db:cylinderWaves:useDatesPerPlant', input),
+  },
+  cylinderPlants: {
+    list: (waveId: string) =>
+      ipcRenderer.invoke('db:cylinderPlants:list', waveId),
+    setDates: (input: CylinderPlantDatesInput) =>
+      ipcRenderer.invoke('db:cylinderPlants:setDates', input),
+    useWaveDates: (input: CylinderPlantUseWaveDatesInput) =>
+      ipcRenderer.invoke('db:cylinderPlants:useWaveDates', input),
   },
   scans: {
     list: (filters?: ScanFilters | PaginatedScanFilters) =>

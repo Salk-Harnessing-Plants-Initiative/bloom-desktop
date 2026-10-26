@@ -17,7 +17,8 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export interface WaveGerminationDate {
   wave_number: number;
-  germination_date: string;
+  /** Null for a wave whose dates are per plant. */
+  germination_date: string | null;
 }
 
 /** The parts of a "YYYY-MM-DD" date, or null when it isn't a real calendar date. */
@@ -63,33 +64,6 @@ export function formatWaveDate(date: string): string {
     undefined,
     { day: 'numeric', month: 'short', year: 'numeric' }
   );
-}
-
-/**
- * What's wrong with a scan's plant age fields, or null: a changed age needs a
- * reason, a reason needs a changed age, and the reason has a length limit.
- * Checked in the main process before scanning, since the renderer can't be trusted.
- */
-export function plantAgeChangeError(scan: {
-  plant_age_days: number;
-  calculated_plant_age_days?: number;
-  plant_age_change_reason?: string;
-}): string | null {
-  const reason = scan.plant_age_change_reason?.trim() ?? '';
-  const calculated = scan.calculated_plant_age_days;
-  if (reason.length > MAX_REASON_LENGTH) {
-    return `Keep the reason under ${MAX_REASON_LENGTH} characters.`;
-  }
-  if (calculated === undefined) {
-    return reason ? 'A reason was given without a calculated age.' : null;
-  }
-  if (scan.plant_age_days !== calculated && !reason) {
-    return 'A changed plant age needs a reason.';
-  }
-  if (scan.plant_age_days === calculated && reason) {
-    return "A reason was given, but the age wasn't changed.";
-  }
-  return null;
 }
 
 /** "1 day", "9 days". */
@@ -166,12 +140,12 @@ export function waveDatesError(dates: WaveDates, today: Date): string | null {
 
 /** A wave's stored dates as entered: null sowing (a backfilled wave) and null transfer (the germination day) become ''. */
 export function storedWaveDates(wave: {
-  germination_date: string;
+  germination_date: string | null;
   sowing_date: string | null;
   transfer_date: string | null;
 }): WaveDates {
   return {
-    germination: wave.germination_date,
+    germination: wave.germination_date ?? '',
     sowing: wave.sowing_date ?? '',
     transfer: wave.transfer_date ?? '',
   };
@@ -252,16 +226,18 @@ function waveConflict(
   const conflict = [...others]
     .sort((a, b) => a.wave_number - b.wave_number)
     .find((w) =>
-      w.wave_number < waveNumber
-        ? w.germination_date >= germinationDate
-        : w.germination_date <= germinationDate
+      w.germination_date === null
+        ? false
+        : w.wave_number < waveNumber
+          ? w.germination_date >= germinationDate
+          : w.germination_date <= germinationDate
     );
   if (!conflict) return null;
   const when =
     conflict.wave_number < waveNumber ? 'on or before' : 'on or after';
   return {
     question: `Are you sure wave ${waveNumber}'s germination date is correct?`,
-    detail: `It is ${when} wave ${conflict.wave_number}'s germination date (${formatWaveDate(conflict.germination_date)}).`,
+    detail: `It is ${when} wave ${conflict.wave_number}'s germination date (${formatWaveDate(conflict.germination_date ?? '')}).`,
   };
 }
 

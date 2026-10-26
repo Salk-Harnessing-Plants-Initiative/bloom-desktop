@@ -63,6 +63,11 @@ import {
 import type {
   CylinderWaveCreateInput,
   CylinderWaveDateChangeInput,
+  CylinderPlantDatesInput,
+  CylinderPlantInfo,
+  CylinderPlantUseWaveDatesInput,
+  CylinderWaveSameDatesInput,
+  CylinderWaveDatesPerPlantInput,
   CylinderWaveInfo,
 } from './cylinder-wave';
 import type {
@@ -403,7 +408,7 @@ export interface DatabaseAPI {
       experimentId: string
     ) => ReturnType<typeof listGraviMetadata>;
   };
-  /** CylinderScan waves and their germination dates (#407). */
+  /** CylinderScan waves and their dates (#407, #428). */
   cylinderWaves: {
     list: (
       experimentId: string
@@ -414,6 +419,25 @@ export interface DatabaseAPI {
     changeDates: (
       input: CylinderWaveDateChangeInput
     ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
+    /** Give a per-plant wave one set of dates for all its plants. */
+    useSameDates: (
+      input: CylinderWaveSameDatesInput
+    ) => Promise<DatabaseResponse<null>>;
+    /** Make a wave's dates per plant. */
+    useDatesPerPlant: (
+      input: CylinderWaveDatesPerPlantInput
+    ) => Promise<DatabaseResponse<null>>;
+  };
+  /** The plants in a CylinderScan wave and their dates (#428). */
+  cylinderPlants: {
+    /** A wave's plants, most recently changed first. */
+    list: (waveId: string) => Promise<DatabaseResponse<CylinderPlantInfo[]>>;
+    setDates: (
+      input: CylinderPlantDatesInput
+    ) => Promise<DatabaseResponse<CylinderPlantInfo>>;
+    useWaveDates: (
+      input: CylinderPlantUseWaveDatesInput
+    ) => Promise<DatabaseResponse<CylinderPlantInfo>>;
   };
   scans: {
     /**

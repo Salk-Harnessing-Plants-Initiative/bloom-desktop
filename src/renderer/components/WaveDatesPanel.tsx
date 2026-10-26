@@ -18,6 +18,7 @@ import {
   type WaveGerminationDate,
 } from '../../utils/wave-dates';
 import { WaveWarnings } from './WaveWarnings';
+import { DatesModeChoice } from './DatesModeChoice';
 import type { CylinderWaveCreateInput } from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
 import {
@@ -53,6 +54,8 @@ export function WaveDatesPanel({
     transfer: '',
   });
   const [transferSameDay, setTransferSameDay] = useState(true);
+  // Do all the wave's plants share their dates? Nothing is chosen until they answer.
+  const [sameForAll, setSameForAll] = useState<boolean | null>(null);
   const [note, setNote] = useState('');
   // A wave number that skips ahead is confirmed, with a note, before the date.
   const waveWarning = waveNumberWarning(waveNumber, waves);
@@ -72,10 +75,12 @@ export function WaveDatesPanel({
     !disabled &&
     !saving &&
     phenotyperChosen &&
-    check !== null &&
-    !check.error &&
-    !transferMissing(dates, transferSameDay) &&
-    (!check.dateWarning || note.trim() !== '');
+    (sameForAll === false ||
+      (sameForAll === true &&
+        check !== null &&
+        !check.error &&
+        !transferMissing(dates, transferSameDay) &&
+        (!check.dateWarning || note.trim() !== '')));
   // Saved as the wave's note: why the number skips ahead, then why the date is
   // out of order.
   const savedNote = [waveNote.trim(), note.trim()].filter(Boolean).join('; ');
@@ -84,13 +89,21 @@ export function WaveDatesPanel({
     setSaving(true);
     setSaveError(null);
     try {
-      const result = await onSave({
-        germinationDate: entered.germination,
-        sowingDate: entered.sowing,
-        transferDate: entered.transfer || undefined,
-        note: savedNote || undefined,
-        phenotyperId,
-      });
+      const result = await onSave(
+        sameForAll
+          ? {
+              germinationDate: entered.germination,
+              sowingDate: entered.sowing,
+              transferDate: entered.transfer || undefined,
+              note: savedNote || undefined,
+              phenotyperId,
+            }
+          : {
+              datesPerPlant: true,
+              note: waveNote.trim() || undefined,
+              phenotyperId,
+            }
+      );
       if (!result.success)
         setSaveError(result.error ?? "Could not save the wave's dates.");
     } catch (error) {
@@ -146,34 +159,52 @@ export function WaveDatesPanel({
           {phenotyperName ? ` by ${phenotyperName}` : ''}: {waveNote.trim()}
         </p>
       )}
-      <p className="font-medium text-green-800">
-        Please set the dates for wave {waveNumber}. The plant age is computed
-        from the germination date.
-      </p>
-      <WaveDateInputs
-        dates={dates}
-        transferSameDay={transferSameDay}
-        onChange={(next, sameDay) => {
-          setDates(next);
-          setTransferSameDay(sameDay);
-        }}
+      <DatesModeChoice
+        waveNumber={waveNumber}
+        value={sameForAll === null ? null : sameForAll ? 'same' : 'perPlant'}
+        onChange={(mode) => setSameForAll(mode === 'same')}
         disabled={disabled || saving}
       />
-      {check?.error && <p className="text-sm text-red-600">{check.error}</p>}
-      {check?.dateWarning && (
-        <WaveWarnings warnings={[check.dateWarning]} otherWaves={waves}>
-          <p>If it is correct, add a note saying why, then proceed.</p>
-          <textarea
-            aria-label="Note"
-            placeholder="Note (required to proceed)"
-            value={note}
-            maxLength={MAX_REASON_LENGTH / 2}
-            onChange={(e) => setNote(e.target.value)}
+      {sameForAll === true && (
+        <>
+          <p className="font-medium text-green-800">
+            Please set the dates for wave {waveNumber}. The plant age is
+            computed from the germination date.
+          </p>
+          <WaveDateInputs
+            dates={dates}
+            transferSameDay={transferSameDay}
+            onChange={(next, sameDay) => {
+              setDates(next);
+              setTransferSameDay(sameDay);
+            }}
             disabled={disabled || saving}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            data-testid="wave-dates-note"
           />
-        </WaveWarnings>
+          {check?.error && (
+            <p className="text-sm text-red-600">{check.error}</p>
+          )}
+          {check?.dateWarning && (
+            <WaveWarnings warnings={[check.dateWarning]} otherWaves={waves}>
+              <p>If it is correct, add a note saying why, then proceed.</p>
+              <textarea
+                aria-label="Note"
+                placeholder="Note (required to proceed)"
+                value={note}
+                maxLength={MAX_REASON_LENGTH / 2}
+                onChange={(e) => setNote(e.target.value)}
+                disabled={disabled || saving}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                data-testid="wave-dates-note"
+              />
+            </WaveWarnings>
+          )}
+        </>
+      )}
+      {sameForAll === false && (
+        <p className="text-sm text-gray-700" data-testid="dates-per-plant-note">
+          Each plant&apos;s dates are asked for as it&apos;s first scanned,
+          starting from the previous plant&apos;s.
+        </p>
       )}
       {!phenotyperChosen && (
         <p
@@ -191,7 +222,11 @@ export function WaveDatesPanel({
         className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50"
         data-testid="wave-dates-save"
       >
-        {check?.dateWarning ? 'Proceed with these dates' : 'Save dates'}
+        {sameForAll === false
+          ? 'Save'
+          : check?.dateWarning
+            ? 'Proceed with these dates'
+            : 'Save dates'}
       </button>
     </div>
   );

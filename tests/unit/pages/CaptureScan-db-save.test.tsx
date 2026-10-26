@@ -82,17 +82,25 @@ beforeEach(() => {
             {
               id: 'wave-1',
               wave_number: 1,
+              dates_per_plant: false,
               germination_date: sownDaysAgo(14),
               note: null,
               set_by_name: 'Demo Phenotyper',
               set_at: '2026-01-02T09:00:00.000Z',
               scanCount: 0,
               changes: [],
+              plantsWithOwnDates: [],
             },
           ],
         }),
         create: vi.fn(),
         changeDates: vi.fn(),
+      },
+      cylinderPlants: {
+        // No plant has its own dates: every plant uses wave 1's.
+        list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+        setDates: vi.fn(),
+        useWaveDates: vi.fn(),
       },
       scans: {
         ...win.electron?.database?.scans,

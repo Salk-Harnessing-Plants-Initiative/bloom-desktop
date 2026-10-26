@@ -1,0 +1,166 @@
+/**
+ * Unit tests for a plant's dates on Capture Scan (#428): using the wave's, having its
+ * own, and a plant in a per-plant wave.
+ */
+
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import { PlantDatesSection } from '../../../src/renderer/components/PlantDatesSection';
+import type {
+  CylinderPlantInfo,
+  CylinderWaveInfo,
+} from '../../../src/types/cylinder-wave';
+
+const wave: CylinderWaveInfo = {
+  id: 'w2',
+  wave_number: 2,
+  dates_per_plant: false,
+  germination_date: '2026-02-20',
+  sowing_date: '2026-02-16',
+  transfer_date: null,
+  note: null,
+  set_by_name: 'Demo Phenotyper',
+  set_at: '2026-02-21T09:00:00.000Z',
+  scanCount: 0,
+  changes: [],
+  plantsWithOwnDates: [],
+};
+const ownPlant: CylinderPlantInfo = {
+  id: 'p1',
+  wave_id: 'w2',
+  plant_barcode: 'SB_017',
+  germination_date: '2026-02-22',
+  sowing_date: '2026-02-16',
+  transfer_date: null,
+  uses_wave_dates: false,
+  reason: 'Germinated two days late',
+  set_by_name: 'Demo Phenotyper',
+  set_at: '2026-02-23T09:00:00.000Z',
+  scanCount: 1,
+  changes: [],
+};
+const waveDates = {
+  germination_date: '2026-02-20',
+  sowing_date: '2026-02-16',
+  transfer_date: null,
+};
+
+function renderSection(
+  props: Partial<Parameters<typeof PlantDatesSection>[0]> = {}
+) {
+  const onSave = vi.fn().mockResolvedValue({ success: true });
+  const onUseWaveDates = vi.fn().mockResolvedValue({ success: true });
+  const onOpenChange = vi.fn();
+  render(
+    <PlantDatesSection
+      plantBarcode="SB_017"
+      wave={wave}
+      plant={null}
+      plantDates={waveDates}
+      previousPlantDates={null}
+      onSave={onSave}
+      onUseWaveDates={onUseWaveDates}
+      phenotyperChosen
+      onOpenChange={onOpenChange}
+      {...props}
+    />
+  );
+  return { onSave, onUseWaveDates, onOpenChange };
+}
+
+describe('PlantDatesSection', () => {
+  it("says the plant uses the wave's dates, and offers different dates", () => {
+    renderSection();
+    expect(screen.getByTestId('plant-dates-source')).toHaveTextContent(
+      "Plant SB_017 uses wave 2's dates · Different dates for this plant"
+    );
+    expect(screen.queryByTestId('plant-dates-box')).not.toBeInTheDocument();
+  });
+
+  it("sets the plant's own dates only with a reason, starting from the wave's", async () => {
+    const { onSave, onOpenChange } = renderSection();
+    fireEvent.click(screen.getByTestId('plant-dates-different'));
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+    expect(screen.getByLabelText('Germination date')).toHaveValue('2026-02-20');
+    const save = screen.getByTestId('plant-dates-save');
+    // The wave's own dates can't be saved as the plant's.
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Germination date'), {
+      target: { value: '2026-02-22' },
+    });
+    expect(save).toBeDisabled();
+    fireEvent.change(screen.getByTestId('plant-dates-reason'), {
+      target: { value: 'Germinated two days late' },
+    });
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        germinationDate: '2026-02-22',
+        sowingDate: '2026-02-16',
+        transferDate: undefined,
+        reason: 'Germinated two days late',
+      })
+    );
+  });
+
+  it('shows a plant’s own dates and reason, with Edit and "Use the wave’s dates"', async () => {
+    const { onUseWaveDates } = renderSection({
+      plant: ownPlant,
+      plantDates: ownPlant,
+    });
+    expect(screen.getByTestId('plant-dates')).toHaveTextContent(
+      /^Plant SB_017's own datesGermination date: .+Sown: .+Transferred: the same day as germinationReason: Germinated two days lateSet by Demo Phenotyper · Edit · Use the wave's dates$/
+    );
+    fireEvent.click(screen.getByTestId('plant-dates-use-wave'));
+    await waitFor(() => expect(onUseWaveDates).toHaveBeenCalled());
+  });
+
+  it('asks for a plant’s dates in a per-plant wave, starting from the previous plant’s, with no reason', async () => {
+    const { onSave } = renderSection({
+      wave: { ...wave, dates_per_plant: true, germination_date: null },
+      plantDates: null,
+      previousPlantDates: ownPlant,
+    });
+    // Laid out like the rest of the form: no box, and the required dates marked.
+    expect(screen.getByTestId('plant-dates-box')).not.toHaveClass('border-2');
+    expect(screen.getByTestId('plant-dates-box')).toHaveTextContent(
+      /^Sowing Date \*Germination Date \*/
+    );
+    expect(screen.queryByTestId('plant-dates-reason')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Germination date')).toHaveValue('2026-02-22');
+    fireEvent.click(screen.getByTestId('plant-dates-save'));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ germinationDate: '2026-02-22' })
+      )
+    );
+  });
+
+  it("needs a reason to change a per-plant wave's plant that has scans", () => {
+    renderSection({
+      wave: { ...wave, dates_per_plant: true, germination_date: null },
+      plant: ownPlant,
+      plantDates: ownPlant,
+    });
+    expect(
+      screen.queryByTestId('plant-dates-use-wave')
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('plant-dates-edit'));
+    expect(screen.getByTestId('plant-dates-reason')).toBeInTheDocument();
+  });
+
+  it('shows the error when saving fails', async () => {
+    const { onSave } = renderSection();
+    onSave.mockResolvedValue({ success: false, error: 'database is locked' });
+    fireEvent.click(screen.getByTestId('plant-dates-different'));
+    fireEvent.change(screen.getByLabelText('Germination date'), {
+      target: { value: '2026-02-22' },
+    });
+    fireEvent.change(screen.getByTestId('plant-dates-reason'), {
+      target: { value: 'x' },
+    });
+    fireEvent.click(screen.getByTestId('plant-dates-save'));
+    expect(await screen.findByText('database is locked')).toBeInTheDocument();
+  });
+});

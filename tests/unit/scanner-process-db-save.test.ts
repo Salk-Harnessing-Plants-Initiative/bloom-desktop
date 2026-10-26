@@ -12,14 +12,19 @@ import * as os from 'os';
 import type { ScanResult, ScannerSettings } from '../../src/types/scanner';
 
 const mockScanCreate = vi.fn();
+const db = vi.hoisted(() => ({ current: null as unknown }));
 
 vi.mock('../../src/main/database', () => ({
-  getDatabase: vi.fn(() => ({
-    scan: { create: mockScanCreate },
-  })),
+  getDatabase: vi.fn(() => db.current),
 }));
 
 import { ScannerProcess } from '../../src/main/cylinderscan/scanner-process';
+import { fakeScannerDb } from './helpers/fake-scanner-db';
+
+// Wave 1 of exp-001 germinated 14 days ago, so plant-001 is 14 days old today.
+beforeEach(() => {
+  db.current = fakeScannerDb(mockScanCreate, 14);
+});
 
 const FRAMES = 72;
 
@@ -155,25 +160,26 @@ describe('ScannerProcess — database save outcome (#392)', () => {
     expect(completeEvents[0].db_saved).toBe(true);
   });
 
-  it('saves the calculated age and the reason for a changed age on the scan row (#407)', async () => {
+  it("saves the scan under the plant's row, created from its wave's dates at its first scan (#428)", async () => {
     mockScanCreate.mockResolvedValue({ id: 'scan-124' });
-    const settings = buildSettings(outputDir, true);
-    settings.metadata = {
-      ...settings.metadata!,
-      plant_age_days: 13,
-      calculated_plant_age_days: 14,
-      plant_age_change_reason: 'Experiment was sown later',
-    };
-    await scanner.initialize(settings);
+    await scanner.initialize(buildSettings(outputDir, true));
 
     await scanner.scan();
 
+    const fake = db.current as ReturnType<typeof fakeScannerDb>;
+    expect(fake.$transaction).toHaveBeenCalled();
+    expect(fake.cylinderPlant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        wave_id: 'wave-1',
+        plant_barcode: 'plant-001',
+        uses_wave_dates: true,
+      }),
+    });
     expect(mockScanCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({
         phenotyper_id: 'user-001',
-        plant_age_days: 13,
-        calculated_plant_age_days: 14,
-        plant_age_change_reason: 'Experiment was sown later',
+        plant_age_days: 14,
+        cylinder_plant_id: 'plant-1',
       }),
     });
   });
@@ -189,24 +195,33 @@ describe('ScannerProcess — database save outcome (#392)', () => {
   });
 });
 
-describe('ScannerProcess — the plant age is checked before scanning (#407)', () => {
-  it('refuses a changed age without a reason, without starting the scanner', async () => {
+describe('ScannerProcess — the plant age is checked before scanning (#407, #428)', () => {
+  it("refuses an age that isn't the days since the plant's germination date, without starting the scanner", async () => {
     const sendCommand = vi.fn().mockResolvedValue({ success: true });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const scanner = new ScannerProcess({ sendCommand } as any);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const settings = buildSettings(os.tmpdir(), true);
-    settings.metadata = {
-      ...settings.metadata!,
-      plant_age_days: 13,
-      calculated_plant_age_days: 14,
-    };
+    settings.metadata = { ...settings.metadata!, plant_age_days: 13 };
     expect(await scanner.initialize(settings)).toEqual({
       success: false,
       initialized: false,
-      error: 'A changed plant age needs a reason.',
+      error:
+        "The plant age (13) isn't the days since this plant's germination date (14).",
     });
     expect(sendCommand).not.toHaveBeenCalled();
+  });
+
+  it("refuses a wave whose dates aren't set", async () => {
+    const sendCommand = vi.fn().mockResolvedValue({ success: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scanner = new ScannerProcess({ sendCommand } as any);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const settings = buildSettings(os.tmpdir(), true);
+    settings.metadata = { ...settings.metadata!, wave_number: 2 };
+    expect((await scanner.initialize(settings)).error).toBe(
+      "Set wave 2's dates first."
+    );
   });
 
   it("doesn't keep the previous plant's settings after a refusal", async () => {
@@ -219,8 +234,7 @@ describe('ScannerProcess — the plant age is checked before scanning (#407)', (
     bad.metadata = {
       ...bad.metadata!,
       plant_id: 'plant-002',
-      calculated_plant_age_days: 14,
-      plant_age_change_reason: 'x'.repeat(501),
+      plant_age_days: 3,
     };
     expect((await scanner.initialize(bad)).success).toBe(false);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -49,6 +49,7 @@ import {
 } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
 import { registerCylinderWaveHandlers } from './cylinder-wave-handlers';
+import { registerCylinderPlantHandlers } from './cylinder-plant-handlers';
 import {
   loadEnvConfig,
   saveEnvConfig,
@@ -1240,6 +1241,7 @@ app.on('ready', async () => {
       getMainWindow: () => mainWindow,
     });
     registerCylinderWaveHandlers({ ipcMain, db: getDatabase() });
+    registerCylinderPlantHandlers({ ipcMain, db: getDatabase() });
     console.log('[Main] Database initialized and handlers registered');
 
     // Initialize GraviScan handlers if mode is graviscan

@@ -63,37 +63,39 @@ model PlantAccessionMappings {
 }
 
 model Scan {
-  id                        String     @id @default(uuid())
-  experiment_id             String
-  phenotyper_id             String
-  scanner_name              String
-  plant_id                  String
-  accession_name            String?
-  path                      String
-  capture_date              DateTime   @default(now())
-  num_frames                Int
-  exposure_time             Int
-  gain                      Float
-  brightness                Float
-  contrast                  Float
-  gamma                     Float
-  seconds_per_rot           Float
-  wave_number               Int
-  plant_age_days            Int
-  deleted                   Boolean    @default(false)
+  id                String         @id @default(uuid())
+  experiment_id     String
+  phenotyper_id     String
+  scanner_name      String
+  plant_id          String
+  accession_name    String?
+  path              String
+  capture_date      DateTime       @default(now())
+  num_frames        Int
+  exposure_time     Int
+  gain              Float
+  brightness        Float
+  contrast          Float
+  gamma             Float
+  seconds_per_rot   Float
+  wave_number       Int
+  plant_age_days    Int
+  deleted           Boolean        @default(false)
   // Set when the age came from the wave's germination date (#407): the calculated age, and the
   // operator's reason when the age used (plant_age_days) differs from it.
-  calculated_plant_age_days Int?
-  plant_age_change_reason   String?
-  images                    Image[]
-  phenotyper                Phenotyper @relation(fields: [phenotyper_id], references: [id])
-  experiment                Experiment @relation(fields: [experiment_id], references: [id])
+  // The plant (in its wave) whose germination date the age was computed from (#428).
+  cylinder_plant_id String?
+  images            Image[]
+  phenotyper        Phenotyper     @relation(fields: [phenotyper_id], references: [id])
+  experiment        Experiment     @relation(fields: [experiment_id], references: [id])
+  cylinderPlant     CylinderPlant? @relation(fields: [cylinder_plant_id], references: [id], onDelete: SetNull)
 
   // Performance indexes (non-breaking additions)
   @@index([experiment_id])
   @@index([phenotyper_id])
   @@index([plant_id])
   @@index([capture_date])
+  @@index([cylinder_plant_id])
 }
 
 model Image {
@@ -306,15 +308,17 @@ model GraviExperimentWaveMetadata {
   @@index([accession_id])
 }
 
-// A CylinderScan wave's dates, as local calendar dates ("YYYY-MM-DD"). The plant age is
-// always computed from the germination date (days after germination). The sowing date
-// is required on Capture Scan but null for a wave the backfill set; a null transfer date
-// means the same day as germination.
+// A CylinderScan wave and, when all its plants share them, its dates, as local calendar
+// dates ("YYYY-MM-DD"): each of its plants starts with them (see CylinderPlant). When the
+// plants' dates differ (dates_per_plant), the wave has none and each plant's are asked for
+// before its first scan. The sowing date is null for a wave the backfill set; a null
+// transfer date means the same day as germination.
 model CylinderWave {
   id                   String   @id @default(uuid())
   experiment_id        String
   wave_number          Int
-  germination_date     String
+  dates_per_plant      Boolean  @default(false)
+  germination_date     String?
   sowing_date          String?
   transfer_date        String?
   // Why the wave number skips ahead, or its germination date is out of order with
@@ -326,6 +330,7 @@ model CylinderWave {
 
   experiment Experiment               @relation(fields: [experiment_id], references: [id], onDelete: Cascade)
   changes    CylinderWaveDateChange[]
+  plants     CylinderPlant[]
 
   @@unique([experiment_id, wave_number])
   @@index([experiment_id])
@@ -337,7 +342,7 @@ model CylinderWaveDateChange {
   id                       String   @id @default(uuid())
   wave_id                  String
   old_germination_date     String?
-  new_germination_date     String
+  new_germination_date     String?
   old_sowing_date          String?
   new_sowing_date          String?
   old_transfer_date        String?
@@ -349,4 +354,52 @@ model CylinderWaveDateChange {
   wave CylinderWave @relation(fields: [wave_id], references: [id], onDelete: Cascade)
 
   @@index([wave_id])
+}
+
+// A plant in a CylinderScan wave and its own dates (#428). Created from the wave's dates at
+// the plant's first scan; "Different dates for this plant" changes them. The plant age is
+// always computed from this germination date. A plant barcode can be reused in another
+// wave, so a plant is its wave plus its barcode.
+model CylinderPlant {
+  id                   String   @id @default(uuid())
+  wave_id              String
+  plant_barcode        String
+  germination_date     String
+  sowing_date          String?
+  // Null means the same day as germination.
+  transfer_date        String?
+  // Still the wave's dates: they follow a correction to the wave's dates.
+  uses_wave_dates      Boolean  @default(true)
+  // Why this plant's dates differ from its wave's.
+  reason               String?
+  set_by_phenotyper_id String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  wave    CylinderWave              @relation(fields: [wave_id], references: [id], onDelete: Cascade)
+  changes CylinderPlantDateChange[]
+  scans   Scan[]
+
+  @@unique([wave_id, plant_barcode])
+  @@index([wave_id])
+}
+
+// Every set or change of a plant's own dates: each date before and after (the "old" ones
+// are null when a plant in a per-plant wave is first set).
+model CylinderPlantDateChange {
+  id                       String   @id @default(uuid())
+  plant_id                 String
+  old_germination_date     String?
+  new_germination_date     String
+  old_sowing_date          String?
+  new_sowing_date          String?
+  old_transfer_date        String?
+  new_transfer_date        String?
+  reason                   String?
+  changed_by_phenotyper_id String?
+  changedAt                DateTime @default(now())
+
+  plant CylinderPlant @relation(fields: [plant_id], references: [id], onDelete: Cascade)
+
+  @@index([plant_id])
 }

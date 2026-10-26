@@ -15,17 +15,27 @@ import type {
   CylinderWaveCreateInput,
   CylinderWaveDateChangeInput,
   CylinderWaveInfo,
-  WaveDatesInput,
 } from '../types/cylinder-wave';
 import {
   MAX_REASON_LENGTH,
   checkNewWave,
   checkWaveDateChange,
   storedWaveDates,
-  type WaveDates,
+  warningText,
+  waveNumberWarning,
 } from '../utils/wave-dates';
 
 import type { CylinderWaveDbLike, WaveRow } from './cylinder-wave-db';
+import {
+  datesToSave,
+  enteredDates,
+  fail,
+  isNonNegativeInteger,
+  phenotyperError,
+  phenotyperNames,
+  trimmed,
+} from './cylinder-dates-common';
+import { plantInfos } from './cylinder-plant-handlers';
 
 export type {
   CylinderWaveDbLike,
@@ -38,70 +48,7 @@ export interface CylinderWaveDeps {
   now?: () => Date;
 }
 
-function fail(error: unknown): DatabaseResponse<never> {
-  console.error('[CylinderWave]', error);
-  return {
-    success: false,
-    error: error instanceof Error ? error.message : 'Unknown error',
-  };
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
-}
-
-function trimmed(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-export const PHENOTYPER_REQUIRED = 'Choose the phenotyper first.';
-
-/** The dates as the renderer sent them, trimmed. */
-function enteredDates(input: Partial<WaveDatesInput>): WaveDates {
-  return {
-    germination: trimmed(input?.germinationDate),
-    sowing: trimmed(input?.sowingDate),
-    transfer: trimmed(input?.transferDate),
-  };
-}
-
-/** The dates as saved: a transfer date on the germination day is stored as null ("same day"). */
-function datesToSave(dates: WaveDates): {
-  germination_date: string;
-  sowing_date: string;
-  transfer_date: string | null;
-} {
-  return {
-    germination_date: dates.germination,
-    sowing_date: dates.sowing,
-    transfer_date:
-      dates.transfer && dates.transfer !== dates.germination
-        ? dates.transfer
-        : null,
-  };
-}
-
-/**
- * Who set or changed a date with no phenotyper: only the start-date backfill, run by an
- * admin (Capture Scan always needs a phenotyper).
- */
-export const SET_BY_ADMIN = 'admin';
-
-/**
- * The phenotyper setting or changing a date: required and must exist, so the
- * log can always say who. Returns an error message, or null when it's fine.
- */
-async function phenotyperError(
-  db: CylinderWaveDbLike,
-  phenotyperId: string
-): Promise<string | null> {
-  if (!phenotyperId) return PHENOTYPER_REQUIRED;
-  const found = await db.phenotyper.findMany({
-    where: { id: { in: [phenotyperId] } },
-    select: { id: true, name: true },
-  });
-  return found.length > 0 ? null : 'That phenotyper no longer exists.';
-}
+export { PHENOTYPER_REQUIRED, SET_BY_ADMIN } from './cylinder-dates-common';
 
 async function withScanCounts(
   db: CylinderWaveDbLike,
@@ -114,24 +61,23 @@ async function withScanCounts(
           orderBy: { changedAt: 'asc' },
         })
       : [];
-  const ids = [
-    ...new Set(
-      [
-        ...rows.map((r) => r.set_by_phenotyper_id),
-        ...changes.map((c) => c.changed_by_phenotyper_id),
-      ].filter((id): id is string => !!id)
-    ),
-  ];
-  const names = new Map(
-    ids.length > 0
-      ? (
-          await db.phenotyper.findMany({
-            where: { id: { in: ids } },
-            select: { id: true, name: true },
+  const nameOf = await phenotyperNames(db, [
+    ...rows.map((r) => r.set_by_phenotyper_id),
+    ...changes.map((c) => c.changed_by_phenotyper_id),
+  ]);
+  const ownDates =
+    rows.length > 0
+      ? await plantInfos(
+          db,
+          await db.cylinderPlant.findMany({
+            where: {
+              wave_id: { in: rows.map((r) => r.id) },
+              uses_wave_dates: false,
+            },
+            orderBy: { updatedAt: 'desc' },
           })
-        ).map((p) => [p.id, p.name])
-      : []
-  );
+        )
+      : [];
   // One query for every wave's live scans, rather than one per wave.
   const counts =
     rows.length > 0
@@ -156,13 +102,12 @@ async function withScanCounts(
   return rows.map((row) => ({
     id: row.id,
     wave_number: row.wave_number,
+    dates_per_plant: row.dates_per_plant,
     germination_date: row.germination_date,
     sowing_date: row.sowing_date,
     transfer_date: row.transfer_date,
     note: row.note,
-    set_by_name: row.set_by_phenotyper_id
-      ? (names.get(row.set_by_phenotyper_id) ?? null)
-      : SET_BY_ADMIN,
+    set_by_name: nameOf(row.set_by_phenotyper_id),
     set_at: row.updatedAt.toISOString(),
     changes: changes
       .filter((c) => c.wave_id === row.id)
@@ -175,12 +120,11 @@ async function withScanCounts(
         old_transfer_date: c.old_transfer_date,
         new_transfer_date: c.new_transfer_date,
         reason: c.reason,
-        changed_by_name: c.changed_by_phenotyper_id
-          ? (names.get(c.changed_by_phenotyper_id) ?? null)
-          : SET_BY_ADMIN,
+        changed_by_name: nameOf(c.changed_by_phenotyper_id),
         changed_at: c.changedAt.toISOString(),
       })),
     scanCount: scanCount(row),
+    plantsWithOwnDates: ownDates.filter((p) => p.wave_id === row.id),
   }));
 }
 
@@ -224,8 +168,12 @@ export async function createWave(
       error: `Keep the note under ${MAX_REASON_LENGTH} characters.`,
     };
   }
+  const datesPerPlant = input?.datesPerPlant === true;
   const dates = enteredDates(input);
-  const toSave = datesToSave(dates);
+  // A wave whose plants' dates differ stores none: each plant's are set before its first scan.
+  const toSave = datesPerPlant
+    ? { germination_date: null, sowing_date: null, transfer_date: null }
+    : datesToSave(dates);
   try {
     const who = await phenotyperError(deps.db, phenotyperId);
     if (who) return { success: false, error: who };
@@ -239,12 +187,20 @@ export async function createWave(
         error: `Wave ${input.waveNumber} already has its dates.`,
       };
     }
-    const check = checkNewWave(
-      input.waveNumber,
-      dates,
-      existing,
-      (deps.now ?? (() => new Date()))()
-    );
+    const skipped = waveNumberWarning(input.waveNumber, existing);
+    const check = datesPerPlant
+      ? {
+          error: null as string | null,
+          noteNeeded: skipped
+            ? `${warningText(skipped)} Add a note to proceed.`
+            : null,
+        }
+      : checkNewWave(
+          input.waveNumber,
+          dates,
+          existing,
+          (deps.now ?? (() => new Date()))()
+        );
     if (check.error) return { success: false, error: check.error };
     if (check.noteNeeded && !note)
       return { success: false, error: check.noteNeeded };
@@ -254,6 +210,7 @@ export async function createWave(
         data: {
           experiment_id: experimentId,
           wave_number: input.waveNumber,
+          dates_per_plant: datesPerPlant,
           ...toSave,
           note: note || null,
           set_by_phenotyper_id: phenotyperId,
@@ -297,6 +254,12 @@ export async function changeDates(
       where: { id: waveId },
     });
     if (!wave) return { success: false, error: 'That wave no longer exists.' };
+    if (wave.dates_per_plant) {
+      return {
+        success: false,
+        error: "This wave's dates are per plant: change them for each plant.",
+      };
+    }
     const who = await phenotyperError(deps.db, phenotyperId);
     if (who) return { success: false, error: who };
     const [current] = await withScanCounts(deps.db, [wave]);
@@ -332,6 +295,12 @@ export async function changeDates(
           reason: reason || null,
           changed_by_phenotyper_id: phenotyperId,
         },
+      });
+      // Plants still on the wave's dates follow the correction; their earlier scans
+      // keep their age. Plants with their own dates aren't touched.
+      await tx.cylinderPlant.updateMany({
+        where: { wave_id: wave.id, uses_wave_dates: true },
+        data: toSave,
       });
       // "Set by" follows the latest change; the change table keeps the history.
       return tx.cylinderWave.update({

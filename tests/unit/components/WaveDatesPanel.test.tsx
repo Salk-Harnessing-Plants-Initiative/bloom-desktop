@@ -6,7 +6,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { WaveDatesPanel } from '../../../src/renderer/components/WaveDatesPanel';
-import { PlantAgeNote } from '../../../src/renderer/components/PlantAgeNote';
 import { toIsoDate } from '../../../src/utils/wave-dates';
 
 /** Local "YYYY-MM-DD" `n` days ago, by calendar arithmetic so DST can't shift it. */
@@ -17,6 +16,14 @@ const daysAgo = (n: number) => {
   );
 };
 const wave1 = { wave_number: 1, germination_date: daysAgo(90) };
+
+/** "Yes": all the wave's plants share their dates, entered once (if not answered yet). */
+function answerYes() {
+  const yes = screen.queryByTestId(
+    'dates-mode-same'
+  ) as HTMLInputElement | null;
+  if (yes && !yes.checked) fireEvent.click(yes);
+}
 
 function renderPanel(waveNumber = 2, waves = [wave1]) {
   const onSave = vi.fn().mockResolvedValue({ success: true });
@@ -29,14 +36,18 @@ function renderPanel(waveNumber = 2, waves = [wave1]) {
       onSave={onSave}
     />
   );
-  const setDate = (value: string) =>
+  const setDate = (value: string) => {
+    answerYes();
     fireEvent.change(screen.getByTestId('germination-date-input'), {
       target: { value },
     });
-  const setSowing = (value = daysAgo(95)) =>
+  };
+  const setSowing = (value = daysAgo(95)) => {
+    answerYes();
     fireEvent.change(screen.getByTestId('sowing-date-input'), {
       target: { value },
     });
+  };
   return {
     onSave,
     setDate,
@@ -46,6 +57,57 @@ function renderPanel(waveNumber = 2, waves = [wave1]) {
 }
 
 describe('WaveDatesPanel', () => {
+  it("asks whether all the wave's plants share their dates, with nothing chosen yet", () => {
+    const { save } = renderPanel();
+    expect(screen.getByTestId('dates-mode-question')).toHaveTextContent(
+      "How are wave 2's dates (sowing date, germination date and transfer to cylinder date) set?"
+    );
+    expect(screen.getByTestId('dates-mode-same')).not.toBeChecked();
+    expect(screen.getByTestId('dates-mode-per-plant')).not.toBeChecked();
+    // No dates are asked for until they answer.
+    expect(
+      screen.queryByTestId('germination-date-input')
+    ).not.toBeInTheDocument();
+    expect(save()).toBeDisabled();
+  });
+
+  it('saves a wave whose dates are per plant, with no dates', async () => {
+    const { onSave, save } = renderPanel();
+    fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
+    expect(screen.getByTestId('dates-per-plant-note')).toHaveTextContent(
+      "Each plant's dates are asked for as it's first scanned"
+    );
+    expect(
+      screen.queryByTestId('germination-date-input')
+    ).not.toBeInTheDocument();
+    fireEvent.click(save());
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        datesPerPlant: true,
+        note: undefined,
+        phenotyperId: 'ph-1',
+      })
+    );
+  });
+
+  it('keeps the wave-number note on a per-plant wave', async () => {
+    const { onSave, save } = renderPanel(5);
+    fireEvent.change(screen.getByTestId('wave-number-note'), {
+      target: { value: 'Waves 2 to 4 on another PC' },
+    });
+    fireEvent.click(screen.getByTestId('wave-number-confirm'));
+    fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
+    fireEvent.click(save());
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          datesPerPlant: true,
+          note: 'Waves 2 to 4 on another PC',
+        })
+      )
+    );
+  });
+
   it('saves a germination date after the earlier wave, with who set it', async () => {
     const { onSave, setDate, setSowing, save } = renderPanel();
     expect(save()).toBeDisabled();
@@ -77,6 +139,7 @@ describe('WaveDatesPanel', () => {
         onSave={onSave}
       />
     );
+    answerYes();
     fireEvent.change(screen.getByTestId('germination-date-input'), {
       target: { value: daysAgo(9) },
     });
@@ -88,6 +151,7 @@ describe('WaveDatesPanel', () => {
 
   it('opens a short note on the germination date from the ⓘ', () => {
     renderPanel();
+    answerYes();
     expect(
       screen.queryByTestId('germination-date-info-text')
     ).not.toBeInTheDocument();
@@ -195,7 +259,7 @@ describe('WaveDatesPanel', () => {
   it('asks nothing about the wave number for the next wave', () => {
     renderPanel(2);
     expect(screen.queryByTestId('wave-number-check')).not.toBeInTheDocument();
-    expect(screen.getByTestId('germination-date-input')).toBeInTheDocument();
+    expect(screen.getByTestId('dates-mode-question')).toBeInTheDocument();
   });
 
   it('saves a transfer date on another day when "Same day as germination" is unticked', async () => {
@@ -233,171 +297,5 @@ describe('WaveDatesPanel', () => {
     setSowing();
     fireEvent.click(save());
     expect(await screen.findByText('database is locked')).toBeInTheDocument();
-  });
-});
-
-describe('PlantAgeNote', () => {
-  const wave = {
-    id: 'w1',
-    wave_number: 1,
-    germination_date: daysAgo(9),
-    note: null,
-    set_by_name: 'Demo Phenotyper',
-    set_at: '2026-01-02T09:00:00.000Z',
-    scanCount: 0,
-    changes: [],
-  };
-
-  it('says where the age came from', () => {
-    render(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={null}
-        onChange={vi.fn()}
-      />
-    );
-    expect(screen.getByTestId('plant-age-note')).toHaveTextContent(
-      /Calculated from wave 1's germination date/
-    );
-  });
-
-  it('offers no Change age once the germination date was changed, and says why', () => {
-    render(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={null}
-        onChange={vi.fn()}
-        lockedMessage="The germination date was changed."
-      />
-    );
-    expect(screen.queryByTestId('change-age')).not.toBeInTheDocument();
-    expect(screen.getByTestId('change-age-locked')).toHaveTextContent(
-      'The germination date was changed.'
-    );
-  });
-
-  it('changes the age only with a different age and a reason', () => {
-    const onChange = vi.fn();
-    render(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={null}
-        onChange={onChange}
-      />
-    );
-    fireEvent.click(screen.getByTestId('change-age'));
-    const confirm = screen.getByTestId('change-age-confirm');
-    fireEvent.change(screen.getByTestId('change-age-input'), {
-      target: { value: '9' },
-    });
-    expect(screen.getByText('That is the calculated age.')).toBeInTheDocument();
-    fireEvent.change(screen.getByTestId('change-age-input'), {
-      target: { value: '8' },
-    });
-    expect(confirm).toBeDisabled();
-    fireEvent.change(screen.getByTestId('change-age-reason'), {
-      target: { value: ' Experiment was sown later ' },
-    });
-    fireEvent.click(confirm);
-    expect(onChange).toHaveBeenCalledWith({
-      age: 8,
-      reason: 'Experiment was sown later',
-    });
-  });
-
-  it('shows who changed the age, the calculated age and the reason, and can go back', () => {
-    const onChange = vi.fn();
-    render(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={{ age: 8, reason: 'Experiment was sown later' }}
-        onChange={onChange}
-        phenotyperName="Demo Phenotyper"
-      />
-    );
-    const changed = screen.getByTestId('plant-age-changed');
-    expect(changed).toHaveTextContent(
-      'Demo Phenotyper has manually updated the plant age.'
-    );
-    expect(changed).toHaveTextContent(
-      'Calculated age: 9 days. Reason: Experiment was sown later'
-    );
-    fireEvent.click(screen.getByText('Use calculated age'));
-    expect(onChange).toHaveBeenCalledWith(null);
-  });
-
-  it('says "The phenotyper" when the name is not known yet', () => {
-    render(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={{ age: 8, reason: 'Experiment was sown later' }}
-        onChange={vi.fn()}
-      />
-    );
-    expect(screen.getByTestId('plant-age-changed')).toHaveTextContent(
-      'The phenotyper has manually updated the plant age.'
-    );
-  });
-
-  it('says the calculated age and that the change is for this scan only', () => {
-    render(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={null}
-        onChange={vi.fn()}
-      />
-    );
-    fireEvent.click(screen.getByTestId('change-age'));
-    expect(screen.getByText('Calculated age: 9 days.')).toBeInTheDocument();
-    expect(screen.getByText('Applies to this scan only.')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Enter age here')).toBeInTheDocument();
-  });
-
-  it('greys out everything inside an open box while scanning', () => {
-    const { rerender } = render(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={null}
-        onChange={vi.fn()}
-      />
-    );
-    fireEvent.click(screen.getByTestId('change-age'));
-    rerender(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={null}
-        onChange={vi.fn()}
-        disabled
-      />
-    );
-    expect(screen.getByTestId('change-age-input')).toBeDisabled();
-    expect(screen.getByTestId('change-age-reason')).toBeDisabled();
-    expect(screen.getByTestId('change-age-confirm')).toBeDisabled();
-    expect(screen.getByText('Cancel')).toBeDisabled();
-  });
-
-  it('reports when the box opens and closes', () => {
-    const onOpenChange = vi.fn();
-    render(
-      <PlantAgeNote
-        wave={wave}
-        calculatedAge={9}
-        change={null}
-        onChange={vi.fn()}
-        onOpenChange={onOpenChange}
-      />
-    );
-    fireEvent.click(screen.getByTestId('change-age'));
-    expect(onOpenChange).toHaveBeenLastCalledWith(true);
-    fireEvent.click(screen.getByText('Cancel'));
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
 });
