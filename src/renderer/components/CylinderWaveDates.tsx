@@ -25,8 +25,14 @@ function formatChangedAt(iso: string): string {
 function ChangeLogEntry({ change }: { change: CylinderWaveDateChange }) {
   return (
     <li>
-      Changed from {formatSowingDate(change.old_sowing_date)} to{' '}
-      {formatSowingDate(change.new_sowing_date)} on{' '}
+      {change.old_sowing_date === null ? (
+        <>Set to {formatSowingDate(change.new_sowing_date)} on </>
+      ) : (
+        <>
+          Changed from {formatSowingDate(change.old_sowing_date)} to{' '}
+          {formatSowingDate(change.new_sowing_date)} on{' '}
+        </>
+      )}
       {formatChangedAt(change.changed_at)}
       {change.changed_by_name ? ` by ${change.changed_by_name}` : ''}
       {change.reason ? `. Reason: ${change.reason}` : ''}

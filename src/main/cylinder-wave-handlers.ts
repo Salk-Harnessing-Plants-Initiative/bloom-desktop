@@ -33,7 +33,7 @@ interface WaveRow {
 interface ChangeRow {
   id: string;
   wave_id: string;
-  old_sowing_date: string;
+  old_sowing_date: string | null;
   new_sowing_date: string;
   reason: string | null;
   changed_by_phenotyper_id: string | null;
@@ -88,6 +88,7 @@ export interface CylinderWaveDbLike {
 
 export interface CylinderWaveTxLike {
   cylinderWave: {
+    create: CylinderWaveDbLike['cylinderWave']['create'];
     update: (args: {
       where: { id: string };
       data: { sowing_date: string; set_by_phenotyper_id?: string };
@@ -97,7 +98,7 @@ export interface CylinderWaveTxLike {
     create: (args: {
       data: {
         wave_id: string;
-        old_sowing_date: string;
+        old_sowing_date: string | null;
         new_sowing_date: string;
         reason: string | null;
         changed_by_phenotyper_id: string | null;
@@ -129,6 +130,12 @@ function trimmed(value: unknown): string {
 }
 
 export const PHENOTYPER_REQUIRED = 'Choose the phenotyper first.';
+
+/**
+ * Who set or changed a date with no phenotyper: only the start-date backfill, run by an
+ * admin (Capture Scan always needs a phenotyper).
+ */
+export const SET_BY_ADMIN = 'admin';
 
 /**
  * The phenotyper setting or changing a date: required and must exist, so the
@@ -203,7 +210,7 @@ async function withScanCounts(
     note: row.note,
     set_by_name: row.set_by_phenotyper_id
       ? (names.get(row.set_by_phenotyper_id) ?? null)
-      : null,
+      : SET_BY_ADMIN,
     set_at: row.updatedAt.toISOString(),
     changes: changes
       .filter((c) => c.wave_id === row.id)
@@ -214,7 +221,7 @@ async function withScanCounts(
         reason: c.reason,
         changed_by_name: c.changed_by_phenotyper_id
           ? (names.get(c.changed_by_phenotyper_id) ?? null)
-          : null,
+          : SET_BY_ADMIN,
         changed_at: c.changedAt.toISOString(),
       })),
     scanCount: scanCount(row),
@@ -286,14 +293,27 @@ export async function createWave(
     if (check.waveConfirmNeeded && input.waveConfirmed !== true) {
       return { success: false, error: check.waveConfirmNeeded };
     }
-    const row = await deps.db.cylinderWave.create({
-      data: {
-        experiment_id: experimentId,
-        wave_number: input.waveNumber,
-        sowing_date: input.sowingDate,
-        note: note || null,
-        set_by_phenotyper_id: phenotyperId,
-      },
+    // The first date is logged too, so the history shows who set it and when.
+    const row = await deps.db.$transaction(async (tx) => {
+      const created = await tx.cylinderWave.create({
+        data: {
+          experiment_id: experimentId,
+          wave_number: input.waveNumber,
+          sowing_date: input.sowingDate,
+          note: note || null,
+          set_by_phenotyper_id: phenotyperId,
+        },
+      });
+      await tx.cylinderWaveSowingDateChange.create({
+        data: {
+          wave_id: created.id,
+          old_sowing_date: null,
+          new_sowing_date: input.sowingDate,
+          reason: note || null,
+          changed_by_phenotyper_id: phenotyperId,
+        },
+      });
+      return created;
     });
     const [info] = await withScanCounts(deps.db, [row]);
     return { success: true, data: info };

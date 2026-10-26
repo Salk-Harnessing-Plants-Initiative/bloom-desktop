@@ -6,7 +6,8 @@
 /** One change to a wave's sowing date, for the log on the Experiments page. */
 export interface CylinderWaveDateChange {
   id: string;
-  old_sowing_date: string;
+  /** Null for the wave's first date. */
+  old_sowing_date: string | null;
   new_sowing_date: string;
   reason: string | null;
   changed_by_name: string | null;

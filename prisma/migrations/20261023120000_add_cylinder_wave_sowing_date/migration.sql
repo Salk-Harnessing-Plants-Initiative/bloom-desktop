@@ -52,7 +52,7 @@ CREATE TABLE "CylinderWave" (
 CREATE TABLE "CylinderWaveSowingDateChange" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "wave_id" TEXT NOT NULL,
-    "old_sowing_date" TEXT NOT NULL,
+    "old_sowing_date" TEXT,
     "new_sowing_date" TEXT NOT NULL,
     "reason" TEXT,
     "changed_by_phenotyper_id" TEXT,

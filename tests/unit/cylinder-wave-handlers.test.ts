@@ -27,6 +27,11 @@ const phenotypers = [
 /** An in-memory fake of the tables the handlers use. */
 function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
   const changes: Record<string, unknown>[] = [];
+  const createWaveRow = vi.fn(async ({ data }) => {
+    const row = { id: `w${rows.length + 1}`, ...data, updatedAt: SET_AT };
+    rows.push(row);
+    return row;
+  });
   const db = {
     cylinderWave: {
       findMany: vi.fn(async ({ where }) =>
@@ -37,11 +42,7 @@ function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
       findUnique: vi.fn(
         async ({ where }) => rows.find((r) => r.id === where.id) ?? null
       ),
-      create: vi.fn(async ({ data }) => {
-        const row = { id: `w${rows.length + 1}`, ...data, updatedAt: SET_AT };
-        rows.push(row);
-        return row;
-      }),
+      create: createWaveRow,
     },
     scan: {
       groupBy: vi.fn(async ({ where }) =>
@@ -69,6 +70,7 @@ function fakeDb(rows: Row[], scanCounts: Record<number, number> = {}) {
     $transaction: vi.fn(async (fn) =>
       fn({
         cylinderWave: {
+          create: createWaveRow,
           update: async ({
             where,
             data,
@@ -206,10 +208,10 @@ describe('listWaves: the change log', () => {
 });
 
 describe('listWaves: who set the date', () => {
-  it('has no name when the setter is unknown', async () => {
+  it('names a date set with no phenotyper (the backfill) as set by admin', async () => {
     const { db, raw } = fakeDb([{ ...wave1, set_by_phenotyper_id: null }]);
     const result = await listWaves({ db, now }, 'exp');
-    expect(result.data?.[0].set_by_name).toBeNull();
+    expect(result.data?.[0].set_by_name).toBe('admin');
     expect(raw.phenotyper.findMany).not.toHaveBeenCalled();
   });
 });
@@ -239,6 +241,53 @@ describe('createWave', () => {
         note: null,
         set_by_phenotyper_id: 'ph-1',
       },
+    });
+  });
+
+  it('logs the first date too, in the same transaction, so the history shows who set it', async () => {
+    const result = await create({
+      phenotyperId: 'ph-1',
+      sowingDate: '2026-02-20',
+    });
+    expect(fake.raw.$transaction).toHaveBeenCalledTimes(1);
+    expect(fake.changes).toEqual([
+      {
+        id: 'c1',
+        wave_id: 'w2',
+        old_sowing_date: null,
+        new_sowing_date: '2026-02-20',
+        reason: null,
+        changed_by_phenotyper_id: 'ph-1',
+      },
+    ]);
+    expect(result.data?.changes).toEqual([
+      {
+        id: 'c1',
+        old_sowing_date: null,
+        new_sowing_date: '2026-02-20',
+        reason: null,
+        changed_by_name: 'Demo Phenotyper',
+        changed_at: EDITED_AT.toISOString(),
+      },
+    ]);
+  });
+
+  it("logs the first date's note as its reason", async () => {
+    await create({
+      sowingDate: '2025-11-26',
+      note: 'Sown the same day, scanned later',
+    });
+    expect(fake.changes[0]).toMatchObject({
+      reason: 'Sown the same day, scanned later',
+    });
+  });
+
+  it('saves nothing if the date or its log entry fails', async () => {
+    fake.raw.$transaction.mockRejectedValue(new Error('database is locked'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await create({})).toEqual({
+      success: false,
+      error: 'database is locked',
     });
   });
 

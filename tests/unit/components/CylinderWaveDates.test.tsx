@@ -78,6 +78,34 @@ describe('CylinderWaveDates', () => {
     expect(screen.queryByTestId('wave-date-log-2')).not.toBeInTheDocument();
   });
 
+  it("logs a wave's first date as Set to, and the backfill's as by admin", async () => {
+    list.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          ...wave2,
+          changes: [
+            {
+              id: 'c9',
+              old_sowing_date: null,
+              new_sowing_date: '2026-02-20',
+              reason: 'Set from earlier scans: 80 of 100 point to 20 Feb 2026',
+              changed_by_name: 'admin',
+              changed_at: '2026-10-27T10:00:00.000Z',
+            },
+          ],
+        },
+      ],
+    });
+    render(<CylinderWaveDates experimentId="exp" />);
+    const entry = (await screen.findByTestId('wave-date-log-2')).querySelector(
+      'li'
+    );
+    expect(entry).toHaveTextContent(
+      /^Set to .+ on .+ by admin\. Reason: Set from earlier scans: 80 of 100 point to 20 Feb 2026$/
+    );
+  });
+
   it('has no way to change a date here', async () => {
     render(<CylinderWaveDates experimentId="exp" />);
     await screen.findByText(/Wave 1: start date/);
