@@ -944,7 +944,7 @@ describe('CaptureScan plant age from the germination date (#407)', () => {
       "Calculated from wave 1's germination date"
     );
     expect(screen.getByTestId('wave-dates-info')).toHaveTextContent(
-      'set by Demo Phenotyper'
+      'updated by Demo Phenotyper'
     );
   });
 

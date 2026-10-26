@@ -133,31 +133,50 @@ export function WaveDatesInfo({
 
   return (
     <div className="mt-1 text-sm text-gray-600" data-testid="wave-dates-info">
-      <p>
-        Germination date
-        <GerminationDateInfo />: {formatWaveDate(wave.germination_date)}
-        {wave.sowing_date && ` · sown ${formatWaveDate(wave.sowing_date)}`}
-        {wave.transfer_date
-          ? ` · transferred ${formatWaveDate(wave.transfer_date)}`
-          : ' · transferred the same day'}
-        {wave.set_by_name
-          ? ` · set by ${wave.set_by_name} on ${formatSetAt(wave.set_at)}`
-          : ` (set on ${formatSetAt(wave.set_at)})`}
-        {!editing && !lockedMessage && (
-          <>
-            {' '}
-            <button
-              type="button"
-              onClick={open}
-              disabled={disabled}
-              className="underline"
-              data-testid="wave-dates-edit"
-            >
-              Edit
-            </button>
-          </>
+      <div className="space-y-0.5" data-testid="wave-dates-summary">
+        <p>
+          <span className="font-semibold text-green-800">Germination date</span>
+          <GerminationDateInfo />:{' '}
+          <span className="font-medium text-gray-900">
+            {formatWaveDate(wave.germination_date)}
+          </span>
+        </p>
+        {wave.sowing_date && (
+          <p>
+            <span className="font-semibold text-green-800">Sown:</span>{' '}
+            <span className="text-gray-900">
+              {formatWaveDate(wave.sowing_date)}
+            </span>
+          </p>
         )}
-      </p>
+        <p>
+          <span className="font-semibold text-green-800">Transferred:</span>{' '}
+          <span className="text-gray-900">
+            {wave.transfer_date
+              ? formatWaveDate(wave.transfer_date)
+              : 'the same day as germination'}
+          </span>
+        </p>
+        <p className="text-xs text-gray-500">
+          {wave.set_by_name
+            ? `Dates updated by ${wave.set_by_name} on ${formatSetAt(wave.set_at)}`
+            : `Dates updated on ${formatSetAt(wave.set_at)}`}
+          {!editing && !lockedMessage && (
+            <>
+              {' · '}
+              <button
+                type="button"
+                onClick={open}
+                disabled={disabled}
+                className="font-semibold text-green-800 underline"
+                data-testid="wave-dates-edit"
+              >
+                Edit
+              </button>
+            </>
+          )}
+        </p>
+      </div>
       {!editing && lockedMessage && (
         <p className="text-amber-800" data-testid="wave-dates-edit-locked">
           {lockedMessage}

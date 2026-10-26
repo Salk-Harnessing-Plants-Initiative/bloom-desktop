@@ -38,14 +38,14 @@ describe('WaveDatesInfo', () => {
   it('shows the germination date, who set it and when', () => {
     renderInfo();
     expect(screen.getByTestId('wave-dates-info')).toHaveTextContent(
-      /^Germination date: .+ · sown .+ · transferred the same day · set by Demo Phenotyper on .+Edit$/
+      /^Germination date: .+Sown: .+Transferred: the same day as germinationDates updated by Demo Phenotyper on .+ · Edit$/
     );
   });
 
   it('shows a transfer date on another day', () => {
     renderInfo({ ...wave2, transfer_date: '2026-02-22' });
     expect(screen.getByTestId('wave-dates-info')).toHaveTextContent(
-      /· transferred .+2026 ·/
+      /Transferred: .+2026Dates updated/
     );
   });
 
@@ -72,7 +72,9 @@ describe('WaveDatesInfo', () => {
 
   it('asks for a sowing date on a backfilled wave that has none', () => {
     renderInfo({ ...wave2, sowing_date: null });
-    expect(screen.getByTestId('wave-dates-info')).not.toHaveTextContent('sown');
+    expect(screen.getByTestId('wave-dates-info')).not.toHaveTextContent(
+      'Sown:'
+    );
     fireEvent.click(screen.getByTestId('wave-dates-edit'));
     fireEvent.change(screen.getByLabelText('Germination date'), {
       target: { value: '2026-02-19' },
@@ -84,10 +86,10 @@ describe('WaveDatesInfo', () => {
     expect(screen.getByTestId('wave-dates-edit-save')).not.toBeDisabled();
   });
 
-  it('leaves out "set by" when the setter is unknown', () => {
+  it('leaves out who updated the dates when the setter is unknown', () => {
     renderInfo({ ...wave2, set_by_name: null });
     expect(screen.getByTestId('wave-dates-info')).not.toHaveTextContent(
-      'set by'
+      'updated by'
     );
   });
 
@@ -304,7 +306,7 @@ describe('WaveDatesInfo', () => {
       />
     );
     expect(screen.getByTestId('wave-dates-info')).toHaveTextContent(
-      /^Germination date: .+ · transferred the same day \(set on .+\) Edit$/
+      /^Germination date: .+Transferred: the same day as germinationDates updated on .+ · Edit$/
     );
   });
 });
