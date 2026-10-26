@@ -1,12 +1,12 @@
 /**
- * CylinderScan wave sowing dates (#407). Capture Scan calculates the plant age
- * from the wave's sowing date, so the date is checked here as well as in the
- * renderer: a future date is refused; a date out of order with another wave's, or
- * a wave number that skips ahead, needs a note; what the date is (its
- * basis: transfer, sowing, germination or other) is required; and once a wave has
- * scans, its date or basis only changes with a reason, recorded with the old and
- * new date.
- * Saved scans keep the age they were saved with.
+ * CylinderScan wave dates (#407, #428): each wave's sowing, germination and
+ * transfer-to-cylinder dates. Capture Scan computes the plant age from the
+ * germination date, so the dates are checked here as well as in the renderer:
+ * germination and sowing are required and not in the future, sowing is on or
+ * before germination, a germination date out of order with another wave's (or a
+ * wave number that skips ahead) needs a note, and once a wave has scans its dates
+ * only change with a reason. Every set and change is logged with the dates before
+ * and after. Saved scans keep the age they were saved with.
  */
 
 import type { IpcMain } from 'electron';
@@ -15,13 +15,15 @@ import type {
   CylinderWaveCreateInput,
   CylinderWaveDateChangeInput,
   CylinderWaveInfo,
+  WaveDatesInput,
 } from '../types/cylinder-wave';
 import {
   MAX_REASON_LENGTH,
   checkNewWave,
-  checkSowingDateChange,
-} from '../utils/sowing-date';
-import { startDateBasisError } from '../utils/start-date-basis';
+  checkWaveDateChange,
+  storedWaveDates,
+  type WaveDates,
+} from '../utils/wave-dates';
 
 import type { CylinderWaveDbLike, WaveRow } from './cylinder-wave-db';
 
@@ -54,16 +56,27 @@ function trimmed(value: unknown): string {
 
 export const PHENOTYPER_REQUIRED = 'Choose the phenotyper first.';
 
-/** The basis as saved: its description only for "other". */
-function basisFields(input: {
-  startDateBasis: string;
-  startDateBasisOther?: string;
-}): { start_date_basis: string; start_date_basis_other: string | null } {
+/** The dates as the renderer sent them, trimmed. */
+function enteredDates(input: Partial<WaveDatesInput>): WaveDates {
   return {
-    start_date_basis: input.startDateBasis,
-    start_date_basis_other:
-      input.startDateBasis === 'other'
-        ? trimmed(input.startDateBasisOther)
+    germination: trimmed(input?.germinationDate),
+    sowing: trimmed(input?.sowingDate),
+    transfer: trimmed(input?.transferDate),
+  };
+}
+
+/** The dates as saved: a transfer date on the germination day is stored as null ("same day"). */
+function datesToSave(dates: WaveDates): {
+  germination_date: string;
+  sowing_date: string;
+  transfer_date: string | null;
+} {
+  return {
+    germination_date: dates.germination,
+    sowing_date: dates.sowing,
+    transfer_date:
+      dates.transfer && dates.transfer !== dates.germination
+        ? dates.transfer
         : null,
   };
 }
@@ -96,7 +109,7 @@ async function withScanCounts(
 ): Promise<CylinderWaveInfo[]> {
   const changes =
     rows.length > 0
-      ? await db.cylinderWaveSowingDateChange.findMany({
+      ? await db.cylinderWaveDateChange.findMany({
           where: { wave_id: { in: rows.map((r) => r.id) } },
           orderBy: { changedAt: 'asc' },
         })
@@ -143,9 +156,9 @@ async function withScanCounts(
   return rows.map((row) => ({
     id: row.id,
     wave_number: row.wave_number,
+    germination_date: row.germination_date,
     sowing_date: row.sowing_date,
-    start_date_basis: row.start_date_basis,
-    start_date_basis_other: row.start_date_basis_other,
+    transfer_date: row.transfer_date,
     note: row.note,
     set_by_name: row.set_by_phenotyper_id
       ? (names.get(row.set_by_phenotyper_id) ?? null)
@@ -155,10 +168,12 @@ async function withScanCounts(
       .filter((c) => c.wave_id === row.id)
       .map((c) => ({
         id: c.id,
+        old_germination_date: c.old_germination_date,
+        new_germination_date: c.new_germination_date,
         old_sowing_date: c.old_sowing_date,
         new_sowing_date: c.new_sowing_date,
-        start_date_basis: c.start_date_basis,
-        start_date_basis_other: c.start_date_basis_other,
+        old_transfer_date: c.old_transfer_date,
+        new_transfer_date: c.new_transfer_date,
         reason: c.reason,
         changed_by_name: c.changed_by_phenotyper_id
           ? (names.get(c.changed_by_phenotyper_id) ?? null)
@@ -209,12 +224,8 @@ export async function createWave(
       error: `Keep the note under ${MAX_REASON_LENGTH} characters.`,
     };
   }
-  const basisError = startDateBasisError(
-    input.startDateBasis,
-    input.startDateBasisOther
-  );
-  if (basisError) return { success: false, error: basisError };
-  const basis = basisFields(input);
+  const dates = enteredDates(input);
+  const toSave = datesToSave(dates);
   try {
     const who = await phenotyperError(deps.db, phenotyperId);
     if (who) return { success: false, error: who };
@@ -225,36 +236,38 @@ export async function createWave(
     if (existing.some((w) => w.wave_number === input.waveNumber)) {
       return {
         success: false,
-        error: `Wave ${input.waveNumber} already has a start date.`,
+        error: `Wave ${input.waveNumber} already has its dates.`,
       };
     }
     const check = checkNewWave(
       input.waveNumber,
-      input.sowingDate,
+      dates,
       existing,
       (deps.now ?? (() => new Date()))()
     );
     if (check.error) return { success: false, error: check.error };
     if (check.noteNeeded && !note)
       return { success: false, error: check.noteNeeded };
-    // The first date is logged too, so the history shows who set it and when.
+    // The first dates are logged too, so the history shows who set them and when.
     const row = await deps.db.$transaction(async (tx) => {
       const created = await tx.cylinderWave.create({
         data: {
           experiment_id: experimentId,
           wave_number: input.waveNumber,
-          sowing_date: input.sowingDate,
-          ...basis,
+          ...toSave,
           note: note || null,
           set_by_phenotyper_id: phenotyperId,
         },
       });
-      await tx.cylinderWaveSowingDateChange.create({
+      await tx.cylinderWaveDateChange.create({
         data: {
           wave_id: created.id,
+          old_germination_date: null,
+          new_germination_date: toSave.germination_date,
           old_sowing_date: null,
-          new_sowing_date: input.sowingDate,
-          ...basis,
+          new_sowing_date: toSave.sowing_date,
+          old_transfer_date: null,
+          new_transfer_date: toSave.transfer_date,
           reason: note || null,
           changed_by_phenotyper_id: phenotyperId,
         },
@@ -268,7 +281,7 @@ export async function createWave(
   }
 }
 
-export async function changeSowingDate(
+export async function changeDates(
   deps: CylinderWaveDeps,
   input: CylinderWaveDateChangeInput
 ): Promise<DatabaseResponse<CylinderWaveInfo>> {
@@ -277,12 +290,8 @@ export async function changeSowingDate(
   const phenotyperId = trimmed(input?.phenotyperId);
   if (!waveId)
     return { success: false, error: 'waveId must be a non-empty string' };
-  const basisError = startDateBasisError(
-    input.startDateBasis,
-    input.startDateBasisOther
-  );
-  if (basisError) return { success: false, error: basisError };
-  const basis = basisFields(input);
+  const dates = enteredDates(input);
+  const toSave = datesToSave(dates);
   try {
     const wave = await deps.db.cylinderWave.findUnique({
       where: { id: waveId },
@@ -297,16 +306,13 @@ export async function changeSowingDate(
         orderBy: { wave_number: 'asc' },
       })
     ).filter((w) => w.id !== wave.id);
-    const { saveError } = checkSowingDateChange(
+    const { saveError } = checkWaveDateChange(
       {
         waveNumber: wave.wave_number,
-        currentDate: wave.sowing_date,
-        newDate: input.sowingDate,
+        current: storedWaveDates(wave),
+        next: storedWaveDates(toSave),
         reason,
         waveHasScans: current.scanCount > 0,
-        basisChanged:
-          basis.start_date_basis !== wave.start_date_basis ||
-          basis.start_date_basis_other !== wave.start_date_basis_other,
       },
       others,
       (deps.now ?? (() => new Date()))()
@@ -314,12 +320,15 @@ export async function changeSowingDate(
     if (saveError) return { success: false, error: saveError };
 
     const updated = await deps.db.$transaction(async (tx) => {
-      await tx.cylinderWaveSowingDateChange.create({
+      await tx.cylinderWaveDateChange.create({
         data: {
           wave_id: wave.id,
+          old_germination_date: wave.germination_date,
+          new_germination_date: toSave.germination_date,
           old_sowing_date: wave.sowing_date,
-          new_sowing_date: input.sowingDate,
-          ...basis,
+          new_sowing_date: toSave.sowing_date,
+          old_transfer_date: wave.transfer_date,
+          new_transfer_date: toSave.transfer_date,
           reason: reason || null,
           changed_by_phenotyper_id: phenotyperId,
         },
@@ -328,8 +337,7 @@ export async function changeSowingDate(
       return tx.cylinderWave.update({
         where: { id: wave.id },
         data: {
-          sowing_date: input.sowingDate,
-          ...basis,
+          ...toSave,
           set_by_phenotyper_id: phenotyperId,
         },
       });
@@ -352,8 +360,7 @@ export function registerCylinderWaveHandlers(
     (_event, input: CylinderWaveCreateInput) => createWave(deps, input)
   );
   deps.ipcMain.handle(
-    'db:cylinderWaves:changeSowingDate',
-    (_event, input: CylinderWaveDateChangeInput) =>
-      changeSowingDate(deps, input)
+    'db:cylinderWaves:changeDates',
+    (_event, input: CylinderWaveDateChangeInput) => changeDates(deps, input)
   );
 }

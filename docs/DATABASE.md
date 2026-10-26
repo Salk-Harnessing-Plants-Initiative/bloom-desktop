@@ -159,8 +159,8 @@ model Scan {
   gamma           Float
   seconds_per_rot Float
   wave_number     Int
-  plant_age_days  Int        // The age used: calculated from the wave's start date, or changed with a reason
-  calculated_plant_age_days Int?    // Calculated from CylinderWave.sowing_date (null for older scans)
+  plant_age_days  Int        // The age used: calculated from the wave's germination date, or changed with a reason
+  calculated_plant_age_days Int?    // Calculated from CylinderWave.germination_date (null for older scans)
   plant_age_change_reason   String? // The operator's reason when plant_age_days differs from it
   deleted         Boolean    @default(false)
   images          Image[]
@@ -189,20 +189,24 @@ model Image {
 }
 ```
 
-#### CylinderWave and CylinderWaveSowingDateChange
+#### CylinderWave and CylinderWaveDateChange
 
-Each CylinderScan wave's start date, a local calendar date stored as `"YYYY-MM-DD"` in `sowing_date`. It is the day the plant age counts from, as day 0: the sowing date, the transfer date, or whichever day the experiment counts from (Capture Scan calls it the "start date"). Capture Scan calculates the plant age from it: the calendar days from that date to the scan date. The rules:
+Each CylinderScan wave's sowing, germination and transfer-to-cylinder dates, local calendar dates stored as `"YYYY-MM-DD"`. Capture Scan computes the plant age from the **germination date**, always: the calendar days from it to the scan date (days after germination, which is what the processing pipeline expects). The rules:
 
-- a future date is refused;
-- a date on or before an earlier wave's needs a `note`;
-- once the wave has scans, the date only changes with a reason. Every change is recorded in `CylinderWaveSowingDateChange` with the old and new date, and saved scans keep their age. The first date is recorded too, with no old date, so the history shows who set it. An entry with no phenotyper was written by the start-date backfill, and is shown as set by admin.
+- germination and sowing are required on Capture Scan and can't be in the future, and sowing is before germination (not the same day);
+- `transfer_date` is null when it's the germination day; otherwise it's after germination and not in the future;
+- `sowing_date` is null only for a wave the backfill set;
+- a germination date out of order with another wave's, or a wave number that skips ahead, needs a `note`;
+- once the wave has scans, the dates only change with a reason. Every set and change is recorded in `CylinderWaveDateChange` with each date before and after (the "old" ones are null when the wave is first set), and saved scans keep their age. An entry with no phenotyper was written by the backfill, and is shown as set by admin.
 
 ```prisma
 model CylinderWave {
   id                   String   @id @default(uuid())
   experiment_id        String
   wave_number          Int
-  sowing_date          String
+  germination_date     String   // the plant age is computed from this
+  sowing_date          String?  // null only for a backfilled wave
+  transfer_date        String?  // null: the germination day
   note                 String?
   set_by_phenotyper_id String?
   createdAt            DateTime @default(now())
@@ -211,11 +215,15 @@ model CylinderWave {
   @@unique([experiment_id, wave_number])
 }
 
-model CylinderWaveSowingDateChange {
+model CylinderWaveDateChange {
   id                       String   @id @default(uuid())
   wave_id                  String
-  old_sowing_date          String?  // null for the wave's first date
-  new_sowing_date          String
+  old_germination_date     String?  // null when the wave was first set
+  new_germination_date     String
+  old_sowing_date          String?
+  new_sowing_date          String?
+  old_transfer_date        String?
+  new_transfer_date        String?
   reason                   String?
   changed_by_phenotyper_id String?
   changedAt                DateTime @default(now())
@@ -457,18 +465,18 @@ window.electron.database.scans.checkDuplicate(plantId: string, experimentId: str
 ### CylinderScan waves
 
 ```typescript
-// An experiment's waves with sowing dates and scan counts
+// An experiment's waves with their dates, change log and scan counts
 window.electron.database.cylinderWaves.list(experimentId: string)
 // Returns: DatabaseResponse<CylinderWaveInfo[]>
 
-// Set a wave's sowing date (the first time the wave is used on Capture Scan)
-window.electron.database.cylinderWaves.create({ experimentId, waveNumber, sowingDate, note?, waveConfirmed?, phenotyperId })
+// Set a wave's dates (the first time the wave is used on Capture Scan)
+window.electron.database.cylinderWaves.create({ experimentId, waveNumber, germinationDate, sowingDate, transferDate?, note?, phenotyperId })
 // Returns: DatabaseResponse<CylinderWaveInfo>; refused with the reason when a rule isn't met.
-// phenotyperId is required (and must exist) for create and changeSowingDate, so the log always says who.
+// phenotyperId is required (and must exist) for create and changeDates, so the log always says who.
 
-// Change a wave's sowing date from Capture Scan (reason required once the wave has scans);
+// Change a wave's dates from Capture Scan (reason required once the wave has scans);
 // the change is logged and listed with the wave (CylinderWaveInfo.changes)
-window.electron.database.cylinderWaves.changeSowingDate({ waveId, sowingDate, reason?, phenotyperId })
+window.electron.database.cylinderWaves.changeDates({ waveId, germinationDate, sowingDate, transferDate?, reason?, phenotyperId })
 // Returns: DatabaseResponse<CylinderWaveInfo>
 ```
 

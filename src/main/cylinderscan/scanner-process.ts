@@ -16,7 +16,7 @@ import type {
   ScanProgress,
 } from '../../types/scanner';
 import { writeMetadataJson } from './scan-metadata-json';
-import { plantAgeChangeError } from '../../utils/sowing-date';
+import { plantAgeChangeError } from '../../utils/wave-dates';
 import type { ImageStatus } from '../../types/database';
 
 /**

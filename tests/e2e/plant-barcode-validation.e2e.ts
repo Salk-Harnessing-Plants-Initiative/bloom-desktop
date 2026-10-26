@@ -498,7 +498,7 @@ test.describe('UI: Duplicate Scan Prevention', () => {
       data: {
         experiment_id: experiment.id,
         wave_number: 2,
-        sowing_date: sownDaysAgo(21),
+        germination_date: sownDaysAgo(21),
       },
     });
 
@@ -564,7 +564,7 @@ test.describe('UI: Duplicate Scan Prevention', () => {
         data: {
           experiment_id: experiment.id,
           wave_number,
-          sowing_date: sownDaysAgo(21),
+          germination_date: sownDaysAgo(21),
         },
       });
     }
@@ -1160,7 +1160,7 @@ test.describe('UI: Session State Zero Value Persistence', () => {
       },
     });
 
-    // Wave 0 sown today: the plant age is calculated from the sowing date (#407),
+    // Wave 0 sown today: the plant age is calculated from the germination date (#407),
     // so a sown-today plant is 0 days old.
     const today = new Date();
     const sownToday = [
@@ -1172,7 +1172,7 @@ test.describe('UI: Session State Zero Value Persistence', () => {
       data: {
         experiment_id: experiment.id,
         wave_number: 0,
-        sowing_date: sownToday,
+        germination_date: sownToday,
       },
     });
 
@@ -1191,7 +1191,7 @@ test.describe('UI: Session State Zero Value Persistence', () => {
     const waveNumberInput = window.locator('#waveNumber');
     await waveNumberInput.fill('0');
 
-    // The plant age is calculated from wave 0's sowing date: 0 days.
+    // The plant age is calculated from wave 0's germination date: 0 days.
     await expect(window.locator('#plantAgeDays')).toHaveValue('0');
 
     // Wait for session save debounce (300ms + buffer)
@@ -1209,7 +1209,7 @@ test.describe('UI: Session State Zero Value Persistence', () => {
     await window.waitForTimeout(500);
 
     // The wave number comes back from the session; the age is recalculated from
-    // wave 0's sowing date. So this checks that wave 0 isn't treated as empty,
+    // wave 0's germination date. So this checks that wave 0 isn't treated as empty,
     // and that a calculated age of 0 shows as '0', not ''.
     // Verify wave number is still 0 (not empty or reset)
     const restoredWaveNumber = await window.locator('#waveNumber').inputValue();

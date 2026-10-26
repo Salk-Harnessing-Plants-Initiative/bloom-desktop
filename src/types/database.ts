@@ -160,7 +160,7 @@ export interface PaginatedScanFilters {
   pageSize: number;
   /** Filter by experiment ID */
   experimentId?: string;
-  /** Filter by start date (ISO string, inclusive) */
+  /** Filter by germination date (ISO string, inclusive) */
   dateFrom?: string;
   /** Filter by end date (ISO string, inclusive) */
   dateTo?: string;

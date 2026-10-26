@@ -1,5 +1,5 @@
 /**
- * Unit tests for the Experiments page list of CylinderScan wave sowing dates and
+ * Unit tests for the Experiments page list of CylinderScan wave germination dates and
  * their change log (#407). The list is read-only: dates change on Capture Scan.
  */
 
@@ -11,7 +11,9 @@ import { CylinderWaveDates } from '../../../src/renderer/components/CylinderWave
 const wave1 = {
   id: 'w1',
   wave_number: 1,
-  sowing_date: '2025-11-25',
+  germination_date: '2025-11-25',
+  sowing_date: '2025-11-20',
+  transfer_date: null,
   note: null,
   set_by_name: 'Demo Phenotyper',
   set_at: '2026-01-02T09:00:00.000Z',
@@ -19,16 +21,24 @@ const wave1 = {
   changes: [
     {
       id: 'c1',
-      old_sowing_date: '2025-11-26',
-      new_sowing_date: '2025-11-27',
+      old_germination_date: '2025-11-26',
+      new_germination_date: '2025-11-27',
+      old_sowing_date: '2025-11-20',
+      new_sowing_date: '2025-11-20',
+      old_transfer_date: null,
+      new_transfer_date: null,
       reason: 'Typo',
       changed_by_name: 'Second Phenotyper',
       changed_at: '2025-12-01T10:00:00.000Z',
     },
     {
       id: 'c2',
-      old_sowing_date: '2025-11-27',
-      new_sowing_date: '2025-11-25',
+      old_germination_date: '2025-11-27',
+      new_germination_date: '2025-11-25',
+      old_sowing_date: '2025-11-20',
+      new_sowing_date: '2025-11-20',
+      old_transfer_date: null,
+      new_transfer_date: null,
       reason: 'Checked the seed log',
       changed_by_name: 'Demo Phenotyper',
       changed_at: '2025-12-02T10:00:00.000Z',
@@ -39,7 +49,7 @@ const wave2 = {
   ...wave1,
   id: 'w2',
   wave_number: 2,
-  sowing_date: '2026-02-20',
+  germination_date: '2026-02-20',
   scanCount: 1,
   changes: [],
 };
@@ -73,7 +83,7 @@ describe('CylinderWaveDates', () => {
     const entries = log.querySelectorAll('li');
     expect(entries).toHaveLength(2);
     expect(entries[0]).toHaveTextContent(
-      /^Changed from .+ to .+ on .+ by Second Phenotyper\. Reason: Typo$/
+      /^Changed: germination .+ → .+ on .+ by Second Phenotyper\. Reason: Typo$/
     );
     expect(entries[1]).toHaveTextContent(
       /by Demo Phenotyper\. Reason: Checked the seed log$/
@@ -90,8 +100,12 @@ describe('CylinderWaveDates', () => {
           changes: [
             {
               id: 'c9',
+              old_germination_date: null,
+              new_germination_date: '2026-02-20',
               old_sowing_date: null,
-              new_sowing_date: '2026-02-20',
+              new_sowing_date: null,
+              old_transfer_date: null,
+              new_transfer_date: null,
               reason: 'Set from earlier scans: 80 of 100 point to 20 Feb 2026',
               changed_by_name: 'admin',
               changed_at: '2026-10-27T10:00:00.000Z',
@@ -105,68 +119,71 @@ describe('CylinderWaveDates', () => {
       'li'
     );
     expect(entry).toHaveTextContent(
-      /^Set to .+ on .+ by admin\. Reason: Set from earlier scans: 80 of 100 point to 20 Feb 2026$/
+      /^Set: germination .+, transfer the germination day on .+ by admin\. Reason: Set from earlier scans: 80 of 100 point to 20 Feb 2026$/
     );
   });
 
-  it('says what each date is: on the wave, when set, when changed, and when only that changed', async () => {
-    const basis = (b: string, other: string | null = null) => ({
-      start_date_basis: b,
-      start_date_basis_other: other,
+  it('shows all three dates on the wave, and what each log entry set or changed', async () => {
+    const change = (
+      id: string,
+      old: [string | null, string | null, string | null],
+      next: [string, string | null, string | null],
+      reason: string | null = null
+    ) => ({
+      id,
+      old_germination_date: old[0],
+      new_germination_date: next[0],
+      old_sowing_date: old[1],
+      new_sowing_date: next[1],
+      old_transfer_date: old[2],
+      new_transfer_date: next[2],
+      reason,
+      changed_by_name: 'Demo Phenotyper',
+      changed_at: '2026-02-21T10:00:00.000Z',
     });
     list.mockResolvedValue({
       success: true,
       data: [
         {
           ...wave2,
-          ...basis('sowing'),
+          sowing_date: '2026-02-16',
+          transfer_date: '2026-02-22',
           changes: [
-            {
-              id: 'c1',
-              old_sowing_date: null,
-              new_sowing_date: '2026-02-18',
-              ...basis('other', 'two days after germination'),
-              reason: null,
-              changed_by_name: 'Demo Phenotyper',
-              changed_at: '2026-02-21T10:00:00.000Z',
-            },
-            {
-              id: 'c2',
-              old_sowing_date: '2026-02-18',
-              new_sowing_date: '2026-02-20',
-              ...basis('transfer'),
-              reason: null,
-              changed_by_name: 'Demo Phenotyper',
-              changed_at: '2026-02-22T10:00:00.000Z',
-            },
-            {
-              id: 'c3',
-              old_sowing_date: '2026-02-20',
-              new_sowing_date: '2026-02-20',
-              ...basis('sowing'),
-              reason: 'Sown straight into the cylinder',
-              changed_by_name: 'Demo Phenotyper',
-              changed_at: '2026-02-23T10:00:00.000Z',
-            },
+            change(
+              'c1',
+              [null, null, null],
+              ['2026-02-20', '2026-02-15', null]
+            ),
+            change(
+              'c2',
+              ['2026-02-20', '2026-02-15', null],
+              ['2026-02-20', '2026-02-16', null],
+              'Checked the seed log'
+            ),
+            change(
+              'c3',
+              ['2026-02-20', '2026-02-16', null],
+              ['2026-02-20', '2026-02-16', '2026-02-22']
+            ),
           ],
         },
       ],
     });
     render(<CylinderWaveDates experimentId="exp" />);
     expect(await screen.findByTestId('wave-2')).toHaveTextContent(
-      /^Wave 2 .+ · Sowing · 1 scan/
+      /^Wave 2 Germinated .+ · sown .+ · transferred .+2026 · 1 scan/
     );
     const entries = screen
       .getByTestId('wave-date-log-2')
       .querySelectorAll('li');
     expect(entries[0]).toHaveTextContent(
-      /^Set to .+ \(other: two days after germination\) on /
+      /^Set: germination .+, sowing .+, transfer the germination day on /
     );
     expect(entries[1]).toHaveTextContent(
-      /^Changed from .+ to .+ \(transfer to cylinder\) on /
+      /^Changed: sowing .+ → .+ on .+ by Demo Phenotyper\. Reason: Checked the seed log$/
     );
     expect(entries[2]).toHaveTextContent(
-      /^.+ marked as sowing on .+ by Demo Phenotyper\. Reason: Sown straight into the cylinder$/
+      /^Changed: transfer the germination day → .+2026 on /
     );
   });
 

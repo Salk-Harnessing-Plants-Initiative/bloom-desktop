@@ -403,7 +403,7 @@ export interface DatabaseAPI {
       experimentId: string
     ) => ReturnType<typeof listGraviMetadata>;
   };
-  /** CylinderScan waves and their sowing dates (#407). */
+  /** CylinderScan waves and their germination dates (#407). */
   cylinderWaves: {
     list: (
       experimentId: string
@@ -411,7 +411,7 @@ export interface DatabaseAPI {
     create: (
       input: CylinderWaveCreateInput
     ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
-    changeSowingDate: (
+    changeDates: (
       input: CylinderWaveDateChangeInput
     ) => Promise<DatabaseResponse<CylinderWaveInfo>>;
   };

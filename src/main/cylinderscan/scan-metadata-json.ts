@@ -25,7 +25,7 @@ export interface ScanMetadataJson {
   accession_name?: string;
   plant_age_days: number;
   wave_number: number;
-  /** Age calculated from the wave's sowing date, when it has one (#407) */
+  /** Age calculated from the wave's germination date, when it has one (#407) */
   calculated_plant_age_days?: number;
   /** Why the operator changed the age from the calculated one */
   plant_age_change_reason?: string;

@@ -39,11 +39,11 @@ export interface MetadataFormProps {
   errors?: Partial<Record<keyof ScanMetadata, string>>;
   /** Callback when barcode validation state changes */
   onBarcodeValidationChange?: (isValid: boolean, error?: string) => void;
-  /** The age is calculated from the wave's sowing date and can't be typed (#407) */
+  /** The age is calculated from the wave's germination date and can't be typed (#407) */
   plantAgeReadOnly?: boolean;
   /** Shown under the plant age, e.g. where it came from */
   plantAgeNote?: ReactNode;
-  /** Shown under the wave number, e.g. the box asking for its sowing date */
+  /** Shown under the wave number, e.g. the box asking for its germination date */
   waveNote?: ReactNode;
 }
 

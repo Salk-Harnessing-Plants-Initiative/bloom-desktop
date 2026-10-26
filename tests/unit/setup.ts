@@ -59,7 +59,7 @@ const mockDatabaseAPI = {
   cylinderWaves: {
     list: vi.fn().mockResolvedValue({ success: true, data: [] }),
     create: vi.fn().mockResolvedValue({ success: true, data: null }),
-    changeSowingDate: vi.fn().mockResolvedValue({ success: true, data: null }),
+    changeDates: vi.fn().mockResolvedValue({ success: true, data: null }),
   },
   scans: {
     list: vi.fn().mockResolvedValue({

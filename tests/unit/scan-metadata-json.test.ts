@@ -186,7 +186,7 @@ describe('scan-metadata-json', () => {
       );
     });
 
-    it('omits the calculated age and reason for a scan without a sowing date', () => {
+    it('omits the calculated age and reason for a scan without a germination date', () => {
       const metadata = buildMetadataObject(makeScannerSettings(), new Date());
 
       expect(metadata).not.toHaveProperty('calculated_plant_age_days');

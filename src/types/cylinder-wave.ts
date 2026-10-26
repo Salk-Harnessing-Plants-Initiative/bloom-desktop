@@ -1,68 +1,72 @@
 /**
- * Types for CylinderScan waves and their sowing dates (#407): Capture Scan
- * calculates the plant age from the wave's sowing date.
+ * Types for CylinderScan waves and their dates (#407, #428): each wave has a sowing,
+ * germination and transfer-to-cylinder date, and Capture Scan computes the plant age
+ * from the germination date (days after germination). Dates are local calendar dates,
+ * "YYYY-MM-DD".
  */
 
-/** One change to a wave's sowing date, for the log on the Experiments page. */
+/** One set or change of a wave's dates, for the log on the Experiments page. */
 export interface CylinderWaveDateChange {
   id: string;
-  /** Null for the wave's first date. */
+  /** The "old" dates are null when the wave was first set. */
+  old_germination_date: string | null;
+  new_germination_date: string;
   old_sowing_date: string | null;
-  new_sowing_date: string;
-  /** What the new date is ("transfer", "sowing", …); null when not recorded. */
-  start_date_basis: string | null;
-  start_date_basis_other: string | null;
+  new_sowing_date: string | null;
+  /** Null means the same day as germination. */
+  old_transfer_date: string | null;
+  new_transfer_date: string | null;
   reason: string | null;
   changed_by_name: string | null;
   /** When the change was made (ISO 8601). */
   changed_at: string;
 }
 
-/** A wave of an experiment, with its sowing date ("YYYY-MM-DD", local). */
+/** A wave of an experiment, with its dates. */
 export interface CylinderWaveInfo {
   id: string;
   wave_number: number;
-  sowing_date: string;
-  /** What the date is ("transfer", "sowing", …); null only for a backfilled wave. */
-  start_date_basis: string | null;
-  start_date_basis_other: string | null;
+  /** The plant age is computed from this date. */
+  germination_date: string;
+  /** Null only for a wave the backfill set. */
+  sowing_date: string | null;
+  /** Null means the same day as germination. */
+  transfer_date: string | null;
   note: string | null;
-  /** Who set the current sowing date, when known. */
+  /** Who set the current dates, when known. */
   set_by_name: string | null;
-  /** When the current sowing date was set (ISO 8601). */
+  /** When the current dates were set (ISO 8601). */
   set_at: string;
-  /** Saved (not deleted) scans in this wave; the date needs a reason to change once > 0. */
+  /** Saved (not deleted) scans in this wave; the dates need a reason to change once > 0. */
   scanCount: number;
-  /** Every change to the sowing date, oldest first. */
+  /** Every set or change of the dates, oldest first. */
   changes: CylinderWaveDateChange[];
 }
 
-export interface CylinderWaveCreateInput {
+/** A wave's three dates, as Capture Scan sends them. */
+export interface WaveDatesInput {
+  germinationDate: string;
+  sowingDate: string;
+  /** Left out (or empty) when it's the same day as germination. */
+  transferDate?: string;
+}
+
+export interface CylinderWaveCreateInput extends WaveDatesInput {
   experimentId: string;
   waveNumber: number;
-  sowingDate: string;
-  /** What the date is: required. */
-  startDateBasis: string;
-  /** Required when startDateBasis is "other". */
-  startDateBasisOther?: string;
   /**
-   * Required when the date is out of order with another wave's, or the wave number
-   * skips ahead of the experiment's waves.
+   * Required when the germination date is out of order with another wave's, or the
+   * wave number skips ahead of the experiment's waves.
    */
   note?: string;
-  /** Who is setting or changing the date: required, so the log can say who. */
+  /** Who is setting or changing the dates: required, so the log can say who. */
   phenotyperId: string;
 }
 
-export interface CylinderWaveDateChangeInput {
+export interface CylinderWaveDateChangeInput extends WaveDatesInput {
   waveId: string;
-  sowingDate: string;
-  /** What the date is: required, and may change on its own. */
-  startDateBasis: string;
-  /** Required when startDateBasis is "other". */
-  startDateBasisOther?: string;
-  /** Required once the wave has scans, or when the new date conflicts with another wave. */
+  /** Required once the wave has scans, or when the new germination date conflicts with another wave. */
   reason?: string;
-  /** Who is setting or changing the date: required, so the log can say who. */
+  /** Who is setting or changing the dates: required, so the log can say who. */
   phenotyperId: string;
 }

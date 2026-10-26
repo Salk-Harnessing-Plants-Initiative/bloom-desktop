@@ -1,21 +1,21 @@
 /**
- * The "Are you sure…?" box on Capture Scan when a wave's start date is out of order
+ * The "Are you sure…?" box on Capture Scan when a wave's germination date is out of order
  * with another wave's, or its number skips ahead (#428). It shows the experiment's
- * other start dates to check against; the phenotyper can still proceed, with a note
+ * other germination dates to check against; the phenotyper can still proceed, with a note
  * (or a reason, when editing), which the caller puts inside.
  */
 
 import type { ReactNode } from 'react';
 import {
-  formatSowingDate,
-  type WaveSowingDate,
+  formatWaveDate,
+  type WaveGerminationDate,
   type WaveWarning,
-} from '../../utils/sowing-date';
+} from '../../utils/wave-dates';
 
 export interface WaveWarningsProps {
   warnings: WaveWarning[];
   /** The experiment's other waves, listed when a date is out of order. */
-  otherWaves?: WaveSowingDate[];
+  otherWaves?: WaveGerminationDate[];
   /** The note or reason field. */
   children: ReactNode;
 }
@@ -46,11 +46,11 @@ export function WaveWarnings({
         ))}
         {sorted.length > 0 && (
           <div data-testid="wave-warnings-dates">
-            <p>Start dates of this experiment&apos;s other waves:</p>
+            <p>Germination dates of this experiment&apos;s other waves:</p>
             <ul className="ml-4 list-disc">
               {sorted.map((w) => (
                 <li key={w.wave_number}>
-                  Wave {w.wave_number}: {formatSowingDate(w.sowing_date)}
+                  Wave {w.wave_number}: {formatWaveDate(w.germination_date)}
                 </li>
               ))}
             </ul>

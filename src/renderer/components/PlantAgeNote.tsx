@@ -8,11 +8,11 @@ import { useEffect, useState } from 'react';
 import {
   MAX_REASON_LENGTH,
   formatDays,
-  formatSowingDate,
-} from '../../utils/sowing-date';
+  formatWaveDate,
+} from '../../utils/wave-dates';
 import { validatePlantAgeDays } from '../../utils/metadata-validation';
 import type { CylinderWaveInfo } from '../../types/cylinder-wave';
-import type { PlantAgeChange } from '../hooks/useWaveSowingDate';
+import type { PlantAgeChange } from '../hooks/useWaveDates';
 
 export interface PlantAgeNoteProps {
   wave: CylinderWaveInfo;
@@ -105,8 +105,8 @@ export function PlantAgeNote({
         </div>
       ) : (
         <p>
-          Calculated from wave {wave.wave_number}&apos;s start date (
-          {formatSowingDate(wave.sowing_date)}).{' '}
+          Calculated from wave {wave.wave_number}&apos;s germination date (
+          {formatWaveDate(wave.germination_date)}).{' '}
           {lockedMessage ? (
             <span className="text-amber-800" data-testid="change-age-locked">
               {lockedMessage}

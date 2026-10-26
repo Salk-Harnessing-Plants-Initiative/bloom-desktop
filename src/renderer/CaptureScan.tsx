@@ -30,7 +30,7 @@ import {
   validateWaveNumber,
   validatePlantAgeDays,
 } from '../utils/metadata-validation';
-import { useSowingDateFields } from './hooks/useSowingDateFields';
+import { useWaveDateFields } from './hooks/useWaveDateFields';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -92,18 +92,18 @@ export function CaptureScan() {
     string | null
   >(null);
 
-  // The plant age comes from the wave's sowing date (#407).
+  // The plant age comes from the wave's germination date (#407).
   const setPlantAgeDays = useCallback((age: string) => {
     setMetadata((prev) =>
       prev.plantAgeDays === age ? prev : { ...prev, plantAgeDays: age }
     );
   }, []);
-  const { sowing, holdsStartScan, startScanHold, waveNote, plantAgeNote } =
-    useSowingDateFields(metadata, setPlantAgeDays, isScanning);
-  const { clearForNextScan } = sowing;
+  const { waveDates, holdsStartScan, startScanHold, waveNote, plantAgeNote } =
+    useWaveDateFields(metadata, setPlantAgeDays, isScanning);
+  const { clearForNextScan } = waveDates;
   // The scan listeners are registered once: reach the latest reload through a ref.
-  const reloadWavesRef = useRef(sowing.reload);
-  reloadWavesRef.current = sowing.reload;
+  const reloadWavesRef = useRef(waveDates.reload);
+  reloadWavesRef.current = waveDates.reload;
 
   // Handle barcode validation changes from MetadataForm
   const handleBarcodeValidationChange = useCallback(
@@ -430,9 +430,9 @@ export function CaptureScan() {
           setTimeout(() => setShowSuccessMessage(false), 5000);
         }
 
-        // A changed age or sowing date was for this scan only.
+        // A changed age or germination date was for this scan only.
         clearForNextScan();
-        // The wave now has a scan: a sowing-date change now needs a reason.
+        // The wave now has a scan: a germination-date change now needs a reason.
         void reloadWavesRef.current();
 
         // Reset metadata for next scan (optional)
@@ -553,8 +553,8 @@ export function CaptureScan() {
           accession_name: metadata.accessionName || undefined,
           plant_age_days: parseInt(metadata.plantAgeDays, 10),
           wave_number: parseInt(metadata.waveNumber, 10),
-          calculated_plant_age_days: sowing.calculatedAge ?? undefined,
-          plant_age_change_reason: sowing.change?.reason,
+          calculated_plant_age_days: waveDates.calculatedAge ?? undefined,
+          plant_age_change_reason: waveDates.change?.reason,
           scan_path: relativePath,
         },
       });
@@ -702,7 +702,7 @@ export function CaptureScan() {
                 errors={errors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
                 waveNote={waveNote}
-                plantAgeReadOnly={sowing.wave !== null}
+                plantAgeReadOnly={waveDates.wave !== null}
                 plantAgeNote={plantAgeNote}
               />
 

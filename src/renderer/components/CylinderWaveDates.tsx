@@ -1,15 +1,14 @@
 /**
- * A CylinderScan experiment's waves on the Experiments page (#407): each wave's
- * current start date, what it is (transfer, sowing, …), who set it and when, its
- * scan count and note (why its number skips ahead or its date is out of order), and a log
- * of every change to them (previous date, new date and what it is, when, who and
- * why). Read-only: the date is set and
- * changed on Capture Scan, under the wave number.
+ * A CylinderScan experiment's waves on the Experiments page (#407, #428): each wave's
+ * germination date (the plant age is computed from it), sowing and transfer dates,
+ * scan count, who set them and when, its note (why its number skips ahead or its
+ * germination date is out of order), and a log of every set and change (each date
+ * before and after, when, who and why). Read-only: the dates are set and changed on
+ * Capture Scan, under the wave number.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { formatSowingDate } from '../../utils/sowing-date';
-import { describeStartDateBasis } from '../../utils/start-date-basis';
+import { formatWaveDate } from '../../utils/wave-dates';
 import type {
   CylinderWaveDateChange,
   CylinderWaveInfo,
@@ -33,49 +32,47 @@ function formatChangedAt(iso: string): string {
   });
 }
 
-/** " · Transfer to cylinder", or nothing when it wasn't recorded. */
-function basisLabel(basis: string | null, other: string | null): string {
-  const described = describeStartDateBasis(basis, other);
-  return described
-    ? ` · ${described[0].toUpperCase()}${described.slice(1)}`
-    : '';
+/** A transfer date, or "the germination day" when it's null. */
+function transferText(date: string | null): string {
+  return date ? formatWaveDate(date) : 'the germination day';
 }
 
-/** " (transfer to cylinder)", or nothing when it wasn't recorded. */
-function basisNote(basis: string | null, other: string | null): string {
-  const described = describeStartDateBasis(basis, other);
-  return described ? ` (${described})` : '';
+/** What a log entry set or changed, e.g. "germination 9 Oct → 12 Oct; sowing 5 Oct → 6 Oct". */
+function changedDates(change: CylinderWaveDateChange): string {
+  if (change.old_germination_date === null) {
+    return [
+      `germination ${formatWaveDate(change.new_germination_date)}`,
+      change.new_sowing_date &&
+        `sowing ${formatWaveDate(change.new_sowing_date)}`,
+      `transfer ${transferText(change.new_transfer_date)}`,
+    ]
+      .filter(Boolean)
+      .join(', ');
+  }
+  const parts: string[] = [];
+  if (change.old_germination_date !== change.new_germination_date) {
+    parts.push(
+      `germination ${formatWaveDate(change.old_germination_date)} → ${formatWaveDate(change.new_germination_date)}`
+    );
+  }
+  if (change.old_sowing_date !== change.new_sowing_date) {
+    parts.push(
+      `sowing ${change.old_sowing_date ? formatWaveDate(change.old_sowing_date) : 'none'} → ${change.new_sowing_date ? formatWaveDate(change.new_sowing_date) : 'none'}`
+    );
+  }
+  if (change.old_transfer_date !== change.new_transfer_date) {
+    parts.push(
+      `transfer ${transferText(change.old_transfer_date)} → ${transferText(change.new_transfer_date)}`
+    );
+  }
+  return parts.join('; ');
 }
 
 function ChangeLogEntry({ change }: { change: CylinderWaveDateChange }) {
-  const basis = basisNote(
-    change.start_date_basis,
-    change.start_date_basis_other
-  );
-  const newDate = formatSowingDate(change.new_sowing_date);
   return (
     <li>
-      {change.old_sowing_date === null ? (
-        <>
-          Set to {newDate}
-          {basis} on{' '}
-        </>
-      ) : change.old_sowing_date === change.new_sowing_date ? (
-        <>
-          {newDate} marked as{' '}
-          {describeStartDateBasis(
-            change.start_date_basis,
-            change.start_date_basis_other
-          ) ?? 'not recorded'}{' '}
-          on{' '}
-        </>
-      ) : (
-        <>
-          Changed from {formatSowingDate(change.old_sowing_date)} to {newDate}
-          {basis} on{' '}
-        </>
-      )}
-      {formatChangedAt(change.changed_at)}
+      {change.old_germination_date === null ? 'Set: ' : 'Changed: '}
+      {changedDates(change)} on {formatChangedAt(change.changed_at)}
       {change.changed_by_name ? ` by ${change.changed_by_name}` : ''}
       {change.reason ? `. Reason: ${change.reason}` : ''}
     </li>
@@ -128,9 +125,13 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
                 Wave {wave.wave_number}
               </span>
               {'  '}
-              {formatSowingDate(wave.sowing_date)}
+              Germinated {formatWaveDate(wave.germination_date)}
               <span className="text-gray-500">
-                {basisLabel(wave.start_date_basis, wave.start_date_basis_other)}
+                {wave.sowing_date &&
+                  ` · sown ${formatWaveDate(wave.sowing_date)}`}
+                {wave.transfer_date
+                  ? ` · transferred ${formatWaveDate(wave.transfer_date)}`
+                  : ' · transferred the same day'}
                 {wave.scanCount > 0 &&
                   ` · ${wave.scanCount} ${wave.scanCount === 1 ? 'scan' : 'scans'}`}
               </span>

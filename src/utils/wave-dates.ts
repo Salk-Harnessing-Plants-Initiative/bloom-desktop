@@ -1,9 +1,11 @@
 /**
- * Sowing dates and plant ages for CylinderScan waves (#407).
+ * Dates and plant ages for CylinderScan waves (#407, #428).
  *
- * A wave's sowing date is a local calendar date, "YYYY-MM-DD". The plant age on a
- * scan is the number of calendar days from that date to the scan date, in the
- * scanner PC's local time. These rules are shared by the main process (which
+ * A wave has a sowing, germination and transfer-to-cylinder date, each a local
+ * calendar date, "YYYY-MM-DD". The plant age on a scan is always the number of
+ * calendar days from the germination date to the scan date (days after
+ * germination), in the scanner PC's local time: the processing pipeline reads it that
+ * way and picks its model from it. These rules are shared by the main process (which
  * enforces them when saving) and Capture Scan (which explains them to the operator).
  */
 
@@ -13,9 +15,9 @@ export const MAX_REASON_LENGTH = 500;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-export interface WaveSowingDate {
+export interface WaveGerminationDate {
   wave_number: number;
-  sowing_date: string;
+  germination_date: string;
 }
 
 /** The parts of a "YYYY-MM-DD" date, or null when it isn't a real calendar date. */
@@ -44,19 +46,19 @@ export function toIsoDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Calendar days from the sowing date to `on` (local time); negative before sowing. */
-export function plantAgeDays(sowingDate: string, on: Date): number {
-  const parts = parseIsoDate(sowingDate);
-  if (!parts) throw new Error(`Not a date: ${sowingDate}`);
+/** Calendar days from the germination date to `on` (local time); negative before sowing. */
+export function plantAgeDays(germinationDate: string, on: Date): number {
+  const parts = parseIsoDate(germinationDate);
+  if (!parts) throw new Error(`Not a date: ${germinationDate}`);
   const sown = new Date(parts[0], parts[1] - 1, parts[2]);
   const day = new Date(on.getFullYear(), on.getMonth(), on.getDate());
   return Math.round((day.getTime() - sown.getTime()) / MS_PER_DAY);
 }
 
 /** "5 Dec 2025" for a "YYYY-MM-DD" date. */
-export function formatSowingDate(sowingDate: string): string {
-  const parts = parseIsoDate(sowingDate);
-  if (!parts) return sowingDate;
+export function formatWaveDate(date: string): string {
+  const parts = parseIsoDate(date);
+  if (!parts) return date;
   return new Date(parts[0], parts[1] - 1, parts[2]).toLocaleDateString(
     undefined,
     { day: 'numeric', month: 'short', year: 'numeric' }
@@ -96,20 +98,20 @@ export function formatDays(days: number): string {
 }
 
 /** A problem with a date the operator entered, or null when it can be used. */
-export function sowingDateError(
-  sowingDate: string,
+export function germinationDateError(
+  germinationDate: string,
   today: Date
 ): string | null {
-  if (!isIsoDate(sowingDate)) return 'Enter the start date.';
-  if (plantAgeDays(sowingDate, today) < 0) {
-    return "The start date can't be in the future.";
+  if (!isIsoDate(germinationDate)) return 'Enter the germination date.';
+  if (plantAgeDays(germinationDate, today) < 0) {
+    return "The germination date can't be in the future.";
   }
   return null;
 }
 
 /** Something unusual the phenotyper confirms, with a note, before saving. */
 export interface WaveWarning {
-  /** "Are you sure wave 3's start date is correct?" */
+  /** "Are you sure wave 3's germination date is correct?" */
   question: string;
   /** Why it is asked. */
   detail: string;
@@ -122,6 +124,57 @@ export function warningText(warning: WaveWarning): string {
   return [warning.question, warning.detail, warning.confirm]
     .filter(Boolean)
     .join(' ');
+}
+
+/** A wave's three dates as entered; `transfer` is '' when it's the same day as germination. */
+export interface WaveDates {
+  germination: string;
+  sowing: string;
+  transfer: string;
+}
+
+/**
+ * What's wrong with a wave's dates, or null: germination and sowing are required and
+ * not in the future, sowing is before germination, and a transfer date (when it
+ * isn't the germination day) is a real date, not in the future, and on or after
+ * germination (so after sowing too).
+ */
+export function waveDatesError(dates: WaveDates, today: Date): string | null {
+  const germination = germinationDateError(dates.germination, today);
+  if (germination) return germination;
+  if (!isIsoDate(dates.sowing)) return 'Enter the sowing date.';
+  if (plantAgeDays(dates.sowing, today) < 0) {
+    return "The sowing date can't be in the future.";
+  }
+  if (dates.sowing >= dates.germination) {
+    return 'The sowing date must be before the germination date.';
+  }
+  if (dates.transfer) {
+    if (!isIsoDate(dates.transfer)) {
+      return 'Enter the transfer date, or tick "Same day as germination".';
+    }
+    if (plantAgeDays(dates.transfer, today) < 0) {
+      return "The transfer date can't be in the future.";
+    }
+    // On or after germination, so also after sowing.
+    if (dates.transfer < dates.germination) {
+      return "The transfer date can't be before the germination date.";
+    }
+  }
+  return null;
+}
+
+/** A wave's stored dates as entered: null sowing (a backfilled wave) and null transfer (the germination day) become ''. */
+export function storedWaveDates(wave: {
+  germination_date: string;
+  sowing_date: string | null;
+  transfer_date: string | null;
+}): WaveDates {
+  return {
+    germination: wave.germination_date,
+    sowing: wave.sowing_date ?? '',
+    transfer: wave.transfer_date ?? '',
+  };
 }
 
 export interface NewWaveCheck {
@@ -137,11 +190,11 @@ export interface NewWaveCheck {
 
 /**
  * "Is the wave number correct?" when a new wave's number skips ahead of the
- * experiment's waves (wave 3 after wave 1), or null. Asked before the start date.
+ * experiment's waves (wave 3 after wave 1), or null. Asked before the germination date.
  */
 export function waveNumberWarning(
   waveNumber: number,
-  existing: WaveSowingDate[]
+  existing: WaveGerminationDate[]
 ): WaveWarning | null {
   const highest = existing.reduce(
     (max, w) => Math.max(max, w.wave_number),
@@ -159,25 +212,25 @@ export function waveNumberWarning(
 }
 
 /**
- * Checks for a new wave's sowing date against the experiment's other waves. A wave
+ * Checks for a new wave's germination date against the experiment's other waves. A wave
  * sown on or before an earlier-numbered wave (or on or after a later-numbered one),
  * or a wave number that skips ahead, can be saved, but only with a note.
  */
 export function checkNewWave(
   waveNumber: number,
-  sowingDate: string,
-  existing: WaveSowingDate[],
+  dates: WaveDates,
+  existing: WaveGerminationDate[],
   today: Date
 ): NewWaveCheck {
   const result: NewWaveCheck = {
-    error: sowingDateError(sowingDate, today),
+    error: waveDatesError(dates, today),
     dateWarning: null,
     waveWarning: null,
     noteNeeded: null,
   };
   if (result.error) return result;
 
-  result.dateWarning = waveConflict(waveNumber, sowingDate, existing);
+  result.dateWarning = waveConflict(waveNumber, dates.germination, existing);
 
   result.waveWarning = waveNumberWarning(waveNumber, existing);
   const first = result.dateWarning ?? result.waveWarning;
@@ -193,26 +246,26 @@ export function checkNewWave(
  */
 function waveConflict(
   waveNumber: number,
-  sowingDate: string,
-  others: WaveSowingDate[]
+  germinationDate: string,
+  others: WaveGerminationDate[]
 ): WaveWarning | null {
   const conflict = [...others]
     .sort((a, b) => a.wave_number - b.wave_number)
     .find((w) =>
       w.wave_number < waveNumber
-        ? w.sowing_date >= sowingDate
-        : w.sowing_date <= sowingDate
+        ? w.germination_date >= germinationDate
+        : w.germination_date <= germinationDate
     );
   if (!conflict) return null;
   const when =
     conflict.wave_number < waveNumber ? 'on or before' : 'on or after';
   return {
-    question: `Are you sure wave ${waveNumber}'s start date is correct?`,
-    detail: `It is ${when} wave ${conflict.wave_number}'s start date (${formatSowingDate(conflict.sowing_date)}).`,
+    question: `Are you sure wave ${waveNumber}'s germination date is correct?`,
+    detail: `It is ${when} wave ${conflict.wave_number}'s germination date (${formatWaveDate(conflict.germination_date)}).`,
   };
 }
 
-export interface SowingDateChangeCheck {
+export interface WaveDateChangeCheck {
   /** The new date can't be used, whatever the reason. */
   error: string | null;
   /** The new date is out of order with another wave's: saving needs a reason. */
@@ -224,36 +277,35 @@ export interface SowingDateChangeCheck {
 }
 
 /**
- * The rules for changing a wave's sowing date or what it is (its basis), shared by
- * the Edit box and the main process. Before the wave's first scan no reason is
- * needed, unless the new date conflicts with another wave; after it, a reason
- * always is.
+ * The rules for changing a wave's dates, shared by the Edit box and the main process.
+ * Before the wave's first scan no reason is needed, unless the new germination date
+ * conflicts with another wave; after it, a reason always is.
  */
-export function checkSowingDateChange(
+export function checkWaveDateChange(
   change: {
     waveNumber: number;
-    currentDate: string;
-    newDate: string;
+    current: WaveDates;
+    next: WaveDates;
     reason: string;
     waveHasScans: boolean;
-    /** What the date is changes too (or alone, with the same date). */
-    basisChanged?: boolean;
   },
-  otherWaves: WaveSowingDate[],
+  otherWaves: WaveGerminationDate[],
   today: Date
-): SowingDateChangeCheck {
+): WaveDateChangeCheck {
   const reason = change.reason.trim();
-  const dateChanged = change.newDate !== change.currentDate;
-  const error = dateChanged
-    ? sowingDateError(change.newDate, today)
-    : change.basisChanged
-      ? null
-      : 'That is already the start date.';
-  // Only a new date can conflict with another wave's.
+  const { current, next } = change;
+  const changed =
+    next.germination !== current.germination ||
+    next.sowing !== current.sowing ||
+    next.transfer !== current.transfer;
+  const error = changed
+    ? waveDatesError(next, today)
+    : "Those are already the wave's dates.";
+  // Only a new germination date can conflict with another wave's.
   const conflict =
-    error || !dateChanged
+    error || next.germination === current.germination
       ? null
-      : waveConflict(change.waveNumber, change.newDate, otherWaves);
+      : waveConflict(change.waveNumber, next.germination, otherWaves);
   const reasonNeeded = change.waveHasScans || conflict !== null;
   const saveError =
     error ??

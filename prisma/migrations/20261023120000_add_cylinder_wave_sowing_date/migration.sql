@@ -40,9 +40,9 @@ CREATE TABLE "CylinderWave" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "experiment_id" TEXT NOT NULL,
     "wave_number" INTEGER NOT NULL,
-    "sowing_date" TEXT NOT NULL,
-    "start_date_basis" TEXT,
-    "start_date_basis_other" TEXT,
+    "germination_date" TEXT NOT NULL,
+    "sowing_date" TEXT,
+    "transfer_date" TEXT,
     "note" TEXT,
     "set_by_phenotyper_id" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -51,17 +51,19 @@ CREATE TABLE "CylinderWave" (
 );
 
 -- CreateTable
-CREATE TABLE "CylinderWaveSowingDateChange" (
+CREATE TABLE "CylinderWaveDateChange" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "wave_id" TEXT NOT NULL,
+    "old_germination_date" TEXT,
+    "new_germination_date" TEXT NOT NULL,
     "old_sowing_date" TEXT,
-    "new_sowing_date" TEXT NOT NULL,
-    "start_date_basis" TEXT,
-    "start_date_basis_other" TEXT,
+    "new_sowing_date" TEXT,
+    "old_transfer_date" TEXT,
+    "new_transfer_date" TEXT,
     "reason" TEXT,
     "changed_by_phenotyper_id" TEXT,
     "changedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "CylinderWaveSowingDateChange_wave_id_fkey" FOREIGN KEY ("wave_id") REFERENCES "CylinderWave" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    CONSTRAINT "CylinderWaveDateChange_wave_id_fkey" FOREIGN KEY ("wave_id") REFERENCES "CylinderWave" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
 -- CreateIndex
@@ -71,5 +73,5 @@ CREATE INDEX "CylinderWave_experiment_id_idx" ON "CylinderWave"("experiment_id")
 CREATE UNIQUE INDEX "CylinderWave_experiment_id_wave_number_key" ON "CylinderWave"("experiment_id", "wave_number");
 
 -- CreateIndex
-CREATE INDEX "CylinderWaveSowingDateChange_wave_id_idx" ON "CylinderWaveSowingDateChange"("wave_id");
+CREATE INDEX "CylinderWaveDateChange_wave_id_idx" ON "CylinderWaveDateChange"("wave_id");
 

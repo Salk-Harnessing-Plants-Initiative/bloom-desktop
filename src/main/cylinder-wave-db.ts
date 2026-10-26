@@ -7,9 +7,9 @@ export interface WaveRow {
   id: string;
   experiment_id: string;
   wave_number: number;
-  sowing_date: string;
-  start_date_basis: string | null;
-  start_date_basis_other: string | null;
+  germination_date: string;
+  sowing_date: string | null;
+  transfer_date: string | null;
   note: string | null;
   set_by_phenotyper_id: string | null;
   updatedAt: Date;
@@ -18,10 +18,12 @@ export interface WaveRow {
 export interface ChangeRow {
   id: string;
   wave_id: string;
+  old_germination_date: string | null;
+  new_germination_date: string;
   old_sowing_date: string | null;
-  new_sowing_date: string;
-  start_date_basis: string | null;
-  start_date_basis_other: string | null;
+  new_sowing_date: string | null;
+  old_transfer_date: string | null;
+  new_transfer_date: string | null;
   reason: string | null;
   changed_by_phenotyper_id: string | null;
   changedAt: Date;
@@ -39,9 +41,9 @@ export interface CylinderWaveDbLike {
       data: {
         experiment_id: string;
         wave_number: number;
+        germination_date: string;
         sowing_date: string;
-        start_date_basis: string;
-        start_date_basis_other: string | null;
+        transfer_date: string | null;
         note: string | null;
         set_by_phenotyper_id: string | null;
       };
@@ -60,7 +62,7 @@ export interface CylinderWaveDbLike {
       { experiment_id: string; wave_number: number; _count: { _all: number } }[]
     >;
   };
-  cylinderWaveSowingDateChange: {
+  cylinderWaveDateChange: {
     findMany: (args: {
       where: { wave_id: { in: string[] } };
       orderBy: { changedAt: 'asc' };
@@ -81,21 +83,23 @@ export interface CylinderWaveTxLike {
     update: (args: {
       where: { id: string };
       data: {
+        germination_date: string;
         sowing_date: string;
-        start_date_basis: string;
-        start_date_basis_other: string | null;
+        transfer_date: string | null;
         set_by_phenotyper_id?: string;
       };
     }) => Promise<WaveRow>;
   };
-  cylinderWaveSowingDateChange: {
+  cylinderWaveDateChange: {
     create: (args: {
       data: {
         wave_id: string;
+        old_germination_date: string | null;
+        new_germination_date: string;
         old_sowing_date: string | null;
         new_sowing_date: string;
-        start_date_basis: string;
-        start_date_basis_other: string | null;
+        old_transfer_date: string | null;
+        new_transfer_date: string | null;
         reason: string | null;
         changed_by_phenotyper_id: string | null;
       };

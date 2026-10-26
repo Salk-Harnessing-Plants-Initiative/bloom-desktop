@@ -25,7 +25,7 @@ vi.mock('../../../src/components/Streamer', () => ({
   Streamer: () => null,
 }));
 import type { ScanResult } from '../../../src/types/scanner';
-import { toIsoDate } from '../../../src/utils/sowing-date';
+import { toIsoDate } from '../../../src/utils/wave-dates';
 
 /** Local "YYYY-MM-DD" `days` ago, by calendar arithmetic so DST can't shift it. */
 const sownDaysAgo = (days: number) => {
@@ -82,7 +82,7 @@ beforeEach(() => {
             {
               id: 'wave-1',
               wave_number: 1,
-              sowing_date: sownDaysAgo(14),
+              germination_date: sownDaysAgo(14),
               note: null,
               set_by_name: 'Demo Phenotyper',
               set_at: '2026-01-02T09:00:00.000Z',
@@ -92,7 +92,7 @@ beforeEach(() => {
           ],
         }),
         create: vi.fn(),
-        changeSowingDate: vi.fn(),
+        changeDates: vi.fn(),
       },
       scans: {
         ...win.electron?.database?.scans,

@@ -1,9 +1,10 @@
 /**
- * Asks for a wave's sowing date on Capture Scan, the first time the wave is used
- * (#407). The plant age is then calculated from it. A wave number that skips ahead
- * is asked about first, on its own ("Is the wave number correct?"), and goes on only
- * with a note. Then: what the date is (transfer, sowing, germination or other) must
- * be chosen; a future date is refused; and a date out of order with another wave's
+ * Asks for a wave's dates on Capture Scan, the first time the wave is used (#407,
+ * #428): sowing, germination and transfer to cylinder (the germination day unless
+ * changed). The plant age is computed from the germination date. A wave number that
+ * skips ahead is asked about first, on its own ("Is the wave number correct?"), and
+ * goes on only with a note. Then dates in the future, or a sowing date after
+ * germination, are refused; and a germination date out of order with another wave's
  * asks "Are you sure…?" and proceeds only with a note. The main process checks the
  * same rules.
  */
@@ -12,24 +13,23 @@ import { useState } from 'react';
 import {
   MAX_REASON_LENGTH,
   checkNewWave,
-  toIsoDate,
   waveNumberWarning,
-  type WaveSowingDate,
-} from '../../utils/sowing-date';
+  type WaveDates,
+  type WaveGerminationDate,
+} from '../../utils/wave-dates';
 import { WaveWarnings } from './WaveWarnings';
 import type { CylinderWaveCreateInput } from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
-import { StartDateInfo } from './StartDateInfo';
-import { StartDateBasisField } from './StartDateBasisField';
 import {
-  startDateBasisError,
-  type StartDateBasis,
-} from '../../utils/start-date-basis';
+  WaveDateInputs,
+  enteredDates,
+  transferMissing,
+} from './WaveDateInputs';
 
-export interface WaveSowingDatePanelProps {
+export interface WaveDatesPanelProps {
   waveNumber: number;
   /** The experiment's other waves. */
-  waves: WaveSowingDate[];
+  waves: WaveGerminationDate[];
   phenotyperId: string;
   /** The chosen phenotyper's name, to say who confirmed a skipped-ahead wave. */
   phenotyperName?: string | null;
@@ -39,17 +39,20 @@ export interface WaveSowingDatePanelProps {
   disabled?: boolean;
 }
 
-export function WaveSowingDatePanel({
+export function WaveDatesPanel({
   waveNumber,
   waves,
   phenotyperId,
   phenotyperName = null,
   onSave,
   disabled = false,
-}: WaveSowingDatePanelProps) {
-  const [sowingDate, setSowingDate] = useState('');
-  const [basis, setBasis] = useState<StartDateBasis | ''>('');
-  const [basisOther, setBasisOther] = useState('');
+}: WaveDatesPanelProps) {
+  const [dates, setDates] = useState<WaveDates>({
+    germination: '',
+    sowing: '',
+    transfer: '',
+  });
+  const [transferSameDay, setTransferSameDay] = useState(true);
   const [note, setNote] = useState('');
   // A wave number that skips ahead is confirmed, with a note, before the date.
   const waveWarning = waveNumberWarning(waveNumber, waves);
@@ -58,9 +61,12 @@ export function WaveSowingDatePanel({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const check = sowingDate
-    ? checkNewWave(waveNumber, sowingDate, waves, new Date())
-    : null;
+  const entered = enteredDates(dates, transferSameDay);
+  // Checked once a date has been entered, so an empty box isn't an error yet.
+  const check =
+    dates.germination || dates.sowing
+      ? checkNewWave(waveNumber, entered, waves, new Date())
+      : null;
   const phenotyperChosen = phenotyperId.trim() !== '';
   const canSave =
     !disabled &&
@@ -68,7 +74,7 @@ export function WaveSowingDatePanel({
     phenotyperChosen &&
     check !== null &&
     !check.error &&
-    !startDateBasisError(basis, basisOther) &&
+    !transferMissing(dates, transferSameDay) &&
     (!check.dateWarning || note.trim() !== '');
   // Saved as the wave's note: why the number skips ahead, then why the date is
   // out of order.
@@ -79,14 +85,14 @@ export function WaveSowingDatePanel({
     setSaveError(null);
     try {
       const result = await onSave({
-        sowingDate,
-        startDateBasis: basis,
-        startDateBasisOther: basis === 'other' ? basisOther.trim() : undefined,
+        germinationDate: entered.germination,
+        sowingDate: entered.sowing,
+        transferDate: entered.transfer || undefined,
         note: savedNote || undefined,
         phenotyperId,
       });
       if (!result.success)
-        setSaveError(result.error ?? 'Could not save the start date.');
+        setSaveError(result.error ?? "Could not save the wave's dates.");
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -129,7 +135,7 @@ export function WaveSowingDatePanel({
   return (
     <div
       className="mt-2 bg-white border-2 border-green-600 rounded-lg p-3 space-y-2"
-      data-testid="wave-sowing-date-panel"
+      data-testid="wave-dates-panel"
     >
       {waveConfirmed && (
         <p
@@ -141,30 +147,19 @@ export function WaveSowingDatePanel({
         </p>
       )}
       <p className="font-medium text-green-800">
-        Please set the start date for wave {waveNumber}. The plant age is
-        computed from it.
-        <StartDateInfo />
+        Please set the dates for wave {waveNumber}. The plant age is computed
+        from the germination date.
       </p>
-      <input
-        type="date"
-        aria-label="Start date"
-        value={sowingDate}
-        max={toIsoDate(new Date())}
-        onChange={(e) => setSowingDate(e.target.value)}
-        disabled={disabled || saving}
-        className="w-full px-3 py-2 border border-gray-300 rounded-md"
-        data-testid="sowing-date-input"
-      />
-      {check?.error && <p className="text-sm text-red-600">{check.error}</p>}
-      <StartDateBasisField
-        basis={basis}
-        other={basisOther}
-        onChange={(next, other) => {
-          setBasis(next);
-          setBasisOther(other);
+      <WaveDateInputs
+        dates={dates}
+        transferSameDay={transferSameDay}
+        onChange={(next, sameDay) => {
+          setDates(next);
+          setTransferSameDay(sameDay);
         }}
         disabled={disabled || saving}
       />
+      {check?.error && <p className="text-sm text-red-600">{check.error}</p>}
       {check?.dateWarning && (
         <WaveWarnings warnings={[check.dateWarning]} otherWaves={waves}>
           <p>If it is correct, add a note saying why, then proceed.</p>
@@ -176,14 +171,14 @@ export function WaveSowingDatePanel({
             onChange={(e) => setNote(e.target.value)}
             disabled={disabled || saving}
             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-            data-testid="sowing-date-note"
+            data-testid="wave-dates-note"
           />
         </WaveWarnings>
       )}
       {!phenotyperChosen && (
         <p
           className="text-sm text-red-600"
-          data-testid="sowing-date-needs-phenotyper"
+          data-testid="wave-dates-needs-phenotyper"
         >
           Choose the phenotyper first.
         </p>
@@ -194,11 +189,9 @@ export function WaveSowingDatePanel({
         onClick={save}
         disabled={!canSave}
         className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-        data-testid="sowing-date-save"
+        data-testid="wave-dates-save"
       >
-        {check?.dateWarning
-          ? 'Proceed with this start date'
-          : 'Save start date'}
+        {check?.dateWarning ? 'Proceed with these dates' : 'Save dates'}
       </button>
     </div>
   );
