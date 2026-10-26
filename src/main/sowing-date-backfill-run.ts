@@ -17,13 +17,13 @@ import {
   backfillSowingDates,
   type SowingDateBackfillDbLike,
 } from './sowing-date-backfill';
+import { describeOtherDates } from '../utils/sowing-date-backfill';
+import { formatSowingDate } from '../utils/sowing-date';
 
 export const BACKFILL_FLAG = '--backfill-sowing-dates';
 export const DRY_RUN_FLAG = '--dry-run';
 /** How many waves the message box lists before pointing to the report. */
 export const MAX_WAVES_SHOWN = 20;
-/** How many of a disputed wave's other dates the message box names. */
-const MAX_OTHER_DATES_SHOWN = 3;
 
 export interface SowingDateBackfillRequest {
   dryRun: boolean;
@@ -159,14 +159,11 @@ export function backfillHadProblems(
   return outcome.report.failed.length > 0 || outcome.reportPath === null;
 }
 
+/** One wave, with the same other dates (and wording) as its log entry on the Experiments page. */
 function waveLine(w: SowingDateBackfillWave): string {
-  const base = `  ${w.experiment}, wave ${w.wave_number}: ${w.sowingDate} (${w.agreeing} of ${w.scanCount} scans)`;
-  if (!w.disputed) return base;
-  const others = w.candidates
-    .filter((c) => c.date !== w.sowingDate)
-    .slice(0, MAX_OTHER_DATES_SHOWN)
-    .map((c) => `${c.date} (${c.count})`);
-  return `${base}; others: ${others.join(', ')}`;
+  const base = `  ${w.experiment}, wave ${w.wave_number}: ${formatSowingDate(w.sowingDate)} (${w.agreeing} of ${w.scanCount} scans)`;
+  const others = describeOtherDates(w);
+  return others ? `${base}; others point to ${others}` : base;
 }
 
 /** At most MAX_WAVES_SHOWN lines, then a pointer to the report. */

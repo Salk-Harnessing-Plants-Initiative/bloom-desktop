@@ -126,10 +126,11 @@ describe('planWave', () => {
     expect(at(89)).toBe(true);
   });
 
-  it('breaks a tie towards the earlier date', () => {
+  it('breaks a tie towards the earlier date, whichever comes first', () => {
+    // The later date's scans come first, so the tie-break decides, not the order.
     const plan = planWave([
-      ...times(5, () => scan([2026, 10, 23], 14)),
       ...times(5, () => scan([2026, 10, 23], 4)),
+      ...times(5, () => scan([2026, 10, 23], 14)),
     ]);
     expect(plan.sowingDate).toBe('2026-10-09');
   });

@@ -138,19 +138,40 @@ export function planBackfill(scans: EarlierScan[]): WavePlan[] {
  * 12 Oct 2026; others point to 15 Oct 2026 (20 scans)."
  */
 export function backfillReason(plan: WavePlan): string {
-  const scans = (n: number) => `${n} ${n === 1 ? 'scan' : 'scans'}`;
-  let reason =
+  const reason =
     `Set from earlier scans (capture date minus typed age): ${plan.agreeing} of ` +
     `${plan.scanCount} point to ${formatSowingDate(plan.sowingDate)}`;
-  const others = plan.candidates.filter(
-    (c) => daysApart(c.date, plan.sowingDate) > AGREEMENT_TOLERANCE_DAYS
+  const others = describeOtherDates(plan);
+  return others ? `${reason}; others point to ${others}.` : `${reason}.`;
+}
+
+/**
+ * The dates a wave's scans point to that don't agree with its date (more than a day
+ * from it), most common first. Dates within a day count as agreeing, so they're not
+ * "other" dates. Used by both the log entry and the end-of-run message.
+ */
+export function otherDates(
+  wave: Pick<WavePlan, 'candidates' | 'sowingDate'>
+): ImpliedStartDate[] {
+  return wave.candidates.filter(
+    (c) => daysApart(c.date, wave.sowingDate) > AGREEMENT_TOLERANCE_DAYS
   );
-  if (others.length > 0) {
-    const named = others
-      .slice(0, MAX_OTHER_DATES_NAMED)
-      .map((c) => `${formatSowingDate(c.date)} (${scans(c.count)})`);
-    const more = others.length - named.length;
-    reason += `; others point to ${named.join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
-  }
-  return `${reason}.`;
+}
+
+/**
+ * The other dates as text, at most MAX_OTHER_DATES_NAMED of them, e.g.
+ * "15 Oct 2026 (20 scans), 18 Oct 2026 (3 scans) and 2 more"; empty when there are none.
+ */
+export function describeOtherDates(
+  wave: Pick<WavePlan, 'candidates' | 'sowingDate'>
+): string {
+  const scans = (n: number) => `${n} ${n === 1 ? 'scan' : 'scans'}`;
+  const others = otherDates(wave);
+  const named = others
+    .slice(0, MAX_OTHER_DATES_NAMED)
+    .map((c) => `${formatSowingDate(c.date)} (${scans(c.count)})`);
+  const more = others.length - named.length;
+  return named.length === 0
+    ? ''
+    : `${named.join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
 }

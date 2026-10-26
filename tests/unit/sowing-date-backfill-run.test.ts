@@ -13,6 +13,8 @@ import {
   type SowingDateBackfillOutcome,
 } from '../../src/main/sowing-date-backfill-run';
 import type { SowingDateBackfillDbLike } from '../../src/main/sowing-date-backfill';
+import { formatSowingDate } from '../../src/utils/sowing-date';
+import { backfillReason, planWave } from '../../src/utils/sowing-date-backfill';
 
 type Scan = {
   id: string;
@@ -294,10 +296,10 @@ describe('summarizeSowingDateBackfill', () => {
       'Would set the start date of 2 wave(s) from their earlier scans. In 1 of them the scans disagree; the other dates are logged with the wave on the Experiments page.'
     );
     expect(text).toContain(
-      '  Sorghum_GWAS_Group1, wave 1: 2026-10-09 (10 of 11 scans)'
+      `  Sorghum_GWAS_Group1, wave 1: ${formatSowingDate('2026-10-09')} (10 of 11 scans); others point to ${formatSowingDate('2026-10-02')} (1 scan)`
     );
     expect(text).toContain(
-      '  Sorghum_GWAS_Group1, wave 2: 2026-10-12 (8 of 10 scans); others: 2026-10-15 (2)'
+      `  Sorghum_GWAS_Group1, wave 2: ${formatSowingDate('2026-10-12')} (8 of 10 scans); others point to ${formatSowingDate('2026-10-15')} (2 scans)`
     );
     expect(text).toContain(
       "3 scan(s) in 2 wave(s) have a typed age that doesn't match their wave's date, so it was probably typed wrongly. They are listed in the report, with what's needed to find each one here and in Bloom; nothing was changed."
@@ -321,6 +323,36 @@ describe('summarizeSowingDateBackfill', () => {
       ...overrides,
     },
     reportPath: '/logs/r.json',
+  });
+
+  it('names the same other dates as the log entry: a date a day off agrees', () => {
+    // 50 on 12 Oct and 30 on 13 Oct agree; only 25 Oct (20) is another date.
+    const at = (day: number, n: number) =>
+      Array.from({ length: n }, () => ({
+        ...on(day + 12, 12, 2),
+      }));
+    const plan = planWave([...at(12, 50), ...at(13, 30), ...at(25, 20)]);
+    const text = summarizeSowingDateBackfill({
+      ...empty({
+        set: [
+          {
+            experiment: 'Sorghum_GWAS_Group1',
+            wave_number: 2,
+            scanCount: plan.scanCount,
+            agreeing: plan.agreeing,
+            sowingDate: plan.sowingDate,
+            disputed: plan.disputed,
+            candidates: plan.candidates,
+          },
+        ],
+      }),
+    });
+    const others = `${formatSowingDate('2026-10-25')} (20 scans)`;
+    expect(text).toContain(`(80 of 100 scans); others point to ${others}\n`);
+    expect(text).not.toContain(formatSowingDate('2026-10-13'));
+    expect(backfillReason(plan)).toMatch(
+      new RegExp(`others point to ${others.replace(/[()]/g, '\\$&')}\\.$`)
+    );
   });
 
   it('says there is nothing to do when every wave has a date', () => {

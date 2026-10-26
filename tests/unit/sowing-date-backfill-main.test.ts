@@ -79,12 +79,21 @@ function fakeDb(
         })
       ),
     },
-    $transaction: vi.fn(async (fn) =>
-      fn({
-        cylinderWave: { create: createWave },
-        cylinderWaveSowingDateChange: { create: createChange },
-      })
-    ),
+    // Like Prisma's: if anything inside fails, nothing it wrote is kept.
+    $transaction: vi.fn(async (fn) => {
+      const kept = [waves.length, changes.length, dated.length];
+      try {
+        return await fn({
+          cylinderWave: { create: createWave },
+          cylinderWaveSowingDateChange: { create: createChange },
+        });
+      } catch (error) {
+        waves.length = kept[0];
+        changes.length = kept[1];
+        dated.length = kept[2];
+        throw error;
+      }
+    }),
   };
   return {
     db: db as unknown as SowingDateBackfillDbLike,
@@ -92,6 +101,7 @@ function fakeDb(
     waves,
     changes,
     createWave,
+    createChange,
   };
 }
 
@@ -276,15 +286,20 @@ describe('backfillSowingDates', () => {
     );
   });
 
-  it('writes the date and its log entry together: a failed log entry fails the wave', async () => {
+  it('writes the date and its log entry together: a failed log entry leaves no date, and a re-run retries', async () => {
     const fake = fakeDb(times(5, on(23, 14)));
-    // As Prisma does, the transaction fails if anything inside it fails.
-    fake.raw.$transaction.mockImplementationOnce(async () => {
-      throw new Error('log entry rejected');
-    });
+    fake.createChange.mockRejectedValueOnce(new Error('log entry rejected'));
     const result = await backfillSowingDates(fake.db, () => {});
+    // The wave's date was rolled back with its log entry: never a date without history.
+    expect(fake.createWave).toHaveBeenCalledTimes(1);
+    expect(fake.waves).toEqual([]);
     expect(result.set).toEqual([]);
     expect(result.failed[0].error).toBe('log entry rejected');
+
+    const again = await backfillSowingDates(fake.db, () => {});
+    expect(again.set.map((w) => w.sowingDate)).toEqual(['2026-10-09']);
+    expect(fake.waves).toHaveLength(1);
+    expect(fake.changes).toHaveLength(1);
   });
 
   it('finds nothing more to do the second time', async () => {
