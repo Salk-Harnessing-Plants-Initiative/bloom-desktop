@@ -115,7 +115,7 @@ export function CaptureScan() {
       metadata.plantQrCode.trim(),
     ].join('|'),
     waveDates.plant?.germ_day_color ?? null,
-    waveDates.wave !== null && metadata.plantQrCode.trim() !== '',
+    metadata.plantQrCode.trim() !== '',
     isScanning
   );
   // The scan listeners are registered once: reach the latest reload through a ref.

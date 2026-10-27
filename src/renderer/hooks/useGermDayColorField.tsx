@@ -23,8 +23,8 @@ export function useGermDayColorField(
   plantKey: string,
   /** The entered plant's saved colour, if it has one. */
   savedColor: string | null,
-  /** Shown only once a plant is entered. */
-  show: boolean,
+  /** A plant barcode is entered: the field is always shown, but only usable then. */
+  plantEntered: boolean,
   disabled: boolean
 ): GermDayColorField {
   const [text, setText] = useState(savedColor ?? '');
@@ -32,7 +32,7 @@ export function useGermDayColorField(
     setText(savedColor ?? '');
   }, [plantKey, savedColor]);
 
-  const field = show ? (
+  const field = (
     <div className="mt-4" data-testid="germ-day-color">
       <label
         htmlFor="germDayColor"
@@ -55,13 +55,13 @@ export function useGermDayColorField(
         maxLength={MAX_GERM_DAY_COLOR_LENGTH}
         onChange={(e) => setText(e.target.value)}
         onBlur={() => setText(normalizeGermDayColor(text))}
-        disabled={disabled}
+        disabled={disabled || !plantEntered}
         // What Bloom gets when it's left empty.
         placeholder="none"
         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
       />
     </div>
-  ) : null;
+  );
 
   return { germDayColor: normalizeGermDayColor(text), field };
 }

@@ -1270,13 +1270,23 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
   });
 
   it('offers an optional germination colour, cleaned to camel case and sent with the scan (#429)', async () => {
-    await enterPlant();
+    renderCaptureScan();
+    // Always on the form, but usable only once a plant barcode is entered.
+    const before = await screen.findByRole('textbox', {
+      name: /Germination Colour/,
+    });
+    expect(before).toBeDisabled();
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
     const color = await screen.findByRole('textbox', {
       name: /Germination Colour/,
     });
     expect(screen.getByTestId('germ-day-color')).toHaveTextContent(
       'Germination Colour (optional)'
     );
+    await waitFor(() => expect(color).not.toBeDisabled());
     expect(color).toHaveValue('');
     expect(color).toHaveAttribute('placeholder', 'none');
     // The ⓘ explains it, with examples.
