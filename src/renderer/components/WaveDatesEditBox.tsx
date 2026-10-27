@@ -30,7 +30,7 @@ import {
   PerPlantDatesNote,
   type DatesMode,
 } from './DatesModeChoice';
-import { WaveWarnings } from './WaveWarnings';
+import { WaveOrderWarning } from './WaveOrderWarning';
 import {
   WaveDateInputs,
   enteredDates,
@@ -218,11 +218,15 @@ export function WaveDatesEditBox({
           )}
           {error && <p className="text-red-600">{error}</p>}
           {warning && (
-            <WaveWarnings warnings={[warning]} otherWaves={otherWaves}>
-              <p>
-                If it is correct, give a reason for the change, then proceed.
-              </p>
-            </WaveWarnings>
+            <WaveOrderWarning
+              waveNumber={wave.wave_number}
+              sowing={entered.sowing}
+              germination={entered.germination}
+              warning={warning}
+              otherWaves={otherWaves}
+            >
+              <p>If these are right, give a reason to proceed.</p>
+            </WaveOrderWarning>
           )}
           {reasonNeeded && (
             <textarea

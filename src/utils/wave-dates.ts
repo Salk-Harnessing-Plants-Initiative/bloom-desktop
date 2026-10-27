@@ -19,6 +19,18 @@ export interface WaveGerminationDate {
   wave_number: number;
   /** Null for a wave whose dates are per plant. */
   germination_date: string | null;
+  /** Null for a wave whose dates are per plant, or one the backfill set. */
+  sowing_date?: string | null;
+}
+
+/** A date of this wave that's out of order with another wave's. */
+export interface WaveOrderConflict {
+  field: 'sowing' | 'germination';
+  /** The other wave, and its date. */
+  waveNumber: number;
+  date: string;
+  /** This wave's date is on or before an earlier wave's, or on or after a later one's. */
+  when: 'on or before' | 'on or after';
 }
 
 /** The parts of a "YYYY-MM-DD" date, or null when it isn't a real calendar date. */
@@ -91,6 +103,8 @@ export interface WaveWarning {
   detail: string;
   /** What to confirm, shown in bold: "Are you sure you want to scan wave 3?" */
   confirm?: string;
+  /** For dates out of order with other waves': which ones. */
+  conflicts?: WaveOrderConflict[];
 }
 
 /** The whole warning as one sentence, for the main process's error message. */
@@ -204,7 +218,7 @@ export function checkNewWave(
   };
   if (result.error) return result;
 
-  result.dateWarning = waveConflict(waveNumber, dates.germination, existing);
+  result.dateWarning = waveConflict(waveNumber, dates, existing);
 
   result.waveWarning = waveNumberWarning(waveNumber, existing);
   const first = result.dateWarning ?? result.waveWarning;
@@ -220,25 +234,59 @@ export function checkNewWave(
  */
 function waveConflict(
   waveNumber: number,
-  germinationDate: string,
-  others: WaveGerminationDate[]
+  dates: { sowing: string; germination: string },
+  others: WaveGerminationDate[],
+  /** Only these dates (e.g. the ones a change touches); all when left out. */
+  fields?: ('sowing' | 'germination')[]
 ): WaveWarning | null {
-  const conflict = [...others]
-    .sort((a, b) => a.wave_number - b.wave_number)
-    .find((w) =>
-      w.germination_date === null
-        ? false
-        : w.wave_number < waveNumber
-          ? w.germination_date >= germinationDate
-          : w.germination_date <= germinationDate
-    );
-  if (!conflict) return null;
-  const when =
-    conflict.wave_number < waveNumber ? 'on or before' : 'on or after';
+  const conflicts = waveOrderConflicts(waveNumber, dates, others).filter(
+    (c) => !fields || fields.includes(c.field)
+  );
+  if (conflicts.length === 0) return null;
   return {
-    question: `Are you sure wave ${waveNumber}'s germination date is correct?`,
-    detail: `It is ${when} wave ${conflict.wave_number}'s germination date (${formatWaveDate(conflict.germination_date ?? '')}).`,
+    question: `Are you sure about wave ${waveNumber}'s dates?`,
+    detail: conflicts
+      .map(
+        (c) =>
+          `Its ${c.field} date is ${c.when} wave ${c.waveNumber}'s (${formatWaveDate(c.date)}).`
+      )
+      .join(' '),
+    conflicts,
   };
+}
+
+/**
+ * This wave's sowing and germination dates against the experiment's other waves': a
+ * later wave is sown and germinates after an earlier one. For each date, the first
+ * other wave it's out of order with (on or before an earlier wave's, or on or after a
+ * later one's).
+ */
+export function waveOrderConflicts(
+  waveNumber: number,
+  dates: { sowing: string; germination: string },
+  others: WaveGerminationDate[]
+): WaveOrderConflict[] {
+  const sorted = [...others].sort((a, b) => a.wave_number - b.wave_number);
+  const found: WaveOrderConflict[] = [];
+  for (const field of ['sowing', 'germination'] as const) {
+    const mine = field === 'sowing' ? dates.sowing : dates.germination;
+    if (!mine) continue;
+    for (const w of sorted) {
+      const theirs = field === 'sowing' ? w.sowing_date : w.germination_date;
+      if (!theirs) continue;
+      const earlier = w.wave_number < waveNumber;
+      if (earlier ? theirs >= mine : theirs <= mine) {
+        found.push({
+          field,
+          waveNumber: w.wave_number,
+          date: theirs,
+          when: earlier ? 'on or before' : 'on or after',
+        });
+        break;
+      }
+    }
+  }
+  return found;
 }
 
 export interface WaveDateChangeCheck {
@@ -277,11 +325,14 @@ export function checkWaveDateChange(
   const error = changed
     ? waveDatesError(next, today)
     : "Those are already the wave's dates.";
-  // Only a new germination date can conflict with another wave's.
+  // Only a date the change touches is checked against the other waves'.
+  const touched = (['sowing', 'germination'] as const).filter(
+    (f) => next[f] !== current[f]
+  );
   const conflict =
-    error || next.germination === current.germination
+    error || touched.length === 0
       ? null
-      : waveConflict(change.waveNumber, next.germination, otherWaves);
+      : waveConflict(change.waveNumber, next, otherWaves, [...touched]);
   const reasonNeeded = change.waveHasScans || conflict !== null;
   const saveError =
     error ??

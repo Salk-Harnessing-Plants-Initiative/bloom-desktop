@@ -116,11 +116,13 @@ describe('PlantDatesSection', () => {
     await waitFor(() => expect(onUseWaveDates).toHaveBeenCalled());
   });
 
-  it('asks for a plant’s dates in a per-plant wave, starting from the previous plant’s, with no reason', async () => {
-    const { onSave } = renderSection({
+  it('asks for a plant’s dates in a per-plant wave, starting from the previous plant’s, with no reason or save button', () => {
+    const onPendingDates = vi.fn();
+    const { onSave, onOpenChange } = renderSection({
       wave: { ...wave, dates_per_plant: true, germination_date: null },
       plantDates: null,
       previousPlantDates: ownPlant,
+      onPendingDates,
     });
     // Laid out like the rest of the form: no box, and the required dates marked.
     expect(screen.getByTestId('plant-dates-box')).not.toHaveClass('border-2');
@@ -129,12 +131,21 @@ describe('PlantDatesSection', () => {
     );
     expect(screen.queryByTestId('plant-dates-reason')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Germination date')).toHaveValue('2026-02-22');
-    fireEvent.click(screen.getByTestId('plant-dates-save'));
-    await waitFor(() =>
-      expect(onSave).toHaveBeenCalledWith(
-        expect.objectContaining({ germinationDate: '2026-02-22' })
-      )
+    // Nothing to press: the dates are saved when the scan starts, so they're handed
+    // over once complete, and Start Scan isn't held for an open box.
+    expect(screen.queryByTestId('plant-dates-save')).not.toBeInTheDocument();
+    expect(onPendingDates).toHaveBeenLastCalledWith(
+      expect.objectContaining({ germinationDate: '2026-02-22' })
     );
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(onSave).not.toHaveBeenCalled();
+
+    // Incomplete dates aren't handed over, and hold Start Scan.
+    fireEvent.change(screen.getByLabelText('Germination date'), {
+      target: { value: '' },
+    });
+    expect(onPendingDates).toHaveBeenLastCalledWith(null);
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
   });
 
   it("needs a reason to change a per-plant wave's plant that has scans", () => {

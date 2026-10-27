@@ -183,9 +183,15 @@ describe('WaveDatesPanel', () => {
     const { onSave, setDate, setSowing, save } = renderPanel();
     setDate(daysAgo(90));
     setSowing();
-    expect(screen.getByTestId('wave-warnings')).toHaveTextContent(
-      /^⚠Are you sure wave 2's germination date is correct\?It is on or before wave 1's germination date \(.+\)\.Germination dates of this experiment's other waves:Wave 1: .+If it is correct, add a note saying why, then proceed\.$/
+    // A short question, and the waves' dates side by side with the clash in red.
+    expect(screen.getByTestId('wave-order-warning')).toHaveTextContent(
+      /^⚠Are you sure about wave 2's dates\?WaveSowingGermination1—.+2 \(this one\).+If these are right, add a note to proceed\.$/
     );
+    const thisWave = screen
+      .getByTestId('wave-order-table')
+      .querySelectorAll('tbody tr')[1];
+    expect(thisWave.querySelectorAll('td')[2]).toHaveClass('text-red-700');
+    expect(thisWave.querySelectorAll('td')[1]).not.toHaveClass('text-red-700');
     expect(save()).toBeDisabled();
     expect(save()).toHaveTextContent('Proceed with these dates');
     fireEvent.change(screen.getByTestId('wave-dates-note'), {

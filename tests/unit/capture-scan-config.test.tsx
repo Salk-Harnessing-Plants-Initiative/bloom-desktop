@@ -1048,12 +1048,16 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     );
     expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
     expect(
-      screen.getByText("Save plant PLANT-001's dates above to start the scan")
+      screen.getByText("Enter plant PLANT-001's dates above to start the scan")
     ).toBeInTheDocument();
     expect(screen.getByLabelText(/Plant Age/)).toHaveValue('');
   });
 
-  it("asks for a per-plant wave's plant dates before the age, previews the age, and saves them once the barcode is entered", async () => {
+  const plantsSetDates = () =>
+    window.electron.database.cylinderPlants.setDates as ReturnType<
+      typeof vi.fn
+    >;
+  const perPlantWave = () =>
     wavesList().mockResolvedValue({
       success: true,
       data: [
@@ -1064,16 +1068,40 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
         }),
       ],
     });
+  /** In a per-plant wave: the dates first, then the barcode. */
+  async function enterPlantDatesThenBarcode() {
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    await screen.findByTestId('plant-dates-box');
+    fireEvent.change(screen.getByLabelText('Sowing date'), {
+      target: { value: sownDaysAgo(12) },
+    });
+    fireEvent.change(screen.getByLabelText('Germination date'), {
+      target: { value: sownDaysAgo(9) },
+    });
+    const plantIdInput = screen.getByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+    const start = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(start).not.toBeDisabled());
+    return start;
+  }
+
+  it("asks for a per-plant wave's plant dates before the age, previews the age, with no save button", async () => {
+    perPlantWave();
     renderCaptureScan();
     await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
     const box = await screen.findByTestId('plant-dates-box');
     expect(box).not.toHaveClass('border-2');
-    expect(screen.getByTestId('plant-dates-needs-barcode')).toHaveTextContent(
-      'Enter the plant barcode below, then save.'
+    expect(screen.getByTestId('plant-dates-saved-on-scan')).toHaveTextContent(
+      "The plant's dates are saved when the scan starts."
     );
+    expect(screen.queryByTestId('plant-dates-save')).not.toBeInTheDocument();
     const age = screen.getByLabelText(/Compute Plant Age \(Days\)/);
-    // The session's age isn't shown, and a blank age isn't flagged here.
+    // The session's age isn't shown, the age can't be typed, and a blank age isn't flagged.
     expect(age).toHaveValue('');
+    expect(age).toHaveAttribute('readonly');
     expect(screen.queryByText('Plant age is required')).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Sowing date'), {
@@ -1087,18 +1115,60 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     expect(screen.getByTestId('plant-dates-age')).toHaveTextContent(
       'Plant age: 9 days (from the germination date)'
     );
-    expect(screen.getByTestId('plant-dates-save')).toBeDisabled();
 
     const plantIdInput = screen.getByPlaceholderText('e.g., PLANT_001');
     await act(async () => {
       fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
     });
-    // Still what was entered, now for PLANT-001, and it can be saved.
+    // Still what was entered, now for PLANT-001, and the scan can start.
     expect(screen.getByLabelText('Germination date')).toHaveValue(
       sownDaysAgo(9)
     );
-    expect(screen.getByTestId('plant-dates-save')).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /start scan/i })
+      ).not.toBeDisabled()
+    );
+  });
+
+  it("saves a per-plant wave's plant dates when the scan starts, before scanning", async () => {
+    perPlantWave();
+    plantsSetDates().mockResolvedValue({ success: true, data: null });
+    const start = await enterPlantDatesThenBarcode();
+    await act(async () => {
+      fireEvent.click(start);
+    });
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(plantsSetDates()).toHaveBeenCalledWith(
+      expect.objectContaining({
+        waveId: 'wave-1',
+        plantBarcode: 'PLANT-001',
+        germinationDate: sownDaysAgo(9),
+        sowingDate: sownDaysAgo(12),
+      })
+    );
+    expect(plantsSetDates().mock.invocationCallOrder[0]).toBeLessThan(
+      mockScannerInitialize.mock.invocationCallOrder[0]
+    );
+    expect(scanMetadata()).toMatchObject({
+      plant_age_days: 9,
+      germination_date: sownDaysAgo(9),
+      sowing_date: sownDaysAgo(12),
+    });
+  });
+
+  it("doesn't scan when a per-plant wave's plant dates can't be saved", async () => {
+    perPlantWave();
+    plantsSetDates().mockResolvedValue({
+      success: false,
+      error: 'database is locked',
+    });
+    const start = await enterPlantDatesThenBarcode();
+    await act(async () => {
+      fireEvent.click(start);
+    });
+    expect(await screen.findByText('database is locked')).toBeInTheDocument();
+    expect(mockScannerInitialize).not.toHaveBeenCalled();
   });
 
   it("saves the calculated age, not the session's typed age", async () => {

@@ -3,10 +3,11 @@
  * computed from the plant's germination date. A plant uses its wave's dates unless it
  * has its own: "Different dates for this plant" sets them, with a reason, and they're
  * used for every later scan of the plant. In a wave whose dates are per plant, each
- * plant's are asked for before its first scan, starting from the previous plant's.
+ * plant's are asked for before its first scan, starting from the previous plant's, and
+ * saved when its scan starts (there's no separate save).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   MAX_REASON_LENGTH,
   formatDays,
@@ -29,6 +30,12 @@ import {
 } from './WaveDateInputs';
 import { PlantDatesSummary } from './PlantDatesSummary';
 
+/** A plant's dates as entered, ready to save. */
+export type PlantDatesDraft = Omit<
+  CylinderPlantDatesInput,
+  'waveId' | 'plantBarcode' | 'phenotyperId'
+>;
+
 export interface PlantDatesSectionProps {
   plantBarcode: string;
   wave: CylinderWaveInfo;
@@ -37,18 +44,15 @@ export interface PlantDatesSectionProps {
   plantDates: PlantDates | null;
   /** The previous plant's dates, to start a new plant's with (per-plant waves). */
   previousPlantDates: PlantDates | null;
-  onSave: (
-    input: Omit<
-      CylinderPlantDatesInput,
-      'waveId' | 'plantBarcode' | 'phenotyperId'
-    >
-  ) => Promise<DatabaseResponse<unknown>>;
+  onSave: (input: PlantDatesDraft) => Promise<DatabaseResponse<unknown>>;
   onUseWaveDates: (reason?: string) => Promise<DatabaseResponse<unknown>>;
   phenotyperChosen: boolean;
   /** Told when the editor opens or closes, so Start Scan can wait for it. */
   onOpenChange?: (open: boolean) => void;
   /** Told the germination date being entered, when the dates are valid (to preview the age). */
   onDraftGermination?: (germination: string | null) => void;
+  /** Per-plant waves: told the dates to save when the scan starts, once they're complete. */
+  onPendingDates?: (dates: PlantDatesDraft | null) => void;
   disabled?: boolean;
 }
 
@@ -64,6 +68,7 @@ export function PlantDatesSection({
   phenotyperChosen,
   onOpenChange,
   onDraftGermination,
+  onPendingDates,
   disabled = false,
 }: PlantDatesSectionProps) {
   const perPlant = wave.dates_per_plant;
@@ -78,11 +83,6 @@ export function PlantDatesSection({
   const [reason, setReason] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    onOpenChange?.(editing);
-  }, [editing, onOpenChange]);
-  useEffect(() => () => onOpenChange?.(false), [onOpenChange]);
-
   const entered = enteredDates(dates, transferSameDay);
   const unchanged =
     start !== null &&
@@ -107,16 +107,38 @@ export function PlantDatesSection({
   useEffect(() => () => onDraftGermination?.(null), [onDraftGermination]);
   // The dates can be entered before the barcode, but are saved for a barcode.
   const needsBarcode = plantBarcode === '';
-  const canSave =
-    !disabled &&
-    !saving &&
-    !needsBarcode &&
-    phenotyperChosen &&
+  const complete =
     touched &&
     !datesError &&
     !unchanged &&
     !transferMissing(dates, transferSameDay) &&
     (!reasonNeeded || reason.trim() !== '');
+  const canSave =
+    !disabled && !saving && !needsBarcode && phenotyperChosen && complete;
+  const { germination, sowing, transfer } = entered;
+  const note = reason.trim();
+  const input = useMemo<PlantDatesDraft>(
+    () => ({
+      germinationDate: germination,
+      sowingDate: sowing,
+      transferDate: transfer || undefined,
+      reason: note || undefined,
+    }),
+    [germination, sowing, transfer, note]
+  );
+  // In a per-plant wave, complete dates are saved when the scan starts.
+  const pending = perPlant && editing && complete ? input : null;
+  useEffect(() => {
+    onPendingDates?.(pending);
+  }, [pending, onPendingDates]);
+  useEffect(() => () => onPendingDates?.(null), [onPendingDates]);
+  // Start Scan waits while the box is open, unless the dates will be saved with the
+  // scan (or, editing a plant's dates, nothing has changed yet).
+  const holding = editing && !(perPlant && (pending !== null || unchanged));
+  useEffect(() => {
+    onOpenChange?.(holding);
+  }, [holding, onOpenChange]);
+  useEffect(() => () => onOpenChange?.(false), [onOpenChange]);
 
   const open = () => {
     setDates(startDates);
@@ -138,15 +160,7 @@ export function PlantDatesSection({
       setSaving(false);
     }
   };
-  const save = () =>
-    run(() =>
-      onSave({
-        germinationDate: entered.germination,
-        sowingDate: entered.sowing,
-        transferDate: entered.transfer || undefined,
-        reason: reason.trim() || undefined,
-      })
-    );
+  const save = () => run(() => onSave(input));
 
   return (
     <div
@@ -216,7 +230,7 @@ export function PlantDatesSection({
               data-testid="plant-dates-reason"
             />
           )}
-          {needsBarcode && (
+          {needsBarcode && !perPlant && (
             <p
               className="text-gray-700"
               data-testid="plant-dates-needs-barcode"
@@ -224,20 +238,30 @@ export function PlantDatesSection({
               Enter the plant barcode below, then save.
             </p>
           )}
+          {perPlant && (
+            <p
+              className="text-gray-500"
+              data-testid="plant-dates-saved-on-scan"
+            >
+              The plant&apos;s dates are saved when the scan starts.
+            </p>
+          )}
           {!phenotyperChosen && (
             <p className="text-red-600">Choose the phenotyper first.</p>
           )}
           {saveError && <p className="text-red-600">{saveError}</p>}
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={save}
-              disabled={!canSave}
-              className="px-3 py-1.5 rounded-md bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50"
-              data-testid="plant-dates-save"
-            >
-              Save plant&apos;s dates
-            </button>
+            {!perPlant && (
+              <button
+                type="button"
+                onClick={save}
+                disabled={!canSave}
+                className="px-3 py-1.5 rounded-md bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50"
+                data-testid="plant-dates-save"
+              >
+                Save plant&apos;s dates
+              </button>
+            )}
             {!needsDates && (
               <button
                 type="button"

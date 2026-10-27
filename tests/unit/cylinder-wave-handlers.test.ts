@@ -164,7 +164,7 @@ describe('createWave', () => {
       experimentId: 'exp',
       waveNumber: 2,
       germinationDate: '2026-02-20',
-      sowingDate: '2025-10-01',
+      sowingDate: '2025-12-01',
       phenotyperId: 'ph-1',
       ...input,
     } as never);
@@ -178,7 +178,7 @@ describe('createWave', () => {
         dates_per_plant: false,
         wave_number: 2,
         germination_date: '2026-02-20',
-        sowing_date: '2025-10-01',
+        sowing_date: '2025-12-01',
         transfer_date: null,
         note: null,
         set_by_phenotyper_id: 'ph-1',
@@ -190,7 +190,7 @@ describe('createWave', () => {
     const result = await create({
       phenotyperId: 'ph-1',
       germinationDate: '2026-02-20',
-      sowingDate: '2025-10-01',
+      sowingDate: '2025-12-01',
     });
     expect(fake.raw.$transaction).toHaveBeenCalledTimes(1);
     expect(fake.changes).toEqual([
@@ -200,7 +200,7 @@ describe('createWave', () => {
         old_germination_date: null,
         new_germination_date: '2026-02-20',
         old_sowing_date: null,
-        new_sowing_date: '2025-10-01',
+        new_sowing_date: '2025-12-01',
         old_transfer_date: null,
         new_transfer_date: null,
         reason: null,
@@ -213,7 +213,7 @@ describe('createWave', () => {
         old_germination_date: null,
         new_germination_date: '2026-02-20',
         old_sowing_date: null,
-        new_sowing_date: '2025-10-01',
+        new_sowing_date: '2025-12-01',
         old_transfer_date: null,
         new_transfer_date: null,
         reason: null,
@@ -245,7 +245,7 @@ describe('createWave', () => {
 
   it('refuses a future date', async () => {
     expect(
-      await create({ germinationDate: '2026-03-11', sowingDate: '2025-10-01' })
+      await create({ germinationDate: '2026-03-11', sowingDate: '2025-12-01' })
     ).toEqual({
       success: false,
       error: "The germination date can't be in the future.",
@@ -319,7 +319,7 @@ describe('a phenotyper is required to set or change a date', () => {
       experimentId: 'exp',
       waveNumber: 2,
       germinationDate: '2026-02-20',
-      sowingDate: '2025-10-01',
+      sowingDate: '2025-12-01',
     };
     expect(
       await createWave({ db: fake.db, now }, { ...base, phenotyperId: ' ' })
@@ -454,7 +454,7 @@ describe('changeDates', () => {
       }
     );
     expect(result.error).toMatch(
-      /^Are you sure wave 2's germination date is correct\? .+ Give a reason for the change\.$/
+      /^Are you sure about wave 2's dates\? .+ Give a reason for the change\.$/
     );
   });
 

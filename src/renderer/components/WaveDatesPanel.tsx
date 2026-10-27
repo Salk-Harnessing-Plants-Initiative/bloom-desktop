@@ -19,6 +19,7 @@ import {
 } from '../../utils/wave-dates';
 import { WaveWarnings } from './WaveWarnings';
 import { DatesModeChoice } from './DatesModeChoice';
+import { WaveOrderWarning } from './WaveOrderWarning';
 import type { CylinderWaveCreateInput } from '../../types/cylinder-wave';
 import type { DatabaseResponse } from '../../types/database';
 import {
@@ -184,8 +185,14 @@ export function WaveDatesPanel({
             <p className="text-sm text-red-600">{check.error}</p>
           )}
           {check?.dateWarning && (
-            <WaveWarnings warnings={[check.dateWarning]} otherWaves={waves}>
-              <p>If it is correct, add a note saying why, then proceed.</p>
+            <WaveOrderWarning
+              waveNumber={waveNumber}
+              sowing={entered.sowing}
+              germination={entered.germination}
+              warning={check.dateWarning}
+              otherWaves={waves}
+            >
+              <p>If these are right, add a note to proceed.</p>
               <textarea
                 aria-label="Note"
                 placeholder="Note (required to proceed)"
@@ -196,7 +203,7 @@ export function WaveDatesPanel({
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
                 data-testid="wave-dates-note"
               />
-            </WaveWarnings>
+            </WaveOrderWarning>
           )}
         </>
       )}

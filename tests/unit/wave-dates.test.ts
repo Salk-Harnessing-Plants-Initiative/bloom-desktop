@@ -160,13 +160,21 @@ describe('checkNewWave', () => {
     for (const date of ['2025-11-26', '2025-11-20']) {
       const check = checkNewWave(2, dates(date), [wave1], today);
       expect(check.dateWarning).toEqual({
-        question: "Are you sure wave 2's germination date is correct?",
+        question: "Are you sure about wave 2's dates?",
         detail: expect.stringMatching(
-          /^It is on or before wave 1's germination date \(.+\)\.$/
+          /^Its germination date is on or before wave 1's \(.+\)\.$/
         ),
+        conflicts: [
+          {
+            field: 'germination',
+            waveNumber: 1,
+            date: '2025-11-26',
+            when: 'on or before',
+          },
+        ],
       });
       expect(check.noteNeeded).toMatch(
-        /^Are you sure wave 2's germination date is correct\? It is on or before .+ Add a note to proceed\.$/
+        /^Are you sure about wave 2's dates\? Its germination date is on or before .+ Add a note to proceed\.$/
       );
     }
   });
@@ -176,7 +184,43 @@ describe('checkNewWave', () => {
     expect(
       checkNewWave(2, dates('2026-01-15'), [wave1, wave3], today).dateWarning
         ?.detail
-    ).toMatch(/^It is on or after wave 3's germination date/);
+    ).toMatch(/^Its germination date is on or after wave 3's/);
+  });
+
+  it('checks the sowing date too: a later wave is sown after an earlier one', () => {
+    const sown = { ...wave1, sowing_date: '2025-11-01' };
+    // Germinates after wave 1, but sown the same day as it.
+    const check = checkNewWave(
+      2,
+      dates('2026-02-20', '2025-11-01'),
+      [sown],
+      today
+    );
+    expect(check.dateWarning?.conflicts).toEqual([
+      {
+        field: 'sowing',
+        waveNumber: 1,
+        date: '2025-11-01',
+        when: 'on or before',
+      },
+    ]);
+    expect(check.dateWarning?.detail).toMatch(
+      /^Its sowing date is on or before wave 1's \(.+\)\.$/
+    );
+    // Sown and germinated before wave 1: both are listed.
+    expect(
+      checkNewWave(
+        2,
+        dates('2025-11-20', '2025-10-20'),
+        [sown],
+        today
+      ).dateWarning?.conflicts?.map((c) => c.field)
+    ).toEqual(['sowing', 'germination']);
+    // Sown after wave 1: no warning.
+    expect(
+      checkNewWave(2, dates('2026-02-20', '2025-12-01'), [sown], today)
+        .dateWarning
+    ).toBeNull();
   });
 
   it('asks "Is the wave number correct?" and needs a note for a wave number that skips ahead', () => {
@@ -248,12 +292,10 @@ describe('checkWaveDateChange', () => {
 
   it('asks for a reason, not a note, when the date conflicts with another wave', () => {
     const check = checkWaveDateChange(change('2026-02-19'), [wave1], today);
-    expect(check.conflict?.question).toBe(
-      "Are you sure wave 2's germination date is correct?"
-    );
+    expect(check.conflict?.question).toBe("Are you sure about wave 2's dates?");
     expect(check.reasonNeeded).toBe(true);
     expect(check.saveError).toMatch(
-      /^Are you sure wave 2's germination date is correct\? It is on or before wave 1's germination date \(.+\)\. Give a reason for the change\.$/
+      /^Are you sure about wave 2's dates\? Its germination date is on or before wave 1's \(.+\)\. Give a reason for the change\.$/
     );
   });
 
@@ -288,7 +330,7 @@ describe('checkWaveDateChange: sowing and transfer', () => {
     waveHasScans: false,
   });
 
-  it('can change only the sowing or transfer date, without touching other waves', () => {
+  it("checks only the dates a change touches against the other waves'", () => {
     const wave1 = { wave_number: 1, germination_date: '2026-03-05' };
     // Wave 1 germinated after wave 2, but only a new germination date is checked against it.
     const sowing = checkWaveDateChange(

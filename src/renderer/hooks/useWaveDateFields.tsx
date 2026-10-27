@@ -4,12 +4,25 @@
  * plant's germination date), and whether Start Scan has to wait for them.
  */
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useWaveDates, type UseWaveDatesResult } from './useWaveDates';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import {
+  useWaveDates,
+  type PlantDates,
+  type UseWaveDatesResult,
+} from './useWaveDates';
 import { usePhenotyperName } from './usePhenotyperName';
 import { WaveDatesPanel } from '../components/WaveDatesPanel';
 import { WaveDatesInfo } from '../components/WaveDatesInfo';
-import { PlantDatesSection } from '../components/PlantDatesSection';
+import {
+  PlantDatesSection,
+  type PlantDatesDraft,
+} from '../components/PlantDatesSection';
 import { WaveDatesLoadError } from '../components/WaveDatesLoadError';
 import { plantAgeDays } from '../../utils/wave-dates';
 
@@ -28,6 +41,11 @@ export interface WaveDateFields {
   startScanHold: string | null;
   waveNote: ReactNode;
   plantAgeNote: ReactNode;
+  /**
+   * Called as the scan starts: saves the plant's dates entered in a per-plant wave, and
+   * gives the dates the scan's age comes from. Throws when they can't be saved.
+   */
+  savePlantDatesForScan: () => Promise<PlantDates | null>;
 }
 
 export function useWaveDateFields(
@@ -49,6 +67,10 @@ export function useWaveDateFields(
   const [plantBoxOpen, setPlantBoxOpen] = useState(false);
   // The germination date being entered for a new plant, to preview its age.
   const [draftGermination, setDraftGermination] = useState<string | null>(null);
+  // A per-plant wave's plant dates as entered, saved when the scan starts.
+  const [pendingDates, setPendingDates] = useState<PlantDatesDraft | null>(
+    null
+  );
 
   const setAgeRef = useRef(setPlantAgeDays);
   setAgeRef.current = setPlantAgeDays;
@@ -74,22 +96,38 @@ export function useWaveDateFields(
     waveDates.loading ||
     waveDates.loadError !== null ||
     needsWaveDates ||
-    needsPlantDates ||
+    (needsPlantDates && pendingDates === null) ||
     waveBoxOpen ||
     plantBoxOpen;
   const startScanHold = waveDates.loadError
     ? 'Restart Bloom Desktop to start the scan'
     : needsWaveDates
       ? `Save wave ${waveDates.waveNumber}'s dates above to start the scan`
-      : needsPlantDates
-        ? `Save plant ${barcode}'s dates above to start the scan`
+      : needsPlantDates && pendingDates === null
+        ? `Enter plant ${barcode}'s dates above to start the scan`
         : isScanning
           ? null
           : waveBoxOpen
             ? "Save or cancel the change to the wave's dates above to start the scan"
-            : plantBoxOpen
-              ? "Save or cancel the plant's dates above to start the scan"
-              : null;
+            : plantBoxOpen && perPlant
+              ? "Finish or cancel the change to the plant's dates above to start the scan"
+              : plantBoxOpen
+                ? "Save or cancel the plant's dates above to start the scan"
+                : null;
+
+  const { savePlantDates, plantDates } = waveDates;
+  const savePlantDatesForScan = useCallback(async () => {
+    if (!pendingDates) return plantDates;
+    const result = await savePlantDates(pendingDates);
+    if (!result.success) {
+      throw new Error(result.error ?? "Could not save the plant's dates.");
+    }
+    return {
+      germination_date: pendingDates.germinationDate,
+      sowing_date: pendingDates.sowingDate,
+      transfer_date: pendingDates.transferDate ?? null,
+    };
+  }, [pendingDates, plantDates, savePlantDates]);
 
   const plantSection =
     waveDates.wave && !waveDates.loading && (barcode || perPlant) ? (
@@ -111,6 +149,7 @@ export function useWaveDateFields(
         phenotyperChosen={metadata.phenotyper !== ''}
         onOpenChange={setPlantBoxOpen}
         onDraftGermination={setDraftGermination}
+        onPendingDates={setPendingDates}
         disabled={isScanning}
       />
     ) : undefined;
@@ -150,5 +189,12 @@ export function useWaveDateFields(
   // plant's line goes under its age.
   const plantAgeNote = perPlant ? undefined : plantSection;
 
-  return { waveDates, holdsStartScan, startScanHold, waveNote, plantAgeNote };
+  return {
+    waveDates,
+    holdsStartScan,
+    startScanHold,
+    waveNote,
+    plantAgeNote,
+    savePlantDatesForScan,
+  };
 }

@@ -1,31 +1,19 @@
 /**
- * The "Are you sure…?" box on Capture Scan when a wave's germination date is out of order
- * with another wave's, or its number skips ahead (#428). It shows the experiment's
- * other germination dates to check against; the phenotyper can still proceed, with a note
- * (or a reason, when editing), which the caller puts inside.
+ * The "Is the wave number correct?" box on Capture Scan, when a new wave's number
+ * skips ahead (#428). The phenotyper can still proceed, with a note, which the caller
+ * puts inside. (A wave's dates out of order with another's use WaveOrderWarning.)
  */
 
 import type { ReactNode } from 'react';
-import {
-  formatWaveDate,
-  type WaveGerminationDate,
-  type WaveWarning,
-} from '../../utils/wave-dates';
+import type { WaveWarning } from '../../utils/wave-dates';
 
 export interface WaveWarningsProps {
   warnings: WaveWarning[];
-  /** The experiment's other waves, listed when a date is out of order. */
-  otherWaves?: WaveGerminationDate[];
-  /** The note or reason field. */
+  /** The note field. */
   children: ReactNode;
 }
 
-export function WaveWarnings({
-  warnings,
-  otherWaves = [],
-  children,
-}: WaveWarningsProps) {
-  const sorted = [...otherWaves].sort((a, b) => a.wave_number - b.wave_number);
+export function WaveWarnings({ warnings, children }: WaveWarningsProps) {
   return (
     <div
       className="flex gap-2 bg-amber-50 border border-amber-300 rounded-md p-2 text-sm text-gray-800"
@@ -44,18 +32,6 @@ export function WaveWarnings({
             )}
           </div>
         ))}
-        {sorted.length > 0 && (
-          <div data-testid="wave-warnings-dates">
-            <p>Germination dates of this experiment&apos;s other waves:</p>
-            <ul className="ml-4 list-disc">
-              {sorted.map((w) => (
-                <li key={w.wave_number}>
-                  Wave {w.wave_number}: {formatWaveDate(w.germination_date)}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
         {children}
       </div>
     </div>
