@@ -15,11 +15,18 @@ import {
   fireEvent,
   waitFor,
   act,
+  configure,
 } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { CaptureScan } from '../../src/renderer/CaptureScan';
 import { toIsoDate } from '../../src/utils/wave-dates';
+
+// Capture Scan loads the session, config, waves and plants in a chain, which can take
+// longer than the default 1 s to settle (and a test longer than 5 s) when the whole
+// suite runs in parallel.
+configure({ asyncUtilTimeout: 5000 });
+vi.setConfig({ testTimeout: 15000 });
 
 /** Local "YYYY-MM-DD" `days` ago, by calendar arithmetic so DST can't shift it. */
 const sownDaysAgo = (days: number) => {

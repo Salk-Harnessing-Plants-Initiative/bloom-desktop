@@ -321,8 +321,9 @@ export function CaptureScan() {
             // Convert numbers from session to strings for form state
             waveNumber:
               session.waveNumber !== null ? String(session.waveNumber) : '',
-            plantAgeDays:
-              session.plantAgeDays !== null ? String(session.plantAgeDays) : '',
+            // The plant age isn't restored: it's always computed from the plant's
+            // dates (#407, #428), and a saved one could land after the computed
+            // one and replace it in the form.
             accessionName: session.accessionName ?? '',
             // Note: plantQrCode is NOT restored - it's unique per scan
           }));
