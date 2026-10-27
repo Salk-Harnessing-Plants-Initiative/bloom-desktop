@@ -118,8 +118,11 @@ export interface CylinderWaveDbLike {
     }) => Promise<
       { experiment_id: string; wave_number: number; _count: { _all: number } }[]
     >;
+    /** A plant's scans, or a wave's scans saved under its plants (with its dates). */
     count: (args: {
-      where: { cylinder_plant_id: { in: string[] }; deleted: boolean };
+      where:
+        | { cylinder_plant_id: { in: string[] }; deleted: boolean }
+        | { cylinderPlant: { wave_id: string }; deleted: boolean };
     }) => Promise<number>;
   };
   cylinderWaveDateChange: {

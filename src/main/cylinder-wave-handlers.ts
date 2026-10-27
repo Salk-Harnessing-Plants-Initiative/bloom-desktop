@@ -100,7 +100,16 @@ async function withScanCounts(
         c.experiment_id === row.experiment_id &&
         c.wave_number === row.wave_number
     )?._count._all ?? 0;
-  return rows.map((row) => ({
+  // Scans taken with a wave's dates are the ones saved under its plants: older scans
+  // of the same wave number (before its dates were recorded) don't lock its dates.
+  const datedScanCounts = await Promise.all(
+    rows.map((row) =>
+      db.scan.count({
+        where: { cylinderPlant: { wave_id: row.id }, deleted: false },
+      })
+    )
+  );
+  return rows.map((row, i) => ({
     id: row.id,
     wave_number: row.wave_number,
     dates_per_plant: row.dates_per_plant,
@@ -128,6 +137,7 @@ async function withScanCounts(
         changed_at: c.changedAt.toISOString(),
       })),
     scanCount: scanCount(row),
+    datedScanCount: datedScanCounts[i],
     plantsWithOwnDates: ownDates.filter((p) => p.wave_id === row.id),
   }));
 }
@@ -286,7 +296,8 @@ export async function changeDates(
         current: storedWaveDates(wave),
         next: storedWaveDates(toSave),
         reason,
-        waveHasScans: current.scanCount > 0,
+        // Only scans taken with these dates make them final.
+        waveHasScans: current.datedScanCount > 0,
       },
       others,
       (deps.now ?? (() => new Date()))()

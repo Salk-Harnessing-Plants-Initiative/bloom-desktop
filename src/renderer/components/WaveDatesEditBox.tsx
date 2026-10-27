@@ -101,8 +101,9 @@ export function WaveDatesEditBox({
   const toPerPlant = !wasPerPlant && mode === 'perPlant';
   // After scans, a per-plant wave can only take the dates its plants share, and a
   // wave's own dates can't change.
-  const sameLocked = toSame && wave.scanCount > 0;
-  const datesLocked = editingDates && wave.scanCount > 0;
+  // Only scans taken with the wave's dates count (not ones from before they were set).
+  const sameLocked = toSame && wave.datedScanCount > 0;
+  const datesLocked = editingDates && wave.datedScanCount > 0;
   const entered = enteredDates(dates, transferSameDay);
   const today = new Date();
 
@@ -118,7 +119,7 @@ export function WaveDatesEditBox({
             current: saved,
             next: entered,
             reason,
-            waveHasScans: wave.scanCount > 0,
+            waveHasScans: wave.datedScanCount > 0,
           },
           otherWaves,
           today

@@ -174,12 +174,19 @@ export function fakeCylinderDb(
           }))
           .filter((c) => where.wave_number.in.includes(c.wave_number))
       ),
-      count: vi.fn(async ({ where }) =>
-        where.cylinder_plant_id.in.reduce(
+      // A plant's scans, or a wave's scans saved under its plants (taken with its
+      // dates); `scanCounts` by wave number also counts older scans, which these don't.
+      count: vi.fn(async ({ where }) => {
+        const ids: string[] = where.cylinderPlant
+          ? plants
+              .filter((p) => p.wave_id === where.cylinderPlant.wave_id)
+              .map((p) => p.id)
+          : where.cylinder_plant_id.in;
+        return ids.reduce(
           (sum: number, id: string) => sum + (plantScanCounts[id] ?? 0),
           0
-        )
-      ),
+        );
+      }),
     },
     cylinderWaveDateChange: {
       findMany: vi.fn(async ({ where }) =>

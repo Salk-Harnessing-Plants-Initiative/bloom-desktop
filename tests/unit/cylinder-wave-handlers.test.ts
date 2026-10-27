@@ -50,6 +50,8 @@ describe('listWaves', () => {
           set_by_name: 'Demo Phenotyper',
           set_at: SET_AT.toISOString(),
           scanCount: 72,
+          // None of the 72 was saved under one of its plants (taken with its dates).
+          datedScanCount: 0,
           changes: [],
           plantsWithOwnDates: [],
         },
@@ -436,8 +438,28 @@ describe('changeDates', () => {
     });
   });
 
-  it("refuses to change a wave's dates once it has scans, whatever the reason", async () => {
-    const fake = fakeDb([{ ...wave1 }], { 1: 3 });
+  it("refuses to change a wave's dates once it has scans taken with them, whatever the reason", async () => {
+    // SB_001 was scanned (3 times) with wave 1's dates.
+    const fake = fakeCylinderDb(
+      [{ ...wave1 }],
+      { 1: 3 },
+      [
+        {
+          id: 'p1',
+          wave_id: 'w1',
+          plant_barcode: 'SB_001',
+          germination_date: '2025-11-26',
+          sowing_date: '2025-10-01',
+          transfer_date: null,
+          germ_day_color: null,
+          uses_wave_dates: true,
+          reason: null,
+          set_by_phenotyper_id: 'ph-1',
+          updatedAt: SET_AT,
+        },
+      ],
+      { p1: 3 }
+    );
     const result = await changeDates(
       { db: fake.db, now },
       {
@@ -454,6 +476,22 @@ describe('changeDates', () => {
     });
     expect(fake.rows[0].germination_date).toBe('2025-11-26');
     expect(fake.changes).toHaveLength(0);
+  });
+
+  it('still allows a change when the only scans are from before the dates were recorded', async () => {
+    // 50 scans of wave 1 from before its dates were recorded: none used these dates.
+    const fake = fakeDb([{ ...wave1 }], { 1: 50 });
+    const result = await changeDates(
+      { db: fake.db, now },
+      {
+        waveId: 'w1',
+        germinationDate: '2025-11-27',
+        sowingDate: '2025-10-01',
+        phenotyperId: 'ph-1',
+      }
+    );
+    expect(result.success).toBe(true);
+    expect(fake.rows[0].germination_date).toBe('2025-11-27');
   });
 
   it('needs a reason when the new date conflicts with another wave', async () => {

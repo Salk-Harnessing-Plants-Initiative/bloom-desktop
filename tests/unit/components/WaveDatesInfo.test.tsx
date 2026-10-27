@@ -102,7 +102,11 @@ describe('WaveDatesInfo', () => {
   });
 
   it("after scans, shows the wave's dates locked, with no way to save a change", () => {
-    const onChangeDate = renderInfo({ ...wave2, scanCount: 3 });
+    const onChangeDate = renderInfo({
+      ...wave2,
+      scanCount: 3,
+      datedScanCount: 3,
+    });
     fireEvent.click(screen.getByTestId('wave-dates-edit'));
     expect(
       screen.getByTestId('wave-dates-edit-scans-warning')
@@ -119,8 +123,18 @@ describe('WaveDatesInfo', () => {
     expect(onChangeDate).not.toHaveBeenCalled();
   });
 
+  it('keeps the dates editable when the only scans are from before they were recorded', () => {
+    renderInfo({ ...wave2, scanCount: 50, datedScanCount: 0 });
+    fireEvent.click(screen.getByTestId('wave-dates-edit'));
+    expect(screen.getByLabelText('Germination date')).not.toBeDisabled();
+    expect(
+      screen.queryByTestId('wave-dates-edit-scans-warning')
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('wave-dates-edit-save')).toBeInTheDocument();
+  });
+
   it('after scans, still lets the wave go per plant', () => {
-    renderInfo({ ...wave2, scanCount: 3 });
+    renderInfo({ ...wave2, scanCount: 3, datedScanCount: 3 });
     fireEvent.click(screen.getByTestId('wave-dates-edit'));
     fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
     expect(screen.getByTestId('wave-dates-edit-save')).toHaveTextContent(
@@ -321,14 +335,17 @@ describe('WaveDatesInfo', () => {
 
     it("after scans, locks the shared dates; and can't go back when plants differ", () => {
       renderEdit(
-        { ...perPlant, scanCount: 3 },
+        { ...perPlant, scanCount: 3, datedScanCount: 3 },
         { plants, sharedPlantDates: plants[0] }
       );
       fireEvent.click(screen.getByTestId('dates-mode-same'));
       expect(screen.getByTestId('same-dates-locked')).toBeInTheDocument();
       expect(screen.getByLabelText('Germination date')).toBeDisabled();
       cleanup();
-      renderEdit({ ...perPlant, scanCount: 3 }, { canUseSameDates: false });
+      renderEdit(
+        { ...perPlant, scanCount: 3, datedScanCount: 3 },
+        { canUseSameDates: false }
+      );
       expect(screen.getByTestId('dates-mode-same')).toBeDisabled();
       expect(screen.getByTestId('dates-mode-question')).toHaveTextContent(
         "This wave's plants were scanned with different dates."

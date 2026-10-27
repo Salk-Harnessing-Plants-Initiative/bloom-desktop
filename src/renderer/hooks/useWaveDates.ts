@@ -196,7 +196,7 @@ export function useWaveDates(
       : null;
   const canUseSameDates =
     Boolean(wave?.dates_per_plant) &&
-    (wave?.scanCount === 0 || sharedPlantDates !== null);
+    (wave?.datedScanCount === 0 || sharedPlantDates !== null);
 
   const reload = useCallback(async () => {
     if (experimentId) await load(experimentId);

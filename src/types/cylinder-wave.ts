@@ -47,8 +47,13 @@ export interface CylinderWaveInfo {
   set_by_name: string | null;
   /** When the current dates were set (ISO 8601). */
   set_at: string;
-  /** Saved (not deleted) scans in this wave; the dates are final once > 0. */
+  /** Saved (not deleted) scans with this wave number, older ones included (shown). */
   scanCount: number;
+  /**
+   * Saved scans taken with this wave's dates (saved under its plants); the dates are
+   * final once > 0. Scans from before the dates were recorded don't count.
+   */
+  datedScanCount: number;
   /** Every set or change of the dates, oldest first. */
   changes: CylinderWaveDateChange[];
   /** The wave's plants that have their own dates, by barcode. */
