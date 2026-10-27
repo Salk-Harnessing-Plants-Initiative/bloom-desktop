@@ -126,6 +126,7 @@ export function useWaveDateFields(
       germination_date: pendingDates.germinationDate,
       sowing_date: pendingDates.sowingDate,
       transfer_date: pendingDates.transferDate ?? null,
+      germ_day_color: pendingDates.germDayColor ?? null,
     };
   }, [pendingDates, plantDates, savePlantDates]);
 

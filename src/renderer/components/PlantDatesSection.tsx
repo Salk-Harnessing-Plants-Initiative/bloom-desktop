@@ -55,7 +55,12 @@ export interface PlantDatesSectionProps {
   disabled?: boolean;
 }
 
-const EMPTY: WaveDates = { germination: '', sowing: '', transfer: '' };
+const EMPTY: WaveDates = {
+  germination: '',
+  sowing: '',
+  transfer: '',
+  color: '',
+};
 export function PlantDatesSection({
   plantBarcode,
   wave,
@@ -87,7 +92,8 @@ export function PlantDatesSection({
     !needsDates &&
     entered.germination === startDates.germination &&
     entered.sowing === startDates.sowing &&
-    entered.transfer === startDates.transfer;
+    entered.transfer === startDates.transfer &&
+    entered.color === (startDates.color ?? '');
   const touched = Boolean(entered.germination || entered.sowing);
   const datesError = touched ? waveDatesError(entered, new Date()) : null;
   // Differing from the wave needs a reason. (A plant with scans can't be edited.)
@@ -113,16 +119,17 @@ export function PlantDatesSection({
     (!reasonNeeded || reason.trim() !== '');
   const canSave =
     !disabled && !saving && !needsBarcode && phenotyperChosen && complete;
-  const { germination, sowing, transfer } = entered;
+  const { germination, sowing, transfer, color } = entered;
   const note = reason.trim();
   const input = useMemo<PlantDatesDraft>(
     () => ({
       germinationDate: germination,
       sowingDate: sowing,
       transferDate: transfer || undefined,
+      germDayColor: color || undefined,
       reason: note || undefined,
     }),
-    [germination, sowing, transfer, note]
+    [germination, sowing, transfer, color, note]
   );
   // In a per-plant wave, complete dates are saved when the scan starts.
   const pending = perPlant && editing && complete ? input : null;

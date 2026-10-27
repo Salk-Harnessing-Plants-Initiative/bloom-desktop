@@ -31,6 +31,8 @@ export interface ScanMetadataJson {
   sowing_date?: string;
   /** The plant's transfer date; absent when it's the germination day */
   transfer_date?: string;
+  /** The plant's germination colour (#429), when it has one */
+  germ_day_color?: string;
   capture_date: string;
   num_frames: number;
   /**
@@ -113,6 +115,7 @@ export function buildMetadataObject(
     'germination_date',
     'sowing_date',
     'transfer_date',
+    'germ_day_color',
   ] as const) {
     if (meta[key] !== undefined) result[key] = meta[key];
   }

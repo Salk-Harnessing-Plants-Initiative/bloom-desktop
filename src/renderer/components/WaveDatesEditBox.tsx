@@ -110,7 +110,8 @@ export function WaveDatesEditBox({
     editingDates &&
     (entered.germination !== saved.germination ||
       entered.sowing !== saved.sowing ||
-      entered.transfer !== saved.transfer)
+      entered.transfer !== saved.transfer ||
+      entered.color !== (saved.color ?? ''))
       ? checkWaveDateChange(
           {
             waveNumber: wave.wave_number,
@@ -151,6 +152,7 @@ export function WaveDatesEditBox({
       germinationDate: entered.germination,
       sowingDate: entered.sowing,
       transferDate: entered.transfer || undefined,
+      germDayColor: entered.color || undefined,
       reason: reason.trim() || undefined,
     };
     try {

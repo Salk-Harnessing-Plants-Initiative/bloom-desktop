@@ -321,6 +321,9 @@ model CylinderWave {
   germination_date     String?
   sowing_date          String?
   transfer_date        String?
+  // The lab's germination colour for the wave's plants (optional, #429); null when the
+  // dates are per plant or there's none.
+  germ_day_color       String?
   // Why the wave number skips ahead, or its germination date is out of order with
   // another wave's, when either is the case.
   note                 String?
@@ -347,6 +350,8 @@ model CylinderWaveDateChange {
   new_sowing_date          String?
   old_transfer_date        String?
   new_transfer_date        String?
+  old_germ_day_color       String?
+  new_germ_day_color       String?
   reason                   String?
   changed_by_phenotyper_id String?
   changedAt                DateTime @default(now())
@@ -398,6 +403,8 @@ model CylinderPlantDateChange {
   new_sowing_date          String?
   old_transfer_date        String?
   new_transfer_date        String?
+  old_germ_day_color       String?
+  new_germ_day_color       String?
   reason                   String?
   changed_by_phenotyper_id String?
   changedAt                DateTime @default(now())

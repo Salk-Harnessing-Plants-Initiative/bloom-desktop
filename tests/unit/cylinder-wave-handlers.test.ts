@@ -25,6 +25,7 @@ const wave1: Row = {
   germination_date: '2025-11-26',
   sowing_date: '2025-10-01',
   transfer_date: null,
+  germ_day_color: null,
   note: null,
   set_by_phenotyper_id: 'ph-1',
   updatedAt: SET_AT,
@@ -44,6 +45,7 @@ describe('listWaves', () => {
           germination_date: '2025-11-26',
           sowing_date: '2025-10-01',
           transfer_date: null,
+          germ_day_color: null,
           note: null,
           set_by_name: 'Demo Phenotyper',
           set_at: SET_AT.toISOString(),
@@ -125,6 +127,8 @@ describe('listWaves: the change log', () => {
         new_sowing_date: '2025-10-01',
         old_transfer_date: null,
         new_transfer_date: null,
+        old_germ_day_color: null,
+        new_germ_day_color: null,
         reason: 'Typo',
         changed_by_name: 'Second Phenotyper',
         changed_at: EDITED_AT.toISOString(),
@@ -137,6 +141,8 @@ describe('listWaves: the change log', () => {
         new_sowing_date: '2025-10-01',
         old_transfer_date: null,
         new_transfer_date: null,
+        old_germ_day_color: null,
+        new_germ_day_color: null,
         reason: 'Checked the seed log',
         changed_by_name: 'Demo Phenotyper',
         changed_at: EDITED_AT.toISOString(),
@@ -169,6 +175,15 @@ describe('createWave', () => {
       ...input,
     } as never);
 
+  it('saves the germination colour with the dates, cleaned, and logs it (#429)', async () => {
+    const result = await create({ germDayColor: 'germ red' });
+    expect(result.data?.germ_day_color).toBe('GermRed');
+    expect(fake.changes[0]).toMatchObject({
+      old_germ_day_color: null,
+      new_germ_day_color: 'GermRed',
+    });
+  });
+
   it('saves the next wave with who set it', async () => {
     const result = await create({ phenotyperId: 'ph-1' });
     expect(result.success).toBe(true);
@@ -180,6 +195,7 @@ describe('createWave', () => {
         germination_date: '2026-02-20',
         sowing_date: '2025-12-01',
         transfer_date: null,
+        germ_day_color: null,
         note: null,
         set_by_phenotyper_id: 'ph-1',
       },
@@ -203,6 +219,8 @@ describe('createWave', () => {
         new_sowing_date: '2025-12-01',
         old_transfer_date: null,
         new_transfer_date: null,
+        old_germ_day_color: null,
+        new_germ_day_color: null,
         reason: null,
         changed_by_phenotyper_id: 'ph-1',
       },
@@ -216,6 +234,8 @@ describe('createWave', () => {
         new_sowing_date: '2025-12-01',
         old_transfer_date: null,
         new_transfer_date: null,
+        old_germ_day_color: null,
+        new_germ_day_color: null,
         reason: null,
         changed_by_name: 'Demo Phenotyper',
         changed_at: EDITED_AT.toISOString(),
@@ -386,6 +406,8 @@ describe('changeDates', () => {
         new_sowing_date: '2025-10-01',
         old_transfer_date: null,
         new_transfer_date: null,
+        old_germ_day_color: null,
+        new_germ_day_color: null,
         reason: null,
         changed_by_phenotyper_id: 'ph-1',
       },
@@ -556,6 +578,7 @@ describe('the three dates', () => {
       germination_date: '2026-02-20',
       sowing_date: '2026-02-16',
       transfer_date: null,
+      germ_day_color: null,
     });
     expect(fake.changes[0]).toMatchObject({
       old_germination_date: null,
@@ -563,6 +586,8 @@ describe('the three dates', () => {
       old_sowing_date: null,
       new_sowing_date: '2026-02-16',
       new_transfer_date: null,
+      old_germ_day_color: null,
+      new_germ_day_color: null,
     });
   });
 
@@ -608,6 +633,7 @@ describe('the three dates', () => {
       germination_date: '2025-11-26',
       sowing_date: '2025-10-03',
       transfer_date: '2025-11-28',
+      germ_day_color: null,
     });
     expect(fake.changes).toEqual([
       expect.objectContaining({
@@ -617,6 +643,8 @@ describe('the three dates', () => {
         new_sowing_date: '2025-10-03',
         old_transfer_date: null,
         new_transfer_date: '2025-11-28',
+        old_germ_day_color: null,
+        new_germ_day_color: null,
       }),
     ]);
   });
@@ -666,6 +694,7 @@ describe('waves whose dates are per plant, and plants following the wave', () =>
     germination_date: germination,
     sowing_date: '2025-10-01',
     transfer_date: null,
+    germ_day_color: null,
     uses_wave_dates: usesWaveDates,
     reason: usesWaveDates ? null : 'Germinated late',
     set_by_phenotyper_id: 'ph-1',
@@ -688,6 +717,7 @@ describe('waves whose dates are per plant, and plants following the wave', () =>
       germination_date: null,
       sowing_date: null,
       transfer_date: null,
+      germ_day_color: null,
     });
     expect(fake.changes[0]).toMatchObject({
       old_germination_date: null,

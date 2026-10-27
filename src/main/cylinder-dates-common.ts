@@ -5,6 +5,7 @@
 import type { DatabaseResponse } from '../types/database';
 import type { WaveDatesInput } from '../types/cylinder-wave';
 import type { WaveDates } from '../utils/wave-dates';
+import { normalizeGermDayColor } from '../utils/germ-day-color';
 import type { CylinderWaveDbLike, DateColumns } from './cylinder-wave-db';
 
 export const PHENOTYPER_REQUIRED = 'Choose the phenotyper first.';
@@ -31,12 +32,13 @@ export function trimmed(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-/** The dates as the renderer sent them, trimmed. */
+/** The dates as the renderer sent them, trimmed, with the colour cleaned (#429). */
 export function enteredDates(input: Partial<WaveDatesInput>): WaveDates {
   return {
     germination: trimmed(input?.germinationDate),
     sowing: trimmed(input?.sowingDate),
     transfer: trimmed(input?.transferDate),
+    color: normalizeGermDayColor(input?.germDayColor),
   };
 }
 
@@ -49,6 +51,7 @@ export function datesToSave(dates: WaveDates): DateColumns {
       dates.transfer && dates.transfer !== dates.germination
         ? dates.transfer
         : null,
+    germ_day_color: dates.color || null,
   };
 }
 

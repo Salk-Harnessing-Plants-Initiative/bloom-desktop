@@ -20,6 +20,7 @@ import {
   useDatesPerPlant,
   useSameDatesForAll,
 } from './cylinder-wave-same-dates';
+import { logPlantDates, plantDateColumns } from './cylinder-plant-log';
 import {
   MAX_REASON_LENGTH,
   scannedPlantError,
@@ -54,6 +55,7 @@ export function waveDatesForPlants(wave: WaveRow): DateColumns | null {
         germination_date: wave.germination_date,
         sowing_date: wave.sowing_date,
         transfer_date: wave.transfer_date,
+        germ_day_color: wave.germ_day_color,
       };
 }
 
@@ -61,7 +63,8 @@ export function sameDates(a: DateColumns, b: DateColumns): boolean {
   return (
     a.germination_date === b.germination_date &&
     a.sowing_date === b.sowing_date &&
-    a.transfer_date === b.transfer_date
+    a.transfer_date === b.transfer_date &&
+    a.germ_day_color === b.germ_day_color
   );
 }
 
@@ -89,7 +92,7 @@ export async function plantInfos(
       transfer_date: row.transfer_date,
       uses_wave_dates: row.uses_wave_dates,
       reason: row.reason,
-      germ_day_color: row.germ_day_color ?? null,
+      germ_day_color: row.germ_day_color,
       set_by_name: nameOf(row.set_by_phenotyper_id),
       set_at: row.updatedAt.toISOString(),
       scanCount: await db.scan.count({
@@ -105,6 +108,8 @@ export async function plantInfos(
           new_sowing_date: c.new_sowing_date,
           old_transfer_date: c.old_transfer_date,
           new_transfer_date: c.new_transfer_date,
+          old_germ_day_color: c.old_germ_day_color,
+          new_germ_day_color: c.new_germ_day_color,
           reason: c.reason,
           changed_by_name: nameOf(c.changed_by_phenotyper_id),
           changed_at: c.changedAt.toISOString(),
@@ -177,11 +182,7 @@ export async function setPlantDates(
     const waveDates = waveDatesForPlants(wave);
     // A copy: the old dates are logged after the row is written.
     const before: DateColumns | null = plant
-      ? {
-          germination_date: plant.germination_date,
-          sowing_date: plant.sowing_date,
-          transfer_date: plant.transfer_date,
-        }
+      ? plantDateColumns(plant)
       : waveDates;
     if (before && sameDates(before, toSave)) {
       return {
@@ -223,19 +224,14 @@ export async function setPlantDates(
         : await tx.cylinderPlant.create({
             data: { ...data, wave_id: waveId, plant_barcode: plantBarcode },
           });
-      await tx.cylinderPlantDateChange.create({
-        data: {
-          plant_id: row.id,
-          old_germination_date: before?.germination_date ?? null,
-          new_germination_date: toSave.germination_date,
-          old_sowing_date: before?.sowing_date ?? null,
-          new_sowing_date: toSave.sowing_date,
-          old_transfer_date: before?.transfer_date ?? null,
-          new_transfer_date: toSave.transfer_date,
-          reason: reason || null,
-          changed_by_phenotyper_id: phenotyperId,
-        },
-      });
+      await logPlantDates(
+        tx,
+        row.id,
+        before,
+        toSave,
+        reason || null,
+        phenotyperId
+      );
       return row;
     });
     const [info] = await plantInfos(deps.db, [saved]);
@@ -271,11 +267,8 @@ export async function usePlantWaveDates(
     }
     const who = await phenotyperError(deps.db, phenotyperId);
     if (who) return { success: false, error: who };
-    const old = {
-      germination_date: plant.germination_date,
-      sowing_date: plant.sowing_date,
-      transfer_date: plant.transfer_date,
-    };
+    // A copy: the old dates are logged after the row is updated.
+    const old = plantDateColumns(plant);
     const [current] = await plantInfos(deps.db, [plant]);
     // Once a plant has scans, its dates are final.
     if (current.scanCount > 0) {
@@ -296,19 +289,14 @@ export async function usePlantWaveDates(
           set_by_phenotyper_id: phenotyperId,
         },
       });
-      await tx.cylinderPlantDateChange.create({
-        data: {
-          plant_id: row.id,
-          old_germination_date: old.germination_date,
-          new_germination_date: waveDates.germination_date,
-          old_sowing_date: old.sowing_date,
-          new_sowing_date: waveDates.sowing_date,
-          old_transfer_date: old.transfer_date,
-          new_transfer_date: waveDates.transfer_date,
-          reason: reason || "Back to the wave's dates",
-          changed_by_phenotyper_id: phenotyperId,
-        },
-      });
+      await logPlantDates(
+        tx,
+        row.id,
+        old,
+        waveDates,
+        reason || "Back to the wave's dates",
+        phenotyperId
+      );
       return row;
     });
     const [info] = await plantInfos(deps.db, [saved]);

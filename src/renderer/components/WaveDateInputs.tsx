@@ -1,12 +1,18 @@
 /**
  * A wave's three dates on Capture Scan (#428): sowing, germination and transfer to
- * cylinder. The plant age is computed from the germination date (its ⓘ says how).
- * The transfer date is the germination day unless "Same day as germination" is
- * unticked.
+ * cylinder, with the optional germination colour (#429), which marks the plants that
+ * germinated together. The plant age is computed from the germination date (its ⓘ
+ * says how). The transfer date is the germination day unless "Same day as
+ * germination" is unticked. The colour is cleaned to camel case when it's left.
  */
 
 import { toIsoDate, type WaveDates } from '../../utils/wave-dates';
+import {
+  MAX_GERM_DAY_COLOR_LENGTH,
+  normalizeGermDayColor,
+} from '../../utils/germ-day-color';
 import { GerminationDateInfo } from './GerminationDateInfo';
+import { InfoTip } from './InfoTip';
 
 export interface WaveDateInputsProps {
   dates: WaveDates;
@@ -18,12 +24,19 @@ export interface WaveDateInputsProps {
   variant?: 'box' | 'form';
 }
 
-/** The dates to check and save: the transfer date is '' when it's the germination day. */
+/**
+ * The dates to check and save: the transfer date is '' when it's the germination day,
+ * and the colour is cleaned ('' for none).
+ */
 export function enteredDates(
   dates: WaveDates,
   transferSameDay: boolean
 ): WaveDates {
-  return { ...dates, transfer: transferSameDay ? '' : dates.transfer };
+  return {
+    ...dates,
+    transfer: transferSameDay ? '' : dates.transfer,
+    color: normalizeGermDayColor(dates.color ?? ''),
+  };
 }
 
 /** Unticked "Same day as germination" but no transfer date entered yet. */
@@ -129,6 +142,34 @@ export function WaveDateInputs({
           />
         )}
       </div>
+      <label className="block">
+        <span className={style.label}>
+          {isForm ? 'Germination Colour' : 'Germination colour'}{' '}
+          <span className="font-normal text-gray-500">(optional)</span>
+          <InfoTip
+            label="What goes in the germination colour?"
+            testId="germ-day-color-info"
+          >
+            You can add the plant&apos;s germination colour, for example Red or
+            GermRed.
+          </InfoTip>
+        </span>
+        <input
+          type="text"
+          aria-label="Germination colour"
+          value={dates.color ?? ''}
+          maxLength={MAX_GERM_DAY_COLOR_LENGTH}
+          onChange={(e) => set({ color: e.target.value })}
+          onBlur={() =>
+            set({ color: normalizeGermDayColor(dates.color ?? '') })
+          }
+          disabled={disabled}
+          // What Bloom gets when it's left empty.
+          placeholder="none"
+          className={style.input}
+          data-testid="germ-day-color-input"
+        />
+      </label>
     </div>
   );
 }

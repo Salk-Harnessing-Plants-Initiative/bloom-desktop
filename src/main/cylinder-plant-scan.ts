@@ -75,30 +75,16 @@ export async function plantAgeError(
 }
 
 /**
- * The plant a scan is saved under: its row, created from the wave's dates at its first
- * scan (and logged, so its history starts there). The germination colour typed for the
- * scan (#429, already cleaned; '' for none) is saved to the plant.
+ * The plant a scan is saved under: its row, created from the wave's dates (and
+ * germination colour) at its first scan, and logged so its history starts there.
  */
 export async function plantRowForScan(
   tx: Pick<CylinderWaveTxLike, 'cylinderPlant' | 'cylinderPlantDateChange'>,
   found: PlantForScan,
   plantBarcode: string,
-  phenotyperId: string,
-  germDayColor = ''
+  phenotyperId: string
 ): Promise<PlantRow> {
-  const color = germDayColor || null;
-  if (found.plant) {
-    if ((found.plant.germ_day_color ?? null) === color) return found.plant;
-    return tx.cylinderPlant.update({
-      where: {
-        wave_id_plant_barcode: {
-          wave_id: found.plant.wave_id,
-          plant_barcode: found.plant.plant_barcode,
-        },
-      },
-      data: { germ_day_color: color },
-    });
-  }
+  if (found.plant) return found.plant;
   if (!found.dates) {
     throw new Error(`Plant ${plantBarcode} has no dates set.`);
   }
@@ -110,7 +96,6 @@ export async function plantRowForScan(
       plant_barcode: plantBarcode,
       uses_wave_dates: true,
       reason: null,
-      germ_day_color: color,
       set_by_phenotyper_id: phenotyperId,
     },
   });

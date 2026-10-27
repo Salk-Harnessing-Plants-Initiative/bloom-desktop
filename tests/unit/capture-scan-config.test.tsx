@@ -1254,72 +1254,55 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     });
   });
 
-  it('offers an optional germination colour, cleaned to camel case and sent with the scan (#429)', async () => {
+  it("asks a per-plant wave's plant for its germination colour with its dates, cleaned and sent (#429)", async () => {
+    perPlantWave();
+    plantsSetDates().mockResolvedValue({ success: true, data: null });
     renderCaptureScan();
-    // Always on the form, but usable only once a plant barcode is entered.
-    const before = await screen.findByRole('textbox', {
-      name: /Germination Colour/,
-    });
-    expect(before).toBeDisabled();
-    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
-    await act(async () => {
-      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
-    });
-    const color = await screen.findByRole('textbox', {
-      name: /Germination Colour/,
-    });
-    expect(screen.getByTestId('germ-day-color')).toHaveTextContent(
-      'Germination Colour (optional)'
-    );
-    await waitFor(() => expect(color).not.toBeDisabled());
-    expect(color).toHaveValue('');
+    await screen.findByTestId('plant-dates-box');
+    // The colour is an optional field next to the dates, with an ⓘ.
+    const color = screen.getByLabelText('Germination colour');
     expect(color).toHaveAttribute('placeholder', 'none');
-    // The ⓘ explains it, with examples.
     fireEvent.click(screen.getByTestId('germ-day-color-info'));
     expect(screen.getByTestId('germ-day-color-info-text')).toHaveTextContent(
       "You can add the plant's germination colour, for example Red or GermRed."
     );
-
     fireEvent.change(color, { target: { value: 'arctic blue' } });
     fireEvent.blur(color);
     expect(color).toHaveValue('ArcticBlue');
 
+    fireEvent.change(screen.getByLabelText('Sowing date'), {
+      target: { value: sownDaysAgo(12) },
+    });
+    fireEvent.change(screen.getByLabelText('Germination date'), {
+      target: { value: sownDaysAgo(9) },
+    });
+    const plantIdInput = screen.getByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
     const start = screen.getByRole('button', { name: /start scan/i });
     await waitFor(() => expect(start).not.toBeDisabled());
     await act(async () => {
       fireEvent.click(start);
     });
     await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(plantsSetDates()).toHaveBeenCalledWith(
+      expect.objectContaining({ germDayColor: 'ArcticBlue' })
+    );
     expect(scanMetadata()).toMatchObject({ germ_day_color: 'ArcticBlue' });
   });
 
-  it("starts the colour from the plant's own saved colour", async () => {
-    plantsList().mockResolvedValue({
+  it("shows a same-dates wave's germination colour with its dates, and sends it with the scan", async () => {
+    wavesList().mockResolvedValue({
       success: true,
-      data: [
-        {
-          id: 'p1',
-          wave_id: 'wave-1',
-          plant_barcode: 'PLANT-001',
-          germination_date: sownDaysAgo(14),
-          sowing_date: sownDaysAgo(20),
-          transfer_date: null,
-          uses_wave_dates: true,
-          reason: null,
-          germ_day_color: 'GermRed',
-          set_by_name: 'Demo Phenotyper',
-          set_at: '2026-01-03T09:00:00.000Z',
-          scanCount: 1,
-          changes: [],
-        },
-      ],
+      data: [waveRow({ germ_day_color: 'GermRed' })],
     });
-    await enterPlant();
-    await waitFor(() =>
-      expect(
-        screen.getByRole('textbox', { name: /Germination Colour/ })
-      ).toHaveValue('GermRed')
+    await fillFormAndStartScan();
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(screen.getByTestId('wave-dates-info')).toHaveTextContent(
+      'Germination colour: GermRed'
     );
+    expect(scanMetadata()).toMatchObject({ germ_day_color: 'GermRed' });
   });
 
   it("saves the calculated age, not the session's typed age", async () => {

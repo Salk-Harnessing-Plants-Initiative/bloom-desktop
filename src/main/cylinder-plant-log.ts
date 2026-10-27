@@ -20,6 +20,7 @@ export function plantDateColumns(plant: DateColumns): DateColumns {
     germination_date: plant.germination_date,
     sowing_date: plant.sowing_date,
     transfer_date: plant.transfer_date,
+    germ_day_color: plant.germ_day_color,
   };
 }
 
@@ -41,6 +42,8 @@ export async function logPlantDates(
       new_sowing_date: after.sowing_date,
       old_transfer_date: before?.transfer_date ?? null,
       new_transfer_date: after.transfer_date,
+      old_germ_day_color: before?.germ_day_color ?? null,
+      new_germ_day_color: after.germ_day_color,
       reason,
       changed_by_phenotyper_id: phenotyperId,
     },
