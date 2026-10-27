@@ -28,6 +28,8 @@ import { plantAgeDays } from '../../utils/wave-dates';
 
 export interface WaveDateFieldsInput {
   experimentId: string;
+  /** The age in the form now, so the computed age can be put back if it's replaced. */
+  plantAgeDays: string;
   waveNumber: string;
   plantQrCode: string;
   phenotyper: string;
@@ -79,17 +81,26 @@ export function useWaveDateFields(
   const previewAge = draftGermination
     ? plantAgeDays(draftGermination, new Date())
     : null;
+  // While a plant's dates are being entered or corrected, the age they give is shown
+  // (and checked for a duplicate scan), not the age from its saved dates. Without the
+  // plant's dates there's no age yet (including a per-plant wave before its dates are
+  // entered): don't show a previous one. Null: leave the form's age as it is.
+  const formAge =
+    previewAge !== null
+      ? String(previewAge)
+      : calculatedAge !== null
+        ? String(calculatedAge)
+        : needsWaveDates || needsPlantDates || perPlant
+          ? ''
+          : null;
+  const currentAge = metadata.plantAgeDays;
+  // Checked after every render, not only when the computed age changes: other parts of
+  // the form (the barcode and accession lookups) write back the whole form from a copy
+  // taken a moment earlier, and can undo this write in the same update, leaving the
+  // form as it was before. It only writes when the form's age differs, so it settles.
   useEffect(() => {
-    // While a plant's dates are being entered or corrected, the age they give is
-    // shown (and checked for a duplicate scan), not the age from its saved dates.
-    // Without the plant's dates there's no age yet (including a per-plant wave before
-    // its dates are entered): don't show a previous one.
-    if (previewAge !== null) setAgeRef.current(String(previewAge));
-    else if (calculatedAge !== null) setAgeRef.current(String(calculatedAge));
-    else if (needsWaveDates || needsPlantDates || perPlant) {
-      setAgeRef.current('');
-    }
-  }, [calculatedAge, previewAge, needsWaveDates, needsPlantDates, perPlant]);
+    if (formAge !== null && formAge !== currentAge) setAgeRef.current(formAge);
+  });
 
   const barcode = metadata.plantQrCode.trim();
   const holdsStartScan =
