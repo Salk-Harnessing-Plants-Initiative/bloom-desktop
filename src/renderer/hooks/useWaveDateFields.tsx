@@ -65,7 +65,7 @@ export function useWaveDateFields(
   // is what the scan saves.
   const [waveBoxOpen, setWaveBoxOpen] = useState(false);
   const [plantBoxOpen, setPlantBoxOpen] = useState(false);
-  // The germination date being entered for a new plant, to preview its age.
+  // The germination date being entered (a new plant's, or a correction), to preview its age.
   const [draftGermination, setDraftGermination] = useState<string | null>(null);
   // A per-plant wave's plant dates as entered, saved when the scan starts.
   const [pendingDates, setPendingDates] = useState<PlantDatesDraft | null>(
@@ -76,16 +76,16 @@ export function useWaveDateFields(
   setAgeRef.current = setPlantAgeDays;
   const { calculatedAge, needsWaveDates, needsPlantDates } = waveDates;
   const perPlant = Boolean(waveDates.wave?.dates_per_plant);
-  const previewAge =
-    calculatedAge === null && draftGermination
-      ? plantAgeDays(draftGermination, new Date())
-      : null;
+  const previewAge = draftGermination
+    ? plantAgeDays(draftGermination, new Date())
+    : null;
   useEffect(() => {
+    // While a plant's dates are being entered or corrected, the age they give is
+    // shown (and checked for a duplicate scan), not the age from its saved dates.
     // Without the plant's dates there's no age yet (including a per-plant wave before
-    // its dates are entered): don't show a previous one. While a new plant's dates
-    // are being entered, the age they give is shown; scanning still waits for them.
-    if (calculatedAge !== null) setAgeRef.current(String(calculatedAge));
-    else if (previewAge !== null) setAgeRef.current(String(previewAge));
+    // its dates are entered): don't show a previous one.
+    if (previewAge !== null) setAgeRef.current(String(previewAge));
+    else if (calculatedAge !== null) setAgeRef.current(String(calculatedAge));
     else if (needsWaveDates || needsPlantDates || perPlant) {
       setAgeRef.current('');
     }

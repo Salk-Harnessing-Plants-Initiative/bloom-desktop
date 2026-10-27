@@ -26,6 +26,7 @@ import type {
 import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
 import { buildScanPath, toRelativeScanPath } from '../utils/scan-path';
+import { plantAgeDays } from '../utils/wave-dates';
 import {
   validateWaveNumber,
   validatePlantAgeDays,
@@ -537,7 +538,12 @@ export function CaptureScan() {
       setShowIdleResetBanner(false);
 
       // A per-plant wave's plant dates are saved first; if they can't be, don't scan.
+      // The age is then taken from the dates the scan uses, as of now (a correction
+      // just saved, or a day that has changed since the form was filled in).
       const plantDates = await savePlantDatesForScan();
+      const plantAge = plantDates
+        ? plantAgeDays(plantDates.germination_date, new Date())
+        : parseInt(metadata.plantAgeDays, 10);
 
       // Initialize scanner
       // Build pilot-compatible scan directory path: YYYY-MM-DD/<plant_qr_code>/<scan_uuid>
@@ -563,7 +569,7 @@ export function CaptureScan() {
           scanner_name: scannerName,
           plant_id: metadata.plantQrCode,
           accession_name: metadata.accessionName || undefined,
-          plant_age_days: parseInt(metadata.plantAgeDays, 10),
+          plant_age_days: plantAge,
           wave_number: parseInt(metadata.waveNumber, 10),
           // The plant's dates the age was computed from, for metadata.json.
           germination_date: plantDates?.germination_date,

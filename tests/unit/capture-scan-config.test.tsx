@@ -1171,6 +1171,70 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     expect(mockScannerInitialize).not.toHaveBeenCalled();
   });
 
+  it("uses a corrected plant's new age in a per-plant wave, for the duplicate check and the scan", async () => {
+    perPlantWave();
+    // PLANT-001 was scanned before, with germination 16 days ago.
+    plantsList().mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'p1',
+          wave_id: 'wave-1',
+          plant_barcode: 'PLANT-001',
+          germination_date: sownDaysAgo(16),
+          sowing_date: sownDaysAgo(20),
+          transfer_date: null,
+          uses_wave_dates: false,
+          reason: null,
+          set_by_name: 'Demo Phenotyper',
+          set_at: '2026-01-03T09:00:00.000Z',
+          scanCount: 1,
+          changes: [],
+        },
+      ],
+    });
+    plantsSetDates().mockResolvedValue({ success: true, data: null });
+    await enterPlant();
+    const age = screen.getByLabelText(/Plant Age/);
+    await waitFor(() => expect(age).toHaveValue('16'));
+
+    // It actually germinated two days later: the age follows the corrected date.
+    fireEvent.click(await screen.findByTestId('plant-dates-edit'));
+    fireEvent.change(screen.getByLabelText('Germination date'), {
+      target: { value: sownDaysAgo(14) },
+    });
+    fireEvent.change(screen.getByTestId('plant-dates-reason'), {
+      target: { value: 'Germination date typed wrong' },
+    });
+    await waitFor(() => expect(age).toHaveValue('14'));
+    // A scan today at the old age (16) doesn't block the corrected one.
+    await waitFor(() =>
+      expect(mockCheckDuplicate).toHaveBeenLastCalledWith(
+        'PLANT-001',
+        'exp-1',
+        1,
+        14
+      )
+    );
+
+    const start = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(start).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(start);
+    });
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(plantsSetDates()).toHaveBeenCalledWith(
+      expect.objectContaining({
+        germinationDate: sownDaysAgo(14),
+        reason: 'Germination date typed wrong',
+      })
+    );
+    expect(scanMetadata()).toMatchObject({
+      plant_age_days: 14,
+      germination_date: sownDaysAgo(14),
+    });
+  });
+
   it("saves the calculated age, not the session's typed age", async () => {
     // The session remembers 21 from before; wave 1 germinated 14 days ago.
     mockSessionGet.mockResolvedValue({
