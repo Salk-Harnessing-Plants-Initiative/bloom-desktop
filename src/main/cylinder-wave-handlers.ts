@@ -36,6 +36,7 @@ import {
   trimmed,
 } from './cylinder-dates-common';
 import { plantInfos } from './cylinder-plant-handlers';
+import { logPlantsOnWaveDates } from './cylinder-plant-log';
 
 export type {
   CylinderWaveDbLike,
@@ -296,8 +297,17 @@ export async function changeDates(
           changed_by_phenotyper_id: phenotyperId,
         },
       });
-      // Plants still on the wave's dates follow the correction; their earlier scans
-      // keep their age. Plants with their own dates aren't touched.
+      // Plants still on the wave's dates follow the correction (each logged); their
+      // earlier scans keep their age. Plants with their own dates aren't touched.
+      await logPlantsOnWaveDates(
+        tx,
+        wave.id,
+        toSave,
+        reason
+          ? `Wave ${wave.wave_number}'s dates changed: ${reason}`
+          : `Wave ${wave.wave_number}'s dates changed`,
+        phenotyperId
+      );
       await tx.cylinderPlant.updateMany({
         where: { wave_id: wave.id, uses_wave_dates: true },
         data: toSave,

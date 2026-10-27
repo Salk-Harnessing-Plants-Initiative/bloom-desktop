@@ -168,7 +168,7 @@ describe('ScannerProcess — database save outcome (#392)', () => {
 
     const fake = db.current as ReturnType<typeof fakeScannerDb>;
     expect(fake.$transaction).toHaveBeenCalled();
-    expect(fake.cylinderPlant.create).toHaveBeenCalledWith({
+    expect(fake.tx.cylinderPlant.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         wave_id: 'wave-1',
         plant_barcode: 'plant-001',
@@ -182,6 +182,29 @@ describe('ScannerProcess — database save outcome (#392)', () => {
         cylinder_plant_id: 'plant-1',
       }),
     });
+    // The new row's history starts with the wave's dates, in the same transaction.
+    expect(fake.saved.plantChanges).toEqual([
+      expect.objectContaining({
+        plant_id: 'plant-1',
+        old_germination_date: null,
+        reason: "From wave 1's dates, at the plant's first scan",
+        changed_by_phenotyper_id: 'user-001',
+      }),
+    ]);
+  });
+
+  it("doesn't keep the plant's new row when the scan can't be saved (#428)", async () => {
+    mockScanCreate.mockRejectedValue(new Error('database is locked'));
+    await scanner.initialize(buildSettings(outputDir, true));
+
+    const result = await scanner.scan();
+
+    const fake = db.current as ReturnType<typeof fakeScannerDb>;
+    expect(result.db_saved).toBe(false);
+    // The plant row was written in the same transaction, so it went with the scan.
+    expect(fake.tx.cylinderPlant.create).toHaveBeenCalled();
+    expect(fake.saved.plants).toEqual([]);
+    expect(fake.saved.plantChanges).toEqual([]);
   });
 
   it('leaves db_saved undefined when no metadata was provided (no save attempted)', async () => {

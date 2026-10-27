@@ -167,6 +167,13 @@ describe('CylinderWaveDates', () => {
               ['2026-02-20', '2026-02-16', null],
               ['2026-02-20', '2026-02-16', '2026-02-22']
             ),
+            // No date changed: e.g. a plant keeping its wave's dates as its own.
+            change(
+              'c4',
+              ['2026-02-20', '2026-02-16', '2026-02-22'],
+              ['2026-02-20', '2026-02-16', '2026-02-22'],
+              'Wave 2 now set for each plant'
+            ),
           ],
         },
       ],
@@ -186,6 +193,9 @@ describe('CylinderWaveDates', () => {
     );
     expect(entries[2]).toHaveTextContent(
       /^Changed: transfer the germination day → .+2026 on /
+    );
+    expect(entries[3]).toHaveTextContent(
+      /^Kept its dates on .+ by Demo Phenotyper\. Reason: Wave 2 now set for each plant$/
     );
   });
 

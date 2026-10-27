@@ -172,7 +172,7 @@ describe('createWave', () => {
   it('saves the next wave with who set it', async () => {
     const result = await create({ phenotyperId: 'ph-1' });
     expect(result.success).toBe(true);
-    expect(fake.raw.cylinderWave.create).toHaveBeenCalledWith({
+    expect(fake.lastTx.cylinderWave.create).toHaveBeenCalledWith({
       data: {
         experiment_id: 'exp',
         dates_per_plant: false,
@@ -235,12 +235,20 @@ describe('createWave', () => {
   });
 
   it('saves nothing if the date or its log entry fails', async () => {
-    fake.raw.$transaction.mockRejectedValue(new Error('database is locked'));
+    // The wave is written first, then its log entry fails: the wave mustn't stay.
+    const before = fake.rows.length;
+    fake.onTransaction((tx) =>
+      tx.cylinderWaveDateChange.create.mockRejectedValue(
+        new Error('database is locked')
+      )
+    );
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(await create({})).toEqual({
       success: false,
       error: 'database is locked',
     });
+    expect(fake.rows).toHaveLength(before);
+    expect(fake.changes).toHaveLength(0);
   });
 
   it('refuses a future date', async () => {
@@ -250,7 +258,7 @@ describe('createWave', () => {
       success: false,
       error: "The germination date can't be in the future.",
     });
-    expect(fake.raw.cylinderWave.create).not.toHaveBeenCalled();
+    expect(fake.raw.$transaction).not.toHaveBeenCalled();
   });
 
   it('needs a note for a date on or before wave 1, and saves it with one', async () => {
@@ -332,7 +340,7 @@ describe('a phenotyper is required to set or change a date', () => {
         )
       ).error
     ).toBe('That phenotyper no longer exists.');
-    expect(fake.raw.cylinderWave.create).not.toHaveBeenCalled();
+    expect(fake.raw.$transaction).not.toHaveBeenCalled();
   });
 
   it('refuses to change a date without a phenotyper, and logs nothing', async () => {
@@ -460,7 +468,12 @@ describe('changeDates', () => {
 
   it('returns the error when the change cannot be saved', async () => {
     const fake = fakeDb([{ ...wave1 }]);
-    fake.raw.$transaction.mockRejectedValue(new Error('database is locked'));
+    // The log entry is written, then the wave's update fails: neither stays.
+    fake.onTransaction((tx) => {
+      tx.cylinderWave.update = vi
+        .fn()
+        .mockRejectedValue(new Error('database is locked'));
+    });
     vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(
       await changeDates(
@@ -474,6 +487,7 @@ describe('changeDates', () => {
       )
     ).toEqual({ success: false, error: 'database is locked' });
     expect(fake.rows[0].germination_date).toBe('2025-11-26');
+    expect(fake.changes).toHaveLength(0);
   });
 
   it('returns a database error from looking up the wave instead of throwing', async () => {
@@ -584,7 +598,7 @@ describe('the three dates', () => {
       success: false,
       error: 'The sowing date must be before the germination date.',
     });
-    expect(fake.raw.cylinderWave.create).not.toHaveBeenCalled();
+    expect(fake.raw.$transaction).not.toHaveBeenCalled();
   });
 
   it('can change only the sowing or transfer date, logging each date before and after', async () => {
@@ -750,8 +764,18 @@ describe('waves whose dates are per plant, and plants following the wave', () =>
       }
     );
     expect(result.success).toBe(true);
-    expect(plants[0].germination_date).toBe('2025-11-27');
-    expect(plants[1].germination_date).toBe('2025-11-29');
+    expect(fake.plants[0].germination_date).toBe('2025-11-27');
+    expect(fake.plants[1].germination_date).toBe('2025-11-29');
+    // The plant that followed the correction has it in its own history too.
+    expect(fake.plantChanges).toEqual([
+      expect.objectContaining({
+        plant_id: 'p1',
+        old_germination_date: '2025-11-26',
+        new_germination_date: '2025-11-27',
+        reason: "Wave 1's dates changed",
+        changed_by_phenotyper_id: 'ph-1',
+      }),
+    ]);
   });
 
   it('lists the plants with their own dates under each wave', async () => {

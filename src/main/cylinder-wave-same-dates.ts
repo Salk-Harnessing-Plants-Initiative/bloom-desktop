@@ -27,6 +27,7 @@ import {
   sameDates,
   type CylinderPlantDeps,
 } from './cylinder-plant-handlers';
+import { logPlantsOnWaveDates } from './cylinder-plant-log';
 
 /**
  * Give a per-plant wave one set of dates for all its plants, e.g. when "No" was chosen
@@ -190,7 +191,14 @@ export async function useDatesPerPlant(
       transfer_date: wave.transfer_date,
     };
     await deps.db.$transaction(async (tx) => {
-      // Plants on the wave's dates keep them as their own.
+      // Plants on the wave's dates keep them as their own (each logged).
+      await logPlantsOnWaveDates(
+        tx,
+        waveId,
+        null,
+        `Wave ${wave.wave_number}'s dates now set for each plant; keeps the wave's dates as its own`,
+        phenotyperId
+      );
       await tx.cylinderPlant.updateMany({
         where: { wave_id: waveId, uses_wave_dates: true },
         data: { uses_wave_dates: false },

@@ -6,6 +6,7 @@
 
 import { plantAgeDays } from '../utils/wave-dates';
 import { waveDatesForPlants } from './cylinder-plant-handlers';
+import { logPlantDates, plantDateColumns } from './cylinder-plant-log';
 import type {
   CylinderWaveDbLike,
   CylinderWaveTxLike,
@@ -73,9 +74,12 @@ export async function plantAgeError(
     : `The plant age (${scan.plant_age_days}) isn't the days since this plant's germination date (${expected}).`;
 }
 
-/** The plant a scan is saved under: its row, created from the wave's dates at its first scan. */
+/**
+ * The plant a scan is saved under: its row, created from the wave's dates at its first
+ * scan (and logged, so its history starts there).
+ */
 export async function plantRowForScan(
-  tx: Pick<CylinderWaveTxLike, 'cylinderPlant'>,
+  tx: Pick<CylinderWaveTxLike, 'cylinderPlant' | 'cylinderPlantDateChange'>,
   found: PlantForScan,
   plantBarcode: string,
   phenotyperId: string
@@ -84,9 +88,10 @@ export async function plantRowForScan(
   if (!found.dates) {
     throw new Error(`Plant ${plantBarcode} has no dates set.`);
   }
-  return tx.cylinderPlant.create({
+  const dates = plantDateColumns(found.dates);
+  const plant = await tx.cylinderPlant.create({
     data: {
-      ...found.dates,
+      ...dates,
       wave_id: found.wave.id,
       plant_barcode: plantBarcode,
       uses_wave_dates: true,
@@ -94,4 +99,13 @@ export async function plantRowForScan(
       set_by_phenotyper_id: phenotyperId,
     },
   });
+  await logPlantDates(
+    tx,
+    plant.id,
+    null,
+    dates,
+    `From wave ${found.wave.wave_number}'s dates, at the plant's first scan`,
+    phenotyperId
+  );
+  return plant;
 }

@@ -39,7 +39,10 @@ function transferText(date: string | null): string {
   return date ? formatWaveDate(date) : 'the germination day';
 }
 
-/** What a log entry set or changed, e.g. "germination 9 Oct → 12 Oct; sowing 5 Oct → 6 Oct". */
+/**
+ * What a log entry set or changed, e.g. "germination 9 Oct → 12 Oct; sowing 5 Oct → 6 Oct";
+ * empty when no date changed (a plant keeping its wave's dates as its own).
+ */
 function changedDates(
   change: CylinderWaveDateChange | CylinderPlantDateChange
 ): string {
@@ -78,10 +81,15 @@ function ChangeLogEntry({
 }: {
   change: CylinderWaveDateChange | CylinderPlantDateChange;
 }) {
+  const dates = changedDates(change);
   return (
     <li>
-      {change.old_germination_date === null ? 'Set: ' : 'Changed: '}
-      {changedDates(change)} on {formatChangedAt(change.changed_at)}
+      {change.old_germination_date === null
+        ? `Set: ${dates}`
+        : dates
+          ? `Changed: ${dates}`
+          : 'Kept its dates'}{' '}
+      on {formatChangedAt(change.changed_at)}
       {change.changed_by_name ? ` by ${change.changed_by_name}` : ''}
       {change.reason ? `. Reason: ${change.reason}` : ''}
     </li>

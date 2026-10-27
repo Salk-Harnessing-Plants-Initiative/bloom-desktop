@@ -170,6 +170,7 @@ export interface CylinderWaveTxLike {
     }) => Promise<unknown>;
   };
   cylinderPlant: {
+    findMany: CylinderWaveDbLike['cylinderPlant']['findMany'];
     create: (args: {
       data: PlantData & { wave_id: string; plant_barcode: string };
     }) => Promise<PlantRow>;

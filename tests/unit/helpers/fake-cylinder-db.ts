@@ -1,7 +1,10 @@
 /**
  * An in-memory fake of the tables the CylinderScan wave and plant handlers use
  * (CylinderWave, its change log, CylinderPlant, its change log, Scan counts and
- * Phenotyper), with a $transaction that applies writes directly.
+ * Phenotyper). Like Prisma's, its $transaction commits only if the callback succeeds:
+ * writes through `tx` go to a working copy of the rows, which replaces them on success
+ * and is dropped on failure. Writes made through `db` during a transaction are lost when
+ * it commits, so a write moved outside its transaction fails the tests.
  */
 
 import { vi } from 'vitest';
@@ -50,6 +53,21 @@ export function fakeCylinderDb(
 ) {
   const changes: Record<string, unknown>[] = [];
   const plantChanges: Record<string, unknown>[] = [];
+  /** Every table, so a transaction can work on a copy and commit it. */
+  const tables = () => ({ rows, plants, changes, plantChanges });
+  type Tables = ReturnType<typeof tables>;
+  const copyOf = (t: Tables): Tables => ({
+    rows: t.rows.map((r) => ({ ...r })),
+    plants: t.plants.map((p) => ({ ...p })),
+    changes: t.changes.map((c) => ({ ...c })),
+    plantChanges: t.plantChanges.map((c) => ({ ...c })),
+  });
+  const commit = (from: Tables) => {
+    rows.splice(0, rows.length, ...from.rows);
+    plants.splice(0, plants.length, ...from.plants);
+    changes.splice(0, changes.length, ...from.changes);
+    plantChanges.splice(0, plantChanges.length, ...from.plantChanges);
+  };
   const createWaveRow = vi.fn(async ({ data }) => {
     const row = { id: `w${rows.length + 1}`, ...data, updatedAt: SET_AT };
     rows.push(row);
@@ -62,14 +80,14 @@ export function fakeCylinderDb(
     (p: FakePlant) =>
       p.wave_id === where.wave_id_plant_barcode.wave_id &&
       p.plant_barcode === where.wave_id_plant_barcode.plant_barcode;
-  const createPlant = vi.fn(async ({ data }) => {
-    const row = { id: `p${plants.length + 1}`, ...data, updatedAt: EDITED_AT };
-    plants.push(row);
-    return row;
-  });
-  const tx = {
+  /** The writes the handlers make inside a transaction, on the given tables. */
+  const txOn = (t: Tables) => ({
     cylinderWave: {
-      create: createWaveRow,
+      create: vi.fn(async ({ data }) => {
+        const row = { id: `w${t.rows.length + 1}`, ...data, updatedAt: SET_AT };
+        t.rows.push(row);
+        return row;
+      }),
       update: async ({
         where,
         data,
@@ -77,39 +95,63 @@ export function fakeCylinderDb(
         where: { id: string };
         data: Record<string, unknown>;
       }) => {
-        const row = rows.find((r) => r.id === where.id)!;
+        const row = t.rows.find((r) => r.id === where.id)!;
         Object.assign(row, data, { updatedAt: EDITED_AT });
         return row;
       },
     },
     cylinderWaveDateChange: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        changes.push({ id: `c${changes.length + 1}`, ...data });
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        t.changes.push({ id: `c${t.changes.length + 1}`, ...data });
         return data;
-      },
+      }),
     },
     cylinderPlant: {
-      create: createPlant,
+      findMany: vi.fn(async ({ where }) =>
+        t.plants.filter(
+          (p) =>
+            where.wave_id.in.includes(p.wave_id) &&
+            (where.uses_wave_dates === undefined ||
+              p.uses_wave_dates === where.uses_wave_dates)
+        )
+      ),
+      create: vi.fn(async ({ data }) => {
+        const row = {
+          id: `p${t.plants.length + 1}`,
+          ...data,
+          updatedAt: EDITED_AT,
+        };
+        t.plants.push(row);
+        return row;
+      }),
       update: vi.fn(async ({ where, data }) => {
-        const row = plants.find(plantKey(where))!;
+        const row = t.plants.find(plantKey(where))!;
         Object.assign(row, data, { updatedAt: EDITED_AT });
         return row;
       }),
+      // Honours its filter, as Prisma does.
       updateMany: vi.fn(async ({ where, data }) => {
-        const matching = plants.filter(
-          (p) => p.wave_id === where.wave_id && p.uses_wave_dates
+        const matching = t.plants.filter(
+          (p) =>
+            p.wave_id === where.wave_id &&
+            (where.uses_wave_dates === undefined ||
+              p.uses_wave_dates === where.uses_wave_dates)
         );
         matching.forEach((p) => Object.assign(p, data));
         return { count: matching.length };
       }),
     },
     cylinderPlantDateChange: {
-      create: async ({ data }: { data: Record<string, unknown> }) => {
-        plantChanges.push({ id: `pc${plantChanges.length + 1}`, ...data });
+      create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+        t.plantChanges.push({ id: `pc${t.plantChanges.length + 1}`, ...data });
         return data;
-      },
+      }),
     },
-  };
+  });
+  /** The last transaction's client, for tests that make one of its writes fail. */
+  let tx = txOn(tables());
+  /** Set before a transaction runs, to change its client (e.g. make a write fail). */
+  let prepareTx: ((t: ReturnType<typeof txOn>) => void) | null = null;
   const db = {
     cylinderWave: {
       findMany: vi.fn(async ({ where }) =>
@@ -171,12 +213,30 @@ export function fakeCylinderDb(
         phenotypers.filter((p) => where.id.in.includes(p.id))
       ),
     },
-    $transaction: vi.fn(async (fn) => fn(tx)),
+    $transaction: vi.fn(async (fn) => {
+      const working = copyOf(tables());
+      tx = txOn(working);
+      prepareTx?.(tx);
+      const result = await fn(tx);
+      commit(working);
+      return result;
+    }),
   };
   return {
     db: db as unknown as CylinderWaveDbLike,
     raw: db,
-    tx,
+    /** A client writing straight to the rows, for helpers called outside a transaction. */
+    get tx() {
+      return txOn(tables());
+    },
+    /** The last transaction's client, to check the writes it made. */
+    get lastTx() {
+      return tx;
+    },
+    /** Changes each transaction's client before it runs, e.g. to make a write fail. */
+    onTransaction(prepare: (t: ReturnType<typeof txOn>) => void) {
+      prepareTx = prepare;
+    },
     rows,
     changes,
     plants,

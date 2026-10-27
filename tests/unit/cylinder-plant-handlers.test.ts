@@ -274,6 +274,16 @@ describe('the scanner: the age check and the plant a scan is saved under', () =>
     const again = await plantForScan(fake.db, 'exp', 1, 'SB_002');
     expect(await plantRowForScan(fake.tx, again!, 'SB_002', 'ph-1')).toBe(row);
     expect(fake.plants).toHaveLength(1);
+    // Its history starts with the wave's dates, logged once.
+    expect(fake.plantChanges).toEqual([
+      expect.objectContaining({
+        plant_id: row.id,
+        old_germination_date: null,
+        new_germination_date: '2026-03-01',
+        reason: "From wave 1's dates, at the plant's first scan",
+        changed_by_phenotyper_id: 'ph-1',
+      }),
+    ]);
   });
 });
 
@@ -394,6 +404,17 @@ describe('useDatesPerPlant: a wave with the same dates going per plant', () => {
       new_germination_date: null,
       reason: 'Changed to dates per plant',
     });
+    // The plant's own history says why it now has its own dates.
+    expect(fake.plantChanges).toEqual([
+      expect.objectContaining({
+        plant_id: fake.plants[0].id,
+        old_germination_date: '2026-03-01',
+        new_germination_date: '2026-03-01',
+        reason:
+          "Wave 1's dates now set for each plant; keeps the wave's dates as its own",
+        changed_by_phenotyper_id: 'ph-1',
+      }),
+    ]);
   });
 
   it('refuses a wave that is already per plant', async () => {
