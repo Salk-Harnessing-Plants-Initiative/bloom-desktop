@@ -85,7 +85,7 @@ describe('useWaveDates', () => {
     expect(result.current.plantDates?.germination_date).toBe(daysAgo(7));
   });
 
-  it("asks for a plant's dates in a per-plant wave, offering the previous plant's", async () => {
+  it("asks for a plant's dates in a per-plant wave", async () => {
     list.mockResolvedValue({
       success: true,
       data: [{ ...wave(1, 9), dates_per_plant: true, germination_date: null }],
@@ -94,9 +94,6 @@ describe('useWaveDates', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.needsPlantDates).toBe(true);
     expect(result.current.calculatedAge).toBeNull();
-    expect(result.current.previousPlantDates?.germination_date).toBe(
-      daysAgo(7)
-    );
   });
 
   it('offers "same dates for all plants" on a per-plant wave before its first scan, or when its plants share their dates', async () => {

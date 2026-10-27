@@ -58,7 +58,6 @@ function renderSection(
       wave={wave}
       plant={null}
       plantDates={waveDates}
-      previousPlantDates={null}
       onSave={onSave}
       onUseWaveDates={onUseWaveDates}
       phenotyperChosen
@@ -116,12 +115,11 @@ describe('PlantDatesSection', () => {
     await waitFor(() => expect(onUseWaveDates).toHaveBeenCalled());
   });
 
-  it('asks for a plant’s dates in a per-plant wave, starting from the previous plant’s, with no reason or save button', () => {
+  it('asks for a plant’s dates in a per-plant wave, starting blank, with no reason or save button', () => {
     const onPendingDates = vi.fn();
     const { onSave, onOpenChange } = renderSection({
       wave: { ...wave, dates_per_plant: true, germination_date: null },
       plantDates: null,
-      previousPlantDates: ownPlant,
       onPendingDates,
     });
     // Laid out like the rest of the form: no box, and the required dates marked.
@@ -130,7 +128,19 @@ describe('PlantDatesSection', () => {
       /^Sowing Date \*Germination Date \*/
     );
     expect(screen.queryByTestId('plant-dates-reason')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Germination date')).toHaveValue('2026-02-22');
+    // Nothing is filled in: no plant's dates are carried over to another (#407).
+    expect(screen.getByLabelText('Sowing date')).toHaveValue('');
+    expect(screen.getByLabelText('Germination date')).toHaveValue('');
+    // Until they're typed, nothing is handed over and Start Scan waits.
+    expect(onPendingDates).toHaveBeenLastCalledWith(null);
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
+
+    fireEvent.change(screen.getByLabelText('Sowing date'), {
+      target: { value: '2026-02-16' },
+    });
+    fireEvent.change(screen.getByLabelText('Germination date'), {
+      target: { value: '2026-02-22' },
+    });
     // Nothing to press: the dates are saved when the scan starts, so they're handed
     // over once complete, and Start Scan isn't held for an open box.
     expect(screen.queryByTestId('plant-dates-save')).not.toBeInTheDocument();

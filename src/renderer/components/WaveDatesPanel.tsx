@@ -209,8 +209,7 @@ export function WaveDatesPanel({
       )}
       {sameForAll === false && (
         <p className="text-sm text-gray-700" data-testid="dates-per-plant-note">
-          Each plant&apos;s dates are asked for as it&apos;s first scanned,
-          starting from the previous plant&apos;s.
+          Each plant&apos;s dates are asked for as it&apos;s first scanned.
         </p>
       )}
       {!phenotyperChosen && (

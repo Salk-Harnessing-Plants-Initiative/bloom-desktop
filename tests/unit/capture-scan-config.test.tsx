@@ -1171,6 +1171,40 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     expect(mockScannerInitialize).not.toHaveBeenCalled();
   });
 
+  it("never fills in a new plant's dates from another plant's in a per-plant wave", async () => {
+    perPlantWave();
+    // PLANT-000 already has its dates; PLANT-001 is new.
+    plantsList().mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'p0',
+          wave_id: 'wave-1',
+          plant_barcode: 'PLANT-000',
+          germination_date: sownDaysAgo(16),
+          sowing_date: sownDaysAgo(20),
+          transfer_date: null,
+          uses_wave_dates: false,
+          reason: null,
+          set_by_name: 'Demo Phenotyper',
+          set_at: '2026-01-03T09:00:00.000Z',
+          scanCount: 1,
+          changes: [],
+        },
+      ],
+    });
+    await enterPlant();
+
+    await screen.findByTestId('plant-dates-box');
+    expect(screen.getByLabelText('Sowing date')).toHaveValue('');
+    expect(screen.getByLabelText('Germination date')).toHaveValue('');
+    expect(screen.getByLabelText(/Plant Age/)).toHaveValue('');
+    expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
+    expect(
+      screen.getByText("Enter plant PLANT-001's dates above to start the scan")
+    ).toBeInTheDocument();
+  });
+
   it("uses a corrected plant's new age in a per-plant wave, for the duplicate check and the scan", async () => {
     perPlantWave();
     // PLANT-001 was scanned before, with germination 16 days ago.

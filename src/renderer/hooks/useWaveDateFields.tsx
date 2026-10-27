@@ -143,7 +143,6 @@ export function useWaveDateFields(
         wave={waveDates.wave}
         plant={waveDates.plant}
         plantDates={waveDates.plantDates}
-        previousPlantDates={waveDates.previousPlantDates}
         onSave={waveDates.savePlantDates}
         onUseWaveDates={waveDates.usePlantWaveDates}
         phenotyperChosen={metadata.phenotyper !== ''}

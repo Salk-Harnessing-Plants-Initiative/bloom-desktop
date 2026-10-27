@@ -3,8 +3,9 @@
  * computed from the plant's germination date. A plant uses its wave's dates unless it
  * has its own: "Different dates for this plant" sets them, with a reason, and they're
  * used for every later scan of the plant. In a wave whose dates are per plant, each
- * plant's are asked for before its first scan, starting from the previous plant's, and
- * saved when its scan starts (there's no separate save).
+ * plant's are asked for before its first scan, starting blank (never copied from
+ * another plant, so no date is carried over unchecked), and saved when its scan
+ * starts (there's no separate save).
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -42,8 +43,6 @@ export interface PlantDatesSectionProps {
   plant: CylinderPlantInfo | null;
   /** The dates the age comes from: the plant's own, or else the wave's. */
   plantDates: PlantDates | null;
-  /** The previous plant's dates, to start a new plant's with (per-plant waves). */
-  previousPlantDates: PlantDates | null;
   onSave: (input: PlantDatesDraft) => Promise<DatabaseResponse<unknown>>;
   onUseWaveDates: (reason?: string) => Promise<DatabaseResponse<unknown>>;
   phenotyperChosen: boolean;
@@ -62,7 +61,6 @@ export function PlantDatesSection({
   wave,
   plant,
   plantDates,
-  previousPlantDates,
   onSave,
   onUseWaveDates,
   phenotyperChosen,
@@ -74,7 +72,7 @@ export function PlantDatesSection({
   const perPlant = wave.dates_per_plant;
   const ownDates = plant !== null && !plant.uses_wave_dates;
   const needsDates = perPlant && plant === null;
-  const start = plantDates ?? (needsDates ? previousPlantDates : null);
+  const start = plantDates;
   const startDates = start ? storedWaveDates(start) : EMPTY;
 
   const [editing, setEditing] = useState(needsDates);

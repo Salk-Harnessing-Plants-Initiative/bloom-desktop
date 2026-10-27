@@ -37,8 +37,6 @@ export interface UseWaveDatesResult {
   plantDates: PlantDates | null;
   /** The wave's dates are per plant and this plant's aren't set yet. */
   needsPlantDates: boolean;
-  /** The dates of the wave's most recently set plant, to start a new plant's with. */
-  previousPlantDates: PlantDates | null;
   /** Calendar days from the plant's germination date to today. */
   calculatedAge: number | null;
   /**
@@ -311,7 +309,6 @@ export function useWaveDates(
     plantDates,
     needsPlantDates:
       Boolean(wave?.dates_per_plant) && !loading && !!barcode && plant === null,
-    previousPlantDates: plants[0] ?? null,
     calculatedAge,
     canUseSameDates,
     sharedPlantDates,
