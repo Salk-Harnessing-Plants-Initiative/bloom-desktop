@@ -49,6 +49,7 @@ CREATE TABLE "CylinderPlant" (
     "transfer_date" TEXT,
     "uses_wave_dates" BOOLEAN NOT NULL DEFAULT true,
     "reason" TEXT,
+    "germ_day_color" TEXT,
     "set_by_phenotyper_id" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL,

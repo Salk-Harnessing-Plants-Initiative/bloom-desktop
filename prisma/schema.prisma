@@ -372,6 +372,9 @@ model CylinderPlant {
   uses_wave_dates      Boolean  @default(true)
   // Why this plant's dates differ from its wave's.
   reason               String?
+  // The lab's germination colour, as typed on Capture Scan (optional); uploaded to
+  // Bloom's cyl_plants.germ_day_color ("none" when empty).
+  germ_day_color       String?
   set_by_phenotyper_id String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

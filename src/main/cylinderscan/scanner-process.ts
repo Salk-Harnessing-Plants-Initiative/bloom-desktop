@@ -23,6 +23,7 @@ import {
 } from '../cylinder-plant-scan';
 import type { CylinderWaveDbLike } from '../cylinder-wave-db';
 import type { ImageStatus } from '../../types/database';
+import { normalizeGermDayColor } from '../../utils/germ-day-color';
 
 /**
  * Scanner process manager for coordinated scanning operations.
@@ -292,7 +293,8 @@ export class ScannerProcess extends EventEmitter {
             tx as unknown as Parameters<typeof plantRowForScan>[0],
             found,
             metadata.plant_id,
-            metadata.phenotyper_id
+            metadata.phenotyper_id,
+            normalizeGermDayColor(metadata.germ_day_color)
           )
         : null;
       return tx.scan.create({

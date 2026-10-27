@@ -5,6 +5,7 @@ import {
   formatDays,
   isIsoDate,
   plantAgeDays,
+  germDay,
   germinationDateError,
   waveDatesError,
   toIsoDate,
@@ -29,6 +30,36 @@ describe('dates', () => {
 
   it('formats a local date', () => {
     expect(toIsoDate(new Date(2026, 0, 5, 23, 59))).toBe('2026-01-05');
+  });
+});
+
+describe('germDay', () => {
+  it('is the calendar days from sowing to germination', () => {
+    expect(
+      germDay({ sowing_date: '2026-10-01', germination_date: '2026-10-04' })
+    ).toBe(3);
+    // Across a month end.
+    expect(
+      germDay({ sowing_date: '2026-09-29', germination_date: '2026-10-02' })
+    ).toBe(3);
+  });
+
+  it('is 0, as always sent before, without both dates', () => {
+    expect(germDay({ sowing_date: null, germination_date: '2026-10-04' })).toBe(
+      0
+    );
+    expect(germDay({ sowing_date: '2026-10-01', germination_date: null })).toBe(
+      0
+    );
+    expect(
+      germDay({ sowing_date: 'not a date', germination_date: '2026-10-04' })
+    ).toBe(0);
+  });
+
+  it('is never negative', () => {
+    expect(
+      germDay({ sowing_date: '2026-10-05', germination_date: '2026-10-04' })
+    ).toBe(0);
   });
 });
 

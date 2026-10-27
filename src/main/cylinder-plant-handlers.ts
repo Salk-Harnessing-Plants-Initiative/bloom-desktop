@@ -85,6 +85,7 @@ export async function plantInfos(
       transfer_date: row.transfer_date,
       uses_wave_dates: row.uses_wave_dates,
       reason: row.reason,
+      germ_day_color: row.germ_day_color ?? null,
       set_by_name: nameOf(row.set_by_phenotyper_id),
       set_at: row.updatedAt.toISOString(),
       scanCount: await db.scan.count({

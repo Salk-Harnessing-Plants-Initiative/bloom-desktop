@@ -59,13 +59,33 @@ export function toIsoDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Calendar days from the germination date to `on` (local time); negative before sowing. */
+/** Calendar days from the germination date to `on` (local time); negative before germination. */
 export function plantAgeDays(germinationDate: string, on: Date): number {
   const parts = parseIsoDate(germinationDate);
   if (!parts) throw new Error(`Not a date: ${germinationDate}`);
-  const sown = new Date(parts[0], parts[1] - 1, parts[2]);
+  const germinated = new Date(parts[0], parts[1] - 1, parts[2]);
   const day = new Date(on.getFullYear(), on.getMonth(), on.getDate());
-  return Math.round((day.getTime() - sown.getTime()) / MS_PER_DAY);
+  return Math.round((day.getTime() - germinated.getTime()) / MS_PER_DAY);
+}
+
+/**
+ * Bloom's germ_day: calendar days from sowing to germination (#427, #429). 0 when
+ * either date is missing or unreadable (e.g. scans from before the dates were
+ * recorded), which is what was always sent before.
+ */
+export function germDay(dates: {
+  germination_date: string | null;
+  sowing_date: string | null;
+}): number {
+  const sowing = dates.sowing_date && parseIsoDate(dates.sowing_date);
+  const germination =
+    dates.germination_date && parseIsoDate(dates.germination_date);
+  if (!sowing || !germination) return 0;
+  const days = plantAgeDays(
+    dates.sowing_date!,
+    new Date(germination[0], germination[1] - 1, germination[2])
+  );
+  return Math.max(days, 0);
 }
 
 /** "5 Dec 2025" for a "YYYY-MM-DD" date. */

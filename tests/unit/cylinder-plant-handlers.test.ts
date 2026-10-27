@@ -287,6 +287,38 @@ describe('the scanner: the age check and the plant a scan is saved under', () =>
   });
 });
 
+describe("plantRowForScan: the plant's germination colour (#429)", () => {
+  it('saves the colour typed for the first scan on the new row', async () => {
+    const fake = fakeCylinderDb([{ ...wave }]);
+    const found = await plantForScan(fake.db, 'exp', 1, 'SB_002');
+    const row = await plantRowForScan(
+      fake.tx,
+      found!,
+      'SB_002',
+      'ph-1',
+      'GermRed'
+    );
+    expect(row.germ_day_color).toBe('GermRed');
+  });
+
+  it("changes a plant's colour only when a different one is typed", async () => {
+    const fake = fakeCylinderDb([{ ...wave }]);
+    const first = await plantForScan(fake.db, 'exp', 1, 'SB_002');
+    await plantRowForScan(fake.tx, first!, 'SB_002', 'ph-1', 'Red');
+
+    const same = await plantForScan(fake.db, 'exp', 1, 'SB_002');
+    const tx = fake.tx;
+    await plantRowForScan(tx, same!, 'SB_002', 'ph-1', 'Red');
+    expect(tx.cylinderPlant.update).not.toHaveBeenCalled();
+
+    const changed = await plantForScan(fake.db, 'exp', 1, 'SB_002');
+    const row = await plantRowForScan(fake.tx, changed!, 'SB_002', 'ph-1', '');
+    // Cleared: no colour (sent to Bloom as "none").
+    expect(row.germ_day_color).toBeNull();
+    expect(fake.plants).toHaveLength(1);
+  });
+});
+
 describe('useSameDatesForAll: a per-plant wave going back to one set of dates', () => {
   const same = {
     waveId: 'w1',

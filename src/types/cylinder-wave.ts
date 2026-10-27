@@ -79,6 +79,8 @@ export interface CylinderPlantInfo {
   uses_wave_dates: boolean;
   /** Why this plant's dates differ from its wave's. */
   reason: string | null;
+  /** The lab's germination colour (#429), camel case; null when none. */
+  germ_day_color: string | null;
   set_by_name: string | null;
   /** ISO 8601. */
   set_at: string;

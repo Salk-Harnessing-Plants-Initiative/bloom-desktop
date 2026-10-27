@@ -1269,6 +1269,64 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     });
   });
 
+  it('offers an optional germination colour, cleaned to camel case and sent with the scan (#429)', async () => {
+    await enterPlant();
+    const color = await screen.findByRole('textbox', {
+      name: /Germination Colour/,
+    });
+    expect(screen.getByTestId('germ-day-color')).toHaveTextContent(
+      'Germination Colour (optional)'
+    );
+    expect(color).toHaveValue('');
+    expect(color).toHaveAttribute('placeholder', 'none');
+    // The ⓘ explains it, with examples.
+    fireEvent.click(screen.getByTestId('germ-day-color-info'));
+    expect(screen.getByTestId('germ-day-color-info-text')).toHaveTextContent(
+      "You can add the plant's germination colour, for example Red or GermRed."
+    );
+
+    fireEvent.change(color, { target: { value: 'arctic blue' } });
+    fireEvent.blur(color);
+    expect(color).toHaveValue('ArcticBlue');
+
+    const start = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(start).not.toBeDisabled());
+    await act(async () => {
+      fireEvent.click(start);
+    });
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    expect(scanMetadata()).toMatchObject({ germ_day_color: 'ArcticBlue' });
+  });
+
+  it("starts the colour from the plant's own saved colour", async () => {
+    plantsList().mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'p1',
+          wave_id: 'wave-1',
+          plant_barcode: 'PLANT-001',
+          germination_date: sownDaysAgo(14),
+          sowing_date: sownDaysAgo(20),
+          transfer_date: null,
+          uses_wave_dates: true,
+          reason: null,
+          germ_day_color: 'GermRed',
+          set_by_name: 'Demo Phenotyper',
+          set_at: '2026-01-03T09:00:00.000Z',
+          scanCount: 1,
+          changes: [],
+        },
+      ],
+    });
+    await enterPlant();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('textbox', { name: /Germination Colour/ })
+      ).toHaveValue('GermRed')
+    );
+  });
+
   it("saves the calculated age, not the session's typed age", async () => {
     // The session remembers 21 from before; wave 1 germinated 14 days ago.
     mockSessionGet.mockResolvedValue({

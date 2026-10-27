@@ -32,6 +32,7 @@ import {
   validatePlantAgeDays,
 } from '../utils/metadata-validation';
 import { useWaveDateFields } from './hooks/useWaveDateFields';
+import { useGermDayColorField } from './hooks/useGermDayColorField';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -107,6 +108,16 @@ export function CaptureScan() {
     plantAgeNote,
     savePlantDatesForScan,
   } = useWaveDateFields(metadata, setPlantAgeDays, isScanning);
+  const { germDayColor, field: germDayColorField } = useGermDayColorField(
+    [
+      metadata.experimentId,
+      metadata.waveNumber,
+      metadata.plantQrCode.trim(),
+    ].join('|'),
+    waveDates.plant?.germ_day_color ?? null,
+    waveDates.wave !== null && metadata.plantQrCode.trim() !== '',
+    isScanning
+  );
   // The scan listeners are registered once: reach the latest reload through a ref.
   const reloadWavesRef = useRef(waveDates.reload);
   reloadWavesRef.current = waveDates.reload;
@@ -575,6 +586,7 @@ export function CaptureScan() {
           germination_date: plantDates?.germination_date,
           sowing_date: plantDates?.sowing_date ?? undefined,
           transfer_date: plantDates?.transfer_date ?? undefined,
+          germ_day_color: germDayColor,
           scan_path: relativePath,
         },
       });
@@ -730,6 +742,7 @@ export function CaptureScan() {
                     : undefined
                 }
               />
+              {germDayColorField}
 
               {/* Duplicate Scan Warning */}
               {duplicateScanWarning && (

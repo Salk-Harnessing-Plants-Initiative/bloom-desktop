@@ -45,6 +45,8 @@ export interface PlantRow extends DateColumns {
   plant_barcode: string;
   uses_wave_dates: boolean;
   reason: string | null;
+  /** The lab's germination colour (#429); null when none. */
+  germ_day_color?: string | null;
   set_by_phenotyper_id: string | null;
   updatedAt: Date;
 }
@@ -82,6 +84,7 @@ type PlantData = DateColumns & {
   uses_wave_dates: boolean;
   reason: string | null;
   set_by_phenotyper_id: string | null;
+  germ_day_color?: string | null;
 };
 
 /** The part of the Prisma client the handlers use. */
@@ -174,7 +177,11 @@ export interface CylinderWaveTxLike {
     create: (args: {
       data: PlantData & { wave_id: string; plant_barcode: string };
     }) => Promise<PlantRow>;
-    update: (args: { where: PlantKey; data: PlantData }) => Promise<PlantRow>;
+    /** A plant's dates, or only its germination colour (set as it's scanned). */
+    update: (args: {
+      where: PlantKey;
+      data: PlantData | { germ_day_color: string | null };
+    }) => Promise<PlantRow>;
     /** A correction to the wave's dates reaches the plants still on them. */
     updateMany: (args: {
       where: { wave_id: string; uses_wave_dates: true };
