@@ -20,7 +20,11 @@ import {
   useDatesPerPlant,
   useSameDatesForAll,
 } from './cylinder-wave-same-dates';
-import { MAX_REASON_LENGTH, waveDatesError } from '../utils/wave-dates';
+import {
+  MAX_REASON_LENGTH,
+  scannedPlantError,
+  waveDatesError,
+} from '../utils/wave-dates';
 import {
   datesToSave,
   enteredDates,
@@ -188,15 +192,15 @@ export async function setPlantDates(
       };
     }
     const [current] = plant ? await plantInfos(deps.db, [plant]) : [];
-    // A first entry in a per-plant wave needs no reason; differing from the wave, or
-    // changing dates the plant has been scanned with, does.
-    const reasonNeeded = !wave.dates_per_plant || (current?.scanCount ?? 0) > 0;
-    if (reasonNeeded && !reason) {
+    // Once a plant has scans, its dates are final.
+    if ((current?.scanCount ?? 0) > 0) {
+      return { success: false, error: scannedPlantError(plantBarcode) };
+    }
+    // Differing from the wave needs a reason; a per-plant wave's plant doesn't.
+    if (!wave.dates_per_plant && !reason) {
       return {
         success: false,
-        error: wave.dates_per_plant
-          ? 'This plant already has scans: give a reason for the change.'
-          : "Say why this plant's dates differ from the wave's.",
+        error: "Say why this plant's dates differ from the wave's.",
       };
     }
     const data = {
@@ -273,11 +277,9 @@ export async function usePlantWaveDates(
       transfer_date: plant.transfer_date,
     };
     const [current] = await plantInfos(deps.db, [plant]);
-    if (current.scanCount > 0 && !reason) {
-      return {
-        success: false,
-        error: 'This plant already has scans: give a reason for the change.',
-      };
+    // Once a plant has scans, its dates are final.
+    if (current.scanCount > 0) {
+      return { success: false, error: scannedPlantError(plantBarcode) };
     }
     const saved = await deps.db.$transaction(async (tx) => {
       const row = await tx.cylinderPlant.update({

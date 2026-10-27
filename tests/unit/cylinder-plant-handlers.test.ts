@@ -153,19 +153,20 @@ describe('setPlantDates: a wave whose dates are per plant', () => {
     });
   });
 
-  it('needs a reason to change the dates of a plant that has scans', async () => {
+  it("refuses to change a plant's dates once it has scans, whatever the reason", async () => {
     const fake = fakeCylinderDb([{ ...perPlantWave }], {}, [{ ...ownPlant }], {
       p1: 2,
     });
     expect(
       await setPlantDates(
         { db: fake.db, now },
-        { ...input, germinationDate: '2026-03-04' }
+        { ...input, germinationDate: '2026-03-04', reason: 'Typo' }
       )
     ).toEqual({
       success: false,
-      error: 'This plant already has scans: give a reason for the change.',
+      error: "Plant SB_001 already has scans, so its dates can't be changed.",
     });
+    expect(fake.plantChanges).toHaveLength(0);
   });
 });
 
@@ -188,7 +189,7 @@ describe('usePlantWaveDates', () => {
     });
   });
 
-  it('needs a reason once the plant has scans', async () => {
+  it('refuses once the plant has scans, whatever the reason', async () => {
     const fake = fakeCylinderDb([{ ...wave }], {}, [{ ...ownPlant }], {
       p1: 1,
     });
@@ -196,10 +197,16 @@ describe('usePlantWaveDates', () => {
       (
         await usePlantWaveDates(
           { db: fake.db, now },
-          { waveId: 'w1', plantBarcode: 'SB_001', phenotyperId: 'ph-1' }
+          {
+            waveId: 'w1',
+            plantBarcode: 'SB_001',
+            phenotyperId: 'ph-1',
+            reason: 'Typo',
+          }
         )
       ).error
-    ).toBe('This plant already has scans: give a reason for the change.');
+    ).toBe("Plant SB_001 already has scans, so its dates can't be changed.");
+    expect(fake.plants[0].uses_wave_dates).toBe(false);
   });
 
   it('refuses in a per-plant wave, or for a plant already on the wave’s dates', async () => {

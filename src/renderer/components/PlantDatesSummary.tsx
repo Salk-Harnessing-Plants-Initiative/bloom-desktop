@@ -1,7 +1,8 @@
 /**
  * A plant's dates on Capture Scan when they aren't being edited (#428): whether it uses
  * its wave's dates or its own, the dates and reason, and the actions (Different dates
- * for this plant, Edit, Use the wave's dates).
+ * for this plant, Edit, Use the wave's dates), offered only before the plant's first
+ * scan: after it, its dates are final.
  */
 
 import { formatWaveDate } from '../../utils/wave-dates';
@@ -43,6 +44,7 @@ export function PlantDatesSummary({
   plantDates,
   ownDates,
   canUseWaveDates,
+  locked,
   onEdit,
   onUseWaveDates,
   disabled = false,
@@ -55,6 +57,8 @@ export function PlantDatesSummary({
   ownDates: boolean;
   /** It can go back to its wave's dates. */
   canUseWaveDates: boolean;
+  /** The plant has scans: its dates can't change, so no actions are offered. */
+  locked: boolean;
   onEdit: () => void;
   onUseWaveDates: () => void;
   disabled?: boolean;
@@ -65,7 +69,7 @@ export function PlantDatesSummary({
         {ownDates
           ? `Plant ${plantBarcode}'s own dates`
           : `Plant ${plantBarcode} uses wave ${waveNumber}'s dates`}
-        {!ownDates && (
+        {!ownDates && !locked && (
           <>
             {' · '}
             <button
@@ -89,17 +93,22 @@ export function PlantDatesSummary({
             </p>
           )}
           <p className="text-xs text-gray-500">
-            {plant?.set_by_name ? `Set by ${plant.set_by_name} · ` : ''}
-            <button
-              type="button"
-              onClick={onEdit}
-              disabled={disabled}
-              className={ACTION}
-              data-testid="plant-dates-edit"
-            >
-              Edit
-            </button>
-            {canUseWaveDates && (
+            {plant?.set_by_name ? `Set by ${plant.set_by_name}` : ''}
+            {!locked && (
+              <>
+                {plant?.set_by_name ? ' · ' : ''}
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  disabled={disabled}
+                  className={ACTION}
+                  data-testid="plant-dates-edit"
+                >
+                  Edit
+                </button>
+              </>
+            )}
+            {canUseWaveDates && !locked && (
               <>
                 {' · '}
                 <button

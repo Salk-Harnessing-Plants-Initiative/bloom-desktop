@@ -98,7 +98,7 @@ describe('listWaves', () => {
 
 describe('listWaves: the change log', () => {
   it('lists every change to the date, oldest first, with who and why', async () => {
-    const fake = fakeDb([{ ...wave1 }], { 1: 3 });
+    const fake = fakeDb([{ ...wave1 }]);
     const deps = { db: fake.db, now };
     await changeDates(deps, {
       waveId: 'w1',
@@ -414,20 +414,9 @@ describe('changeDates', () => {
     });
   });
 
-  it('needs a reason once the wave has scans', async () => {
+  it("refuses to change a wave's dates once it has scans, whatever the reason", async () => {
     const fake = fakeDb([{ ...wave1 }], { 1: 3 });
-    const without = await changeDates(
-      { db: fake.db, now },
-      {
-        phenotyperId: 'ph-1',
-        waveId: 'w1',
-        germinationDate: '2025-11-27',
-        sowingDate: '2025-10-01',
-      }
-    );
-    expect(without.error).toMatch(/give a reason/);
-    expect(fake.changes).toHaveLength(0);
-    const withReason = await changeDates(
+    const result = await changeDates(
       { db: fake.db, now },
       {
         waveId: 'w1',
@@ -437,11 +426,12 @@ describe('changeDates', () => {
         phenotyperId: 'ph-2',
       }
     );
-    expect(withReason.success).toBe(true);
-    expect(fake.changes[0]).toMatchObject({
-      reason: 'Typo',
-      changed_by_phenotyper_id: 'ph-2',
+    expect(result).toEqual({
+      success: false,
+      error: "Wave 1 already has scans, so its dates can't be changed.",
     });
+    expect(fake.rows[0].germination_date).toBe('2025-11-26');
+    expect(fake.changes).toHaveLength(0);
   });
 
   it('needs a reason when the new date conflicts with another wave', async () => {

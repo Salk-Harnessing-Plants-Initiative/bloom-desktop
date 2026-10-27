@@ -2,7 +2,8 @@
  * A wave's Edit box on Capture Scan (#407, #428): how its dates are set (the same for
  * all plants, or per plant) and, when they're the same, the dates themselves, filled
  * in with the ones set before. The same rules as the main process:
- * - changing the wave's dates needs a reason once the wave has scans;
+ * - the wave's dates can only change before its first scan (after it they're final, and
+ *   a mistake is corrected with the Bloom team);
  * - going per plant is always allowed: plants already scanned keep their dates;
  * - going back to the same dates for all plants is allowed before the wave's first
  *   scan, or after it only with the dates all its plants share.
@@ -13,6 +14,7 @@ import {
   MAX_REASON_LENGTH,
   checkNewWave,
   checkWaveDateChange,
+  scannedWaveError,
   storedWaveDates,
   type WaveDates,
   type WaveGerminationDate,
@@ -97,8 +99,10 @@ export function WaveDatesEditBox({
   const editingDates = !wasPerPlant && mode === 'same';
   const toSame = wasPerPlant && mode === 'same';
   const toPerPlant = !wasPerPlant && mode === 'perPlant';
-  // After scans, a per-plant wave can only take the dates its plants share.
+  // After scans, a per-plant wave can only take the dates its plants share, and a
+  // wave's own dates can't change.
   const sameLocked = toSame && wave.scanCount > 0;
+  const datesLocked = editingDates && wave.scanCount > 0;
   const entered = enteredDates(dates, transferSameDay);
   const today = new Date();
 
@@ -125,9 +129,7 @@ export function WaveDatesEditBox({
       : null;
   const error = changeCheck?.error ?? sameCheck?.error ?? null;
   const warning = changeCheck?.conflict ?? sameCheck?.dateWarning ?? null;
-  const reasonNeeded =
-    (editingDates && (wave.scanCount > 0 || warning !== null)) ||
-    (toSame && warning !== null);
+  const reasonNeeded = (editingDates || toSame) && warning !== null;
   const datesReady =
     !transferMissing(dates, transferSameDay) &&
     (!reasonNeeded || reason.trim() !== '');
@@ -198,23 +200,16 @@ export function WaveDatesEditBox({
               setDates(next);
               setTransferSameDay(sameDay);
             }}
-            disabled={sameLocked || saving || disabled}
+            disabled={sameLocked || datesLocked || saving || disabled}
           />
-          {editingDates && wave.scanCount > 0 && (
-            <div
-              className="text-amber-800 space-y-1"
+          {datesLocked && (
+            <p
+              className="text-amber-800"
               data-testid="wave-dates-edit-scans-warning"
             >
-              <p>
-                {wave.scanCount === 1
-                  ? `1 scan in wave ${wave.wave_number} is already saved. It keeps the age it was saved with: only new scans use the new date.`
-                  : `${wave.scanCount} scans in wave ${wave.wave_number} are already saved. They keep the ages they were saved with: only new scans use the new date.`}
-              </p>
-              <p>
-                If their ages need correcting, that has to be done in Bloom as
-                well.
-              </p>
-            </div>
+              {scannedWaveError(wave.wave_number)} If they&apos;re wrong,
+              contact the Bloom team.
+            </p>
           )}
           {error && <p className="text-red-600">{error}</p>}
           {warning && (
@@ -253,7 +248,7 @@ export function WaveDatesEditBox({
       )}
       {saveError && <p className="text-red-600">{saveError}</p>}
       <div className="flex gap-2">
-        {!(wasPerPlant && mode === 'perPlant') && (
+        {!(wasPerPlant && mode === 'perPlant') && !datesLocked && (
           <button
             type="button"
             onClick={save}
@@ -276,7 +271,9 @@ export function WaveDatesEditBox({
           disabled={disabled}
           className="px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-50"
         >
-          {wasPerPlant && mode === 'perPlant' ? 'Close' : 'Cancel'}
+          {(wasPerPlant && mode === 'perPlant') || datesLocked
+            ? 'Close'
+            : 'Cancel'}
         </button>
       </div>
     </div>

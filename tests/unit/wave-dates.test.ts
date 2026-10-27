@@ -298,27 +298,23 @@ describe('checkWaveDateChange', () => {
   });
   const wave1 = { wave_number: 1, germination_date: '2026-02-20' };
 
-  it('needs no reason before the first scan, and one after it', () => {
+  it('allows a change before the first scan, with no reason, and none after it', () => {
     expect(checkWaveDateChange(change('2026-03-02'), [wave1], today)).toEqual({
       error: null,
       conflict: null,
       reasonNeeded: false,
       saveError: null,
     });
+    // Once the wave has scans its dates are final, whatever the reason.
     const scanned = checkWaveDateChange(
-      change('2026-03-02', '  ', true),
+      change('2026-03-02', 'Typo: sown on the 2nd', true),
       [wave1],
       today
     );
-    expect(scanned.reasonNeeded).toBe(true);
-    expect(scanned.saveError).toMatch(/give a reason/);
-    expect(
-      checkWaveDateChange(
-        change('2026-03-02', 'Typo: sown on the 2nd', true),
-        [wave1],
-        today
-      ).saveError
-    ).toBeNull();
+    expect(scanned.error).toBe(
+      "Wave 2 already has scans, so its dates can't be changed."
+    );
+    expect(scanned.saveError).toBe(scanned.error);
   });
 
   it('asks for a reason, not a note, when the date conflicts with another wave', () => {
@@ -335,14 +331,11 @@ describe('checkWaveDateChange', () => {
       "Those are already the wave's dates."
     );
     expect(
-      checkWaveDateChange(change('2026-04-01', 'x', true), [], today).saveError
+      checkWaveDateChange(change('2026-04-01', 'x'), [], today).saveError
     ).toMatch(/future/);
     expect(
-      checkWaveDateChange(
-        change('2026-03-02', 'x'.repeat(501), true),
-        [],
-        today
-      ).saveError
+      checkWaveDateChange(change('2026-03-02', 'x'.repeat(501)), [], today)
+        .saveError
     ).toMatch(/under 500/);
   });
 });

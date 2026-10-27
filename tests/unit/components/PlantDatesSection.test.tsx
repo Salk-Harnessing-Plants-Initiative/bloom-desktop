@@ -4,7 +4,13 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  cleanup,
+} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { PlantDatesSection } from '../../../src/renderer/components/PlantDatesSection';
 import type {
@@ -103,10 +109,11 @@ describe('PlantDatesSection', () => {
     );
   });
 
-  it('shows a plant’s own dates and reason, with Edit and "Use the wave’s dates"', async () => {
+  it('shows a plant’s own dates and reason, with Edit and "Use the wave’s dates" before its first scan', async () => {
+    const unscanned = { ...ownPlant, scanCount: 0 };
     const { onUseWaveDates } = renderSection({
-      plant: ownPlant,
-      plantDates: ownPlant,
+      plant: unscanned,
+      plantDates: unscanned,
     });
     expect(screen.getByTestId('plant-dates')).toHaveTextContent(
       /^Plant SB_017's own datesGermination date: .+Sown: .+Transferred: the same day as germinationReason: Germinated two days lateSet by Demo Phenotyper · Edit · Use the wave's dates$/
@@ -158,17 +165,38 @@ describe('PlantDatesSection', () => {
     expect(onOpenChange).toHaveBeenLastCalledWith(true);
   });
 
-  it("needs a reason to change a per-plant wave's plant that has scans", () => {
+  it('offers no way to change the dates of a plant with scans, in either kind of wave', () => {
+    // A per-plant wave's plant, scanned once.
     renderSection({
       wave: { ...wave, dates_per_plant: true, germination_date: null },
       plant: ownPlant,
       plantDates: ownPlant,
     });
+    expect(screen.getByTestId('plant-dates')).toHaveTextContent(
+      /Set by Demo Phenotyper$/
+    );
+    expect(screen.queryByTestId('plant-dates-edit')).not.toBeInTheDocument();
+    cleanup();
+
+    // A plant with its own dates in a same-dates wave, and one on the wave's dates.
+    renderSection({
+      plant: ownPlant,
+      plantDates: ownPlant,
+    });
+    expect(screen.queryByTestId('plant-dates-edit')).not.toBeInTheDocument();
     expect(
       screen.queryByTestId('plant-dates-use-wave')
     ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('plant-dates-edit'));
-    expect(screen.getByTestId('plant-dates-reason')).toBeInTheDocument();
+    cleanup();
+    renderSection({
+      plant: { ...ownPlant, uses_wave_dates: true },
+    });
+    expect(screen.getByTestId('plant-dates-source')).toHaveTextContent(
+      /^Plant SB_017 uses wave 2's dates$/
+    );
+    expect(
+      screen.queryByTestId('plant-dates-different')
+    ).not.toBeInTheDocument();
   });
 
   it('shows the error when saving fails', async () => {

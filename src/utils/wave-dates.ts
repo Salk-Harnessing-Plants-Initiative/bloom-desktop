@@ -309,12 +309,22 @@ export function waveOrderConflicts(
   return found;
 }
 
+/** Once a wave has scans its dates are final; a mistake is corrected with the Bloom team (#428). */
+export function scannedWaveError(waveNumber: number): string {
+  return `Wave ${waveNumber} already has scans, so its dates can't be changed.`;
+}
+
+/** Once a plant has scans its dates are final, as for a wave. */
+export function scannedPlantError(plantBarcode: string): string {
+  return `Plant ${plantBarcode} already has scans, so its dates can't be changed.`;
+}
+
 export interface WaveDateChangeCheck {
   /** The new date can't be used, whatever the reason. */
   error: string | null;
   /** The new date is out of order with another wave's: saving needs a reason. */
   conflict: WaveWarning | null;
-  /** A reason is needed: the wave has scans, or the date conflicts. */
+  /** A reason is needed: the date conflicts with another wave's. */
   reasonNeeded: boolean;
   /** Why the change can't be saved with this reason, or null when it can. */
   saveError: string | null;
@@ -322,8 +332,8 @@ export interface WaveDateChangeCheck {
 
 /**
  * The rules for changing a wave's dates, shared by the Edit box and the main process.
- * Before the wave's first scan no reason is needed, unless the new germination date
- * conflicts with another wave; after it, a reason always is.
+ * They can only change before the wave's first scan, and need a reason only when a new
+ * date conflicts with another wave's.
  */
 export function checkWaveDateChange(
   change: {
@@ -342,9 +352,11 @@ export function checkWaveDateChange(
     next.germination !== current.germination ||
     next.sowing !== current.sowing ||
     next.transfer !== current.transfer;
-  const error = changed
-    ? waveDatesError(next, today)
-    : "Those are already the wave's dates.";
+  const error = change.waveHasScans
+    ? scannedWaveError(change.waveNumber)
+    : changed
+      ? waveDatesError(next, today)
+      : "Those are already the wave's dates.";
   // Only a date the change touches is checked against the other waves'.
   const touched = (['sowing', 'germination'] as const).filter(
     (f) => next[f] !== current[f]
@@ -353,13 +365,11 @@ export function checkWaveDateChange(
     error || touched.length === 0
       ? null
       : waveConflict(change.waveNumber, next, otherWaves, [...touched]);
-  const reasonNeeded = change.waveHasScans || conflict !== null;
+  const reasonNeeded = conflict !== null;
   const saveError =
     error ??
-    (reasonNeeded && !reason
-      ? conflict
-        ? `${warningText(conflict)} Give a reason for the change.`
-        : 'This wave already has scans: give a reason for the change.'
+    (conflict && !reason
+      ? `${warningText(conflict)} Give a reason for the change.`
       : reason.length > MAX_REASON_LENGTH
         ? `Keep the reason under ${MAX_REASON_LENGTH} characters.`
         : null);

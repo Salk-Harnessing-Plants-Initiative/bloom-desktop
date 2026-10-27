@@ -1205,7 +1205,7 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     ).toBeInTheDocument();
   });
 
-  it("uses a corrected plant's new age in a per-plant wave, for the duplicate check and the scan", async () => {
+  it("scans a per-plant wave's scanned plant at its saved age, with no way to change its dates", async () => {
     perPlantWave();
     // PLANT-001 was scanned before, with germination 16 days ago.
     plantsList().mockResolvedValue({
@@ -1227,29 +1227,12 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
         },
       ],
     });
-    plantsSetDates().mockResolvedValue({ success: true, data: null });
     await enterPlant();
-    const age = screen.getByLabelText(/Plant Age/);
-    await waitFor(() => expect(age).toHaveValue('16'));
-
-    // It actually germinated two days later: the age follows the corrected date.
-    fireEvent.click(await screen.findByTestId('plant-dates-edit'));
-    fireEvent.change(screen.getByLabelText('Germination date'), {
-      target: { value: sownDaysAgo(14) },
-    });
-    fireEvent.change(screen.getByTestId('plant-dates-reason'), {
-      target: { value: 'Germination date typed wrong' },
-    });
-    await waitFor(() => expect(age).toHaveValue('14'));
-    // A scan today at the old age (16) doesn't block the corrected one.
     await waitFor(() =>
-      expect(mockCheckDuplicate).toHaveBeenLastCalledWith(
-        'PLANT-001',
-        'exp-1',
-        1,
-        14
-      )
+      expect(screen.getByLabelText(/Plant Age/)).toHaveValue('16')
     );
+    // Its dates are final once it has scans.
+    expect(screen.queryByTestId('plant-dates-edit')).not.toBeInTheDocument();
 
     const start = screen.getByRole('button', { name: /start scan/i });
     await waitFor(() => expect(start).not.toBeDisabled());
@@ -1257,15 +1240,10 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
       fireEvent.click(start);
     });
     await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
-    expect(plantsSetDates()).toHaveBeenCalledWith(
-      expect.objectContaining({
-        germinationDate: sownDaysAgo(14),
-        reason: 'Germination date typed wrong',
-      })
-    );
+    expect(plantsSetDates()).not.toHaveBeenCalled();
     expect(scanMetadata()).toMatchObject({
-      plant_age_days: 14,
-      germination_date: sownDaysAgo(14),
+      plant_age_days: 16,
+      germination_date: sownDaysAgo(16),
     });
   });
 

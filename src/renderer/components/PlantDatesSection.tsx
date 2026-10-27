@@ -90,8 +90,8 @@ export function PlantDatesSection({
     entered.transfer === startDates.transfer;
   const touched = Boolean(entered.germination || entered.sowing);
   const datesError = touched ? waveDatesError(entered, new Date()) : null;
-  // Differing from the wave, or changing dates the plant was scanned with, needs a reason.
-  const reasonNeeded = !perPlant || (plant?.scanCount ?? 0) > 0;
+  // Differing from the wave needs a reason. (A plant with scans can't be edited.)
+  const reasonNeeded = !perPlant;
   const draft =
     editing &&
     touched &&
@@ -173,6 +173,7 @@ export function PlantDatesSection({
           plantDates={plantDates}
           ownDates={ownDates || perPlant}
           canUseWaveDates={ownDates && !perPlant}
+          locked={(plant?.scanCount ?? 0) > 0}
           onEdit={open}
           onUseWaveDates={() => run(() => onUseWaveDates())}
           disabled={disabled || saving}

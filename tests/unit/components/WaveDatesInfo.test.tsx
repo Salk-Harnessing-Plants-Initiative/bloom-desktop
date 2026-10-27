@@ -101,30 +101,30 @@ describe('WaveDatesInfo', () => {
     );
   });
 
-  it('after scans, still offers Edit but needs a reason and warns the scans keep their age', async () => {
+  it("after scans, shows the wave's dates locked, with no way to save a change", () => {
     const onChangeDate = renderInfo({ ...wave2, scanCount: 3 });
     fireEvent.click(screen.getByTestId('wave-dates-edit'));
     expect(
       screen.getByTestId('wave-dates-edit-scans-warning')
     ).toHaveTextContent(
-      '3 scans in wave 2 are already saved. They keep the ages they were saved with: only new scans use the new date.'
+      "Wave 2 already has scans, so its dates can't be changed. If they're wrong, contact the Bloom team."
     );
-    fireEvent.change(screen.getByLabelText('Germination date'), {
-      target: { value: '2026-02-19' },
-    });
-    const save = screen.getByTestId('wave-dates-edit-save');
-    expect(save).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Reason'), {
-      target: { value: 'Typo: sown a day earlier' },
-    });
-    fireEvent.click(save);
-    await waitFor(() =>
-      expect(onChangeDate).toHaveBeenCalledWith({
-        germinationDate: '2026-02-19',
-        sowingDate: '2026-02-16',
-        transferDate: undefined,
-        reason: 'Typo: sown a day earlier',
-      })
+    expect(screen.getByLabelText('Germination date')).toBeDisabled();
+    expect(screen.getByLabelText('Sowing date')).toBeDisabled();
+    expect(
+      screen.queryByTestId('wave-dates-edit-save')
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument();
+    expect(screen.getByText('Close')).toBeInTheDocument();
+    expect(onChangeDate).not.toHaveBeenCalled();
+  });
+
+  it('after scans, still lets the wave go per plant', () => {
+    renderInfo({ ...wave2, scanCount: 3 });
+    fireEvent.click(screen.getByTestId('wave-dates-edit'));
+    fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
+    expect(screen.getByTestId('wave-dates-edit-save')).toHaveTextContent(
+      'Set dates per plant'
     );
   });
 
@@ -351,7 +351,7 @@ describe('WaveDatesInfo', () => {
     const onChangeDate = vi.fn();
     const { rerender } = render(
       <WaveDatesInfo
-        wave={{ ...wave2, scanCount: 1 }}
+        wave={{ ...wave2 }}
         waves={[wave1, wave2]}
         onChangeDate={onChangeDate}
         phenotyperChosen
@@ -360,7 +360,7 @@ describe('WaveDatesInfo', () => {
     fireEvent.click(screen.getByTestId('wave-dates-edit'));
     rerender(
       <WaveDatesInfo
-        wave={{ ...wave2, scanCount: 1 }}
+        wave={{ ...wave2 }}
         waves={[wave1, wave2]}
         onChangeDate={onChangeDate}
         phenotyperChosen
@@ -368,7 +368,6 @@ describe('WaveDatesInfo', () => {
       />
     );
     expect(screen.getByLabelText('Germination date')).toBeDisabled();
-    expect(screen.getByLabelText('Reason')).toBeDisabled();
     expect(screen.getByTestId('wave-dates-edit-save')).toBeDisabled();
     expect(screen.getByText('Cancel')).toBeDisabled();
   });
