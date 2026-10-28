@@ -4,7 +4,6 @@ import * as os from 'os';
 import * as path from 'path';
 import {
   BUILT_IN_SPECIES,
-  bloomSpeciesPageUrl,
   cleanSpeciesNames,
   createSpeciesStore,
   readSavedSpecies,
@@ -27,27 +26,6 @@ describe('cleanSpeciesNames', () => {
     expect(
       cleanSpeciesNames([' Rice ', 'Arabidopsis', '', null, 'Rice', 7])
     ).toEqual(['Arabidopsis', 'Rice']);
-  });
-});
-
-describe('bloomSpeciesPageUrl', () => {
-  it("is the API host without a leading 'api.', at /app/species", () => {
-    expect(bloomSpeciesPageUrl('https://api.bloom.salk.edu/proxy')).toBe(
-      'https://bloom.salk.edu/app/species'
-    );
-    expect(bloomSpeciesPageUrl('https://bloom.salk.edu/api')).toBe(
-      'https://bloom.salk.edu/app/species'
-    );
-    expect(bloomSpeciesPageUrl('http://localhost:8000')).toBe(
-      'http://localhost:8000/app/species'
-    );
-  });
-
-  it('is null for something that is not an http(s) URL', () => {
-    expect(bloomSpeciesPageUrl('')).toBeNull();
-    expect(bloomSpeciesPageUrl('not a url')).toBeNull();
-    expect(bloomSpeciesPageUrl('file:///etc/passwd')).toBeNull();
-    expect(bloomSpeciesPageUrl('javascript:alert(1)')).toBeNull();
   });
 });
 

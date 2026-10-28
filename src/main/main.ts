@@ -1257,7 +1257,6 @@ app.on('ready', async () => {
     registerSpeciesHandlers({
       ipcMain,
       store: speciesStore,
-      bloomApiUrl: () => loadEnvConfig(ENV_PATH).bloom_api_url,
       openExternal: (url) => shell.openExternal(url),
     });
     if (process.env.E2E_TEST !== 'true') void speciesStore.refresh();

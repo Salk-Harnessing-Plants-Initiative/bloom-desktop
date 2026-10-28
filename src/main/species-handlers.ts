@@ -6,7 +6,7 @@
 
 import type { IpcMain } from 'electron';
 import type { MachineConfig } from './config-store';
-import { bloomSpeciesPageUrl, type SpeciesStore } from './species-list';
+import { BLOOM_SPECIES_PAGE_URL, type SpeciesStore } from './species-list';
 
 /** The parts of the machine config the fetch and the Species page link need. */
 export type BloomSpeciesConfig = Pick<
@@ -56,8 +56,6 @@ export async function fetchBloomSpecies(
 export interface SpeciesHandlerDeps {
   ipcMain: Pick<IpcMain, 'handle'>;
   store: SpeciesStore;
-  /** The current Bloom API URL, read when the Species page is opened. */
-  bloomApiUrl: () => string;
   openExternal: (url: string) => Promise<void>;
 }
 
@@ -65,14 +63,8 @@ export function registerSpeciesHandlers(deps: SpeciesHandlerDeps): void {
   deps.ipcMain.handle('species:list', () => deps.store.current());
   deps.ipcMain.handle('species:refresh', () => deps.store.refresh());
   deps.ipcMain.handle('species:openAddPage', async () => {
-    const url = bloomSpeciesPageUrl(deps.bloomApiUrl());
-    if (!url)
-      return {
-        success: false,
-        error: "Bloom's address isn't set up on this computer.",
-      };
     try {
-      await deps.openExternal(url);
+      await deps.openExternal(BLOOM_SPECIES_PAGE_URL);
       return { success: true };
     } catch (error) {
       return {

@@ -60,7 +60,8 @@ export function SpeciesSelect({
               {species}
             </option>
           ))}
-          <option value={ADD_IN_BLOOM}>
+          {/* Green and bold, so it stands out from the species. */}
+          <option value={ADD_IN_BLOOM} className="font-semibold text-green-700">
             Need a new species? Add it in Bloom…
           </option>
         </select>
@@ -73,15 +74,6 @@ export function SpeciesSelect({
           {list.refreshing ? 'Refreshing…' : 'Refresh list'}
         </button>
       </div>
-      {list.source === 'built-in' && !list.message && (
-        <p
-          className="mt-1 text-xs text-gray-500"
-          data-testid="species-built-in"
-        >
-          Couldn&apos;t get the list from Bloom yet, so the built-in list is
-          shown.
-        </p>
-      )}
       {list.message && (
         <p className="mt-1 text-xs text-gray-600" role="status">
           {list.message}

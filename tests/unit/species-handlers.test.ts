@@ -86,7 +86,7 @@ describe('fetchBloomSpecies', () => {
 });
 
 describe('registerSpeciesHandlers', () => {
-  function setUp(apiUrl = 'https://api.bloom.salk.edu/proxy') {
+  function setUp() {
     const handle = vi.fn();
     const store: SpeciesStore = {
       current: vi.fn().mockResolvedValue({
@@ -102,7 +102,6 @@ describe('registerSpeciesHandlers', () => {
     registerSpeciesHandlers({
       ipcMain: { handle },
       store,
-      bloomApiUrl: () => apiUrl,
       openExternal,
     });
     const handler = (channel: string) =>
@@ -122,21 +121,12 @@ describe('registerSpeciesHandlers', () => {
     expect(store.refresh).toHaveBeenCalled();
   });
 
-  it("opens Bloom's Species page for this computer's Bloom", async () => {
+  it("opens Bloom's Species page", async () => {
     const { handler, openExternal } = setUp();
     expect(await handler('species:openAddPage')()).toEqual({ success: true });
     expect(openExternal).toHaveBeenCalledWith(
       'https://bloom.salk.edu/app/species'
     );
-  });
-
-  it("opens nothing when Bloom's address isn't a web address", async () => {
-    const { handler, openExternal } = setUp('file:///etc/passwd');
-    expect(await handler('species:openAddPage')()).toEqual({
-      success: false,
-      error: "Bloom's address isn't set up on this computer.",
-    });
-    expect(openExternal).not.toHaveBeenCalled();
   });
 
   it('returns the error when the browser cannot be opened', async () => {

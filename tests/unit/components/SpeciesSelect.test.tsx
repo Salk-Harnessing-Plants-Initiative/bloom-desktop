@@ -83,15 +83,13 @@ describe('SpeciesSelect', () => {
   it('says so when Bloom cannot be opened', async () => {
     openAddPage.mockResolvedValue({
       success: false,
-      error: "Bloom's address isn't set up on this computer.",
+      error: 'no browser',
     });
     mount();
     await waitFor(() => expect(select().value).toBe('Arabidopsis'));
     fireEvent.change(select(), { target: { value: ADD_IN_BLOOM } });
     expect(
-      await screen.findByText(
-        "Couldn't open Bloom: Bloom's address isn't set up on this computer."
-      )
+      await screen.findByText("Couldn't open Bloom: no browser")
     ).toBeInTheDocument();
   });
 
@@ -137,16 +135,16 @@ describe('SpeciesSelect', () => {
     expect(options()).toHaveLength(4);
   });
 
-  it("says when it's showing the built-in list, before Bloom has been reached", async () => {
+  it('shows the built-in list quietly before Bloom has been reached, with the add option', async () => {
     list.mockResolvedValue({
       species: ['Alfalfa', 'Rice'],
       source: 'built-in',
       updatedAt: null,
     });
     mount();
-    expect(await screen.findByTestId('species-built-in')).toHaveTextContent(
-      "Couldn't get the list from Bloom yet, so the built-in list is shown."
-    );
+    await waitFor(() => expect(options()).toHaveLength(3));
+    expect(options()[2]).toBe('Need a new species? Add it in Bloom…');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('creates the experiment with the species chosen from the list', async () => {

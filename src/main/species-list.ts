@@ -35,8 +35,8 @@ export const BUILT_IN_SPECIES = [
 /** The saved copy's file name, next to the database. */
 export const SAVED_SPECIES_FILE = 'species.json';
 
-/** Bloom's Species page path, under the web app. */
-const SPECIES_PAGE_PATH = '/app/species';
+/** Bloom's Species page, where a new species is added. */
+export const BLOOM_SPECIES_PAGE_URL = 'https://bloom.salk.edu/app/species';
 
 /** Trimmed, de-duplicated and sorted, ignoring empty names. */
 export function cleanSpeciesNames(names: unknown[]): string[] {
@@ -45,23 +45,6 @@ export function cleanSpeciesNames(names: unknown[]): string[] {
     .map((n) => n.trim())
     .filter((n) => n !== '');
   return [...new Set(cleaned)].sort((a, b) => a.localeCompare(b));
-}
-
-/**
- * Bloom's Species page for an API URL: the same host without a leading "api."
- * ("https://api.bloom.salk.edu/proxy" and "https://bloom.salk.edu/api" both give
- * "https://bloom.salk.edu/app/species"). Null for a URL that isn't http(s).
- */
-export function bloomSpeciesPageUrl(apiUrl: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(apiUrl);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-  const host = url.host.replace(/^api\./, '');
-  return `${url.protocol}//${host}${SPECIES_PAGE_PATH}`;
 }
 
 function builtIn(): SpeciesList {
