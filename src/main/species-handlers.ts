@@ -39,18 +39,16 @@ export async function fetchBloomSpecies(
   });
   if (authError)
     throw new Error(`Couldn't sign in to Bloom: ${authError.message}`);
-  try {
-    const { data, error } = await supabase
-      .from('species')
-      .select('common_name')
-      .is('deleted_at', null);
-    if (error) throw new Error(error.message);
-    return (data ?? []).map(
-      (row: { common_name: string | null }) => row.common_name ?? ''
-    );
-  } finally {
-    await supabase.auth.signOut().catch((): undefined => undefined);
-  }
+  // No sign-out: the session isn't kept, and signOut() would end the account's
+  // sessions everywhere, including running uploads.
+  const { data, error } = await supabase
+    .from('species')
+    .select('common_name')
+    .is('deleted_at', null);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map(
+    (row: { common_name: string | null }) => row.common_name ?? ''
+  );
 }
 
 export interface SpeciesHandlerDeps {

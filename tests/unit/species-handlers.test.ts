@@ -28,7 +28,6 @@ const CONFIG = {
 beforeEach(() => {
   vi.clearAllMocks();
   signIn.mockResolvedValue({ error: null });
-  signOut.mockResolvedValue({ error: null });
   from.mockReturnValue(query);
   query.select.mockReturnValue(query);
   query.is.mockResolvedValue({
@@ -38,7 +37,7 @@ beforeEach(() => {
 });
 
 describe('fetchBloomSpecies', () => {
-  it("signs in as the scanner, reads the species that haven't been removed, and signs out", async () => {
+  it("signs in as the scanner, reads the species that haven't been removed, and doesn't sign out", async () => {
     expect(await fetchBloomSpecies(CONFIG)).toEqual(['Sorghum', 'Rice']);
     expect(createClient).toHaveBeenCalledWith(
       'https://api.bloom.salk.edu/proxy',
@@ -54,7 +53,7 @@ describe('fetchBloomSpecies', () => {
     expect(from).toHaveBeenCalledWith('species');
     expect(query.select).toHaveBeenCalledWith('common_name');
     expect(query.is).toHaveBeenCalledWith('deleted_at', null);
-    expect(signOut).toHaveBeenCalled();
+    expect(signOut).not.toHaveBeenCalled();
   });
 
   it('refuses without credentials, before contacting Bloom', async () => {
@@ -73,7 +72,7 @@ describe('fetchBloomSpecies', () => {
     );
   });
 
-  it('passes on a query error, and still signs out', async () => {
+  it('passes on a query error', async () => {
     query.is.mockResolvedValue({
       data: null,
       error: { message: 'permission denied' },
@@ -81,7 +80,6 @@ describe('fetchBloomSpecies', () => {
     await expect(fetchBloomSpecies(CONFIG)).rejects.toThrow(
       'permission denied'
     );
-    expect(signOut).toHaveBeenCalled();
   });
 });
 
