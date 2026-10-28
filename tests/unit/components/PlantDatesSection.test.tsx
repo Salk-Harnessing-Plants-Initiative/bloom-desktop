@@ -173,9 +173,13 @@ describe('PlantDatesSection', () => {
       plantDates: ownPlant,
     });
     expect(screen.getByTestId('plant-dates')).toHaveTextContent(
-      /Set by Demo Phenotyper$/
+      /Set by Demo Phenotyper/
     );
     expect(screen.queryByTestId('plant-dates-edit')).not.toBeInTheDocument();
+    // It says why, and where to go.
+    expect(screen.getByTestId('plant-dates-locked')).toHaveTextContent(
+      "Plant SB_017 already has scans, so its dates can't be changed. If they're wrong, contact the Bloom team."
+    );
     cleanup();
 
     // A plant with its own dates in a same-dates wave, and one on the wave's dates.

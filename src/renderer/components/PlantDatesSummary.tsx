@@ -5,7 +5,7 @@
  * scan: after it, its dates are final.
  */
 
-import { formatWaveDate } from '../../utils/wave-dates';
+import { formatWaveDate, scannedPlantError } from '../../utils/wave-dates';
 import type { CylinderPlantInfo } from '../../types/cylinder-wave';
 import type { PlantDates } from '../hooks/useWaveDates';
 
@@ -130,6 +130,12 @@ export function PlantDatesSummary({
             )}
           </p>
         </>
+      )}
+      {locked && (
+        <p className="text-xs text-amber-800" data-testid="plant-dates-locked">
+          {scannedPlantError(plantBarcode)} If they&apos;re wrong, contact the
+          Bloom team.
+        </p>
       )}
     </>
   );
