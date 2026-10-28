@@ -130,8 +130,7 @@ describe('CylinderWaveDates', () => {
       id: string,
       old: [string | null, string | null, string | null],
       next: [string, string | null, string | null],
-      reason: string | null = null,
-      colors: [string | null, string | null] = [null, null]
+      reason: string | null = null
     ) => ({
       id,
       old_germination_date: old[0],
@@ -140,8 +139,6 @@ describe('CylinderWaveDates', () => {
       new_sowing_date: next[1],
       old_transfer_date: old[2],
       new_transfer_date: next[2],
-      old_germ_day_color: colors[0],
-      new_germ_day_color: colors[1],
       reason,
       changed_by_name: 'Demo Phenotyper',
       changed_at: '2026-02-21T10:00:00.000Z',
@@ -177,14 +174,6 @@ describe('CylinderWaveDates', () => {
               ['2026-02-20', '2026-02-16', '2026-02-22'],
               'Wave 2 now set for each plant'
             ),
-            // Only the germination colour changed.
-            change(
-              'c5',
-              ['2026-02-20', '2026-02-16', '2026-02-22'],
-              ['2026-02-20', '2026-02-16', '2026-02-22'],
-              'Marked with the red group',
-              [null, 'Red']
-            ),
           ],
         },
       ],
@@ -207,9 +196,6 @@ describe('CylinderWaveDates', () => {
     );
     expect(entries[3]).toHaveTextContent(
       /^Kept its dates on .+ by Demo Phenotyper\. Reason: Wave 2 now set for each plant$/
-    );
-    expect(entries[4]).toHaveTextContent(
-      /^Changed: colour none → Red on .+ by Demo Phenotyper\. Reason: Marked with the red group$/
     );
   });
 

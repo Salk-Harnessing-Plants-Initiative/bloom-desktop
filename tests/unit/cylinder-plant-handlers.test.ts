@@ -35,7 +35,6 @@ const wave: FakeWave = {
   germination_date: '2026-03-01',
   sowing_date: '2026-02-26',
   transfer_date: null,
-  germ_day_color: null,
   note: null,
   set_by_phenotyper_id: 'ph-1',
   updatedAt: SET_AT,
@@ -53,7 +52,6 @@ const ownPlant: FakePlant = {
   germination_date: '2026-03-03',
   sowing_date: '2026-02-26',
   transfer_date: null,
-  germ_day_color: null,
   uses_wave_dates: false,
   reason: 'Germinated two days late',
   set_by_phenotyper_id: 'ph-1',
@@ -296,108 +294,6 @@ describe('the scanner: the age check and the plant a scan is saved under', () =>
   });
 });
 
-describe('the germination colour, which goes with the dates (#429)', () => {
-  it('takes a colour with the same dates for all plants, and logs it', async () => {
-    const fake = fakeCylinderDb([{ ...perPlantWave }]);
-    await useSameDatesForAll(
-      { db: fake.db, now },
-      {
-        waveId: 'w1',
-        germinationDate: '2026-03-03',
-        sowingDate: '2026-02-26',
-        germDayColor: 'pink',
-        phenotyperId: 'ph-1',
-      }
-    );
-    expect(fake.rows[0].germ_day_color).toBe('Pink');
-    expect(fake.changes[0]).toMatchObject({
-      old_germ_day_color: null,
-      new_germ_day_color: 'Pink',
-    });
-  });
-
-  it("keeps the wave's colour on its plants when it goes per plant, and logs the wave's", async () => {
-    const fake = fakeCylinderDb([{ ...wave, germ_day_color: 'Red' }], {}, [
-      { ...ownPlant, uses_wave_dates: true, germ_day_color: 'Red' },
-    ]);
-    await useDatesPerPlant(
-      { db: fake.db, now },
-      { waveId: 'w1', phenotyperId: 'ph-1' }
-    );
-    expect(fake.rows[0].germ_day_color).toBeNull();
-    expect(fake.changes[0]).toMatchObject({
-      old_germ_day_color: 'Red',
-      new_germ_day_color: null,
-    });
-    expect(fake.plants[0].germ_day_color).toBe('Red');
-    expect(fake.plantChanges[0]).toMatchObject({
-      old_germ_day_color: 'Red',
-      new_germ_day_color: 'Red',
-    });
-  });
-
-  it("lists a plant's colour history", async () => {
-    const fake = fakeCylinderDb([{ ...perPlantWave }]);
-    await setPlantDates(
-      { db: fake.db, now },
-      { ...input, germDayColor: 'Blue' }
-    );
-    const listed = await listPlants({ db: fake.db, now }, 'w1');
-    expect(listed.data?.[0].changes[0]).toMatchObject({
-      old_germ_day_color: null,
-      new_germ_day_color: 'Blue',
-    });
-  });
-
-  it("gives a plant its wave's colour with its dates at its first scan", async () => {
-    const fake = fakeCylinderDb([{ ...wave, germ_day_color: 'GermRed' }]);
-    const found = await plantForScan(fake.db, 'exp', 1, 'SB_002');
-    const row = await plantRowForScan(fake.tx, found!, 'SB_002', 'ph-1');
-    expect(row).toMatchObject({
-      germination_date: '2026-03-01',
-      germ_day_color: 'GermRed',
-      uses_wave_dates: true,
-    });
-    expect(fake.plantChanges[0]).toMatchObject({
-      old_germ_day_color: null,
-      new_germ_day_color: 'GermRed',
-    });
-  });
-
-  it("saves a per-plant wave's plant's colour with its dates, cleaned, and logs it", async () => {
-    const fake = fakeCylinderDb([{ ...perPlantWave }]);
-    const result = await setPlantDates(
-      { db: fake.db, now },
-      { ...input, germDayColor: ' arctic blue ' }
-    );
-    expect(result.data?.germ_day_color).toBe('ArcticBlue');
-    expect(fake.plantChanges[0]).toMatchObject({
-      old_germ_day_color: null,
-      new_germ_day_color: 'ArcticBlue',
-    });
-  });
-
-  it("counts a different colour alone as the plant's own dates", async () => {
-    const fake = fakeCylinderDb([{ ...wave, germ_day_color: 'Red' }]);
-    const result = await setPlantDates(
-      { db: fake.db, now },
-      {
-        ...input,
-        // The wave's own dates: only the colour differs.
-        germinationDate: '2026-03-01',
-        sowingDate: '2026-02-26',
-        germDayColor: 'Pink',
-        reason: 'Germinated with the pink group',
-      }
-    );
-    expect(result.data).toMatchObject({
-      germination_date: '2026-03-01',
-      germ_day_color: 'Pink',
-      uses_wave_dates: false,
-    });
-  });
-});
-
 describe('useSameDatesForAll: a per-plant wave going back to one set of dates', () => {
   const same = {
     waveId: 'w1',
@@ -429,8 +325,6 @@ describe('useSameDatesForAll: a per-plant wave going back to one set of dates', 
       new_germination_date: '2026-03-03',
       reason: 'Changed to the same dates for all plants',
     });
-    // The colour goes with the dates (none here).
-    expect(fake.rows[0].germ_day_color).toBeNull();
     // SB_001 had these dates: it follows the wave now. SB_002 keeps its own.
     expect(fake.plants[0]).toMatchObject({
       uses_wave_dates: true,

@@ -75,8 +75,8 @@ export async function plantAgeError(
 }
 
 /**
- * The plant a scan is saved under: its row, created from the wave's dates (and
- * germination colour) at its first scan, and logged so its history starts there.
+ * The plant a scan is saved under: its row, created from the wave's dates at its
+ * first scan, and logged so its history starts there.
  */
 export async function plantRowForScan(
   tx: Pick<CylinderWaveTxLike, 'cylinderPlant' | 'cylinderPlantDateChange'>,

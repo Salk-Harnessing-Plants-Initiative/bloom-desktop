@@ -55,7 +55,6 @@ export function waveDatesForPlants(wave: WaveRow): DateColumns | null {
         germination_date: wave.germination_date,
         sowing_date: wave.sowing_date,
         transfer_date: wave.transfer_date,
-        germ_day_color: wave.germ_day_color,
       };
 }
 
@@ -63,8 +62,7 @@ export function sameDates(a: DateColumns, b: DateColumns): boolean {
   return (
     a.germination_date === b.germination_date &&
     a.sowing_date === b.sowing_date &&
-    a.transfer_date === b.transfer_date &&
-    a.germ_day_color === b.germ_day_color
+    a.transfer_date === b.transfer_date
   );
 }
 
@@ -92,7 +90,6 @@ export async function plantInfos(
       transfer_date: row.transfer_date,
       uses_wave_dates: row.uses_wave_dates,
       reason: row.reason,
-      germ_day_color: row.germ_day_color,
       set_by_name: nameOf(row.set_by_phenotyper_id),
       set_at: row.updatedAt.toISOString(),
       scanCount: await db.scan.count({
@@ -108,8 +105,6 @@ export async function plantInfos(
           new_sowing_date: c.new_sowing_date,
           old_transfer_date: c.old_transfer_date,
           new_transfer_date: c.new_transfer_date,
-          old_germ_day_color: c.old_germ_day_color,
-          new_germ_day_color: c.new_germ_day_color,
           reason: c.reason,
           changed_by_name: nameOf(c.changed_by_phenotyper_id),
           changed_at: c.changedAt.toISOString(),

@@ -125,8 +125,6 @@ export async function useSameDatesForAll(
           new_sowing_date: toSave.sowing_date,
           old_transfer_date: null,
           new_transfer_date: toSave.transfer_date,
-          old_germ_day_color: null,
-          new_germ_day_color: toSave.germ_day_color,
           reason: reason || 'Changed to the same dates for all plants',
           changed_by_phenotyper_id: phenotyperId,
         },
@@ -191,7 +189,6 @@ export async function useDatesPerPlant(
       germination_date: wave.germination_date,
       sowing_date: wave.sowing_date,
       transfer_date: wave.transfer_date,
-      germ_day_color: wave.germ_day_color,
     };
     await deps.db.$transaction(async (tx) => {
       // Plants on the wave's dates keep them as their own (each logged).
@@ -212,7 +209,6 @@ export async function useDatesPerPlant(
           germination_date: null,
           sowing_date: null,
           transfer_date: null,
-          germ_day_color: null,
           dates_per_plant: true,
           set_by_phenotyper_id: phenotyperId,
         },
@@ -226,8 +222,6 @@ export async function useDatesPerPlant(
           new_sowing_date: null,
           old_transfer_date: old.transfer_date,
           new_transfer_date: null,
-          old_germ_day_color: old.germ_day_color,
-          new_germ_day_color: null,
           reason: reason || 'Changed to dates per plant',
           changed_by_phenotyper_id: phenotyperId,
         },

@@ -134,16 +134,11 @@ export function warningText(warning: WaveWarning): string {
     .join(' ');
 }
 
-/**
- * A wave's (or plant's) three dates as entered; `transfer` is '' when it's the same day
- * as germination. The optional germination colour (#429) goes with them, since it marks
- * the plants that germinated together; '' for none.
- */
+/** A wave's three dates as entered; `transfer` is '' when it's the same day as germination. */
 export interface WaveDates {
   germination: string;
   sowing: string;
   transfer: string;
-  color?: string;
 }
 
 /**
@@ -177,18 +172,16 @@ export function waveDatesError(dates: WaveDates, today: Date): string | null {
   return null;
 }
 
-/** A wave's stored dates as entered: null sowing (a backfilled wave), null transfer (the germination day) and no colour become ''. */
+/** A wave's stored dates as entered: null sowing (a backfilled wave) and null transfer (the germination day) become ''. */
 export function storedWaveDates(wave: {
   germination_date: string | null;
   sowing_date: string | null;
   transfer_date: string | null;
-  germ_day_color?: string | null;
 }): WaveDates {
   return {
     germination: wave.germination_date ?? '',
     sowing: wave.sowing_date ?? '',
     transfer: wave.transfer_date ?? '',
-    color: wave.germ_day_color ?? '',
   };
 }
 
@@ -358,8 +351,7 @@ export function checkWaveDateChange(
   const changed =
     next.germination !== current.germination ||
     next.sowing !== current.sowing ||
-    next.transfer !== current.transfer ||
-    (next.color ?? '') !== (current.color ?? '');
+    next.transfer !== current.transfer;
   const error = change.waveHasScans
     ? scannedWaveError(change.waveNumber)
     : changed
