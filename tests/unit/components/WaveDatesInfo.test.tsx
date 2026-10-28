@@ -133,12 +133,42 @@ describe('WaveDatesInfo', () => {
     expect(screen.getByTestId('wave-dates-edit-save')).toBeInTheDocument();
   });
 
-  it('after scans, still lets the wave go per plant', () => {
-    renderInfo({ ...wave2, scanCount: 3, datedScanCount: 3 });
+  it('after scans, still lets the wave go per plant', async () => {
+    const onUseDatesPerPlant = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: null });
+    render(
+      <WaveDatesInfo
+        wave={{ ...wave2, scanCount: 3, datedScanCount: 3 }}
+        waves={[wave1, wave2]}
+        onChangeDate={vi.fn()}
+        onUseDatesPerPlant={onUseDatesPerPlant}
+        phenotyperChosen
+      />
+    );
     fireEvent.click(screen.getByTestId('wave-dates-edit'));
     fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
-    expect(screen.getByTestId('wave-dates-edit-save')).toHaveTextContent(
-      'Set dates per plant'
+    const save = screen.getByTestId('wave-dates-edit-save');
+    expect(save).toHaveTextContent('Set dates per plant');
+    expect(save).not.toBeDisabled();
+    fireEvent.click(save);
+    await waitFor(() => expect(onUseDatesPerPlant).toHaveBeenCalled());
+  });
+
+  it("sends a change to the wave's colour alone, cleaned, before the first scan", async () => {
+    const onChangeDate = renderInfo();
+    fireEvent.click(screen.getByTestId('wave-dates-edit'));
+    // Typed and saved without leaving the field.
+    fireEvent.change(screen.getByLabelText('Germination colour'), {
+      target: { value: 'germ red' },
+    });
+    const save = screen.getByTestId('wave-dates-edit-save');
+    expect(save).not.toBeDisabled();
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(onChangeDate).toHaveBeenCalledWith(
+        expect.objectContaining({ germDayColor: 'GermRed' })
+      )
     );
   });
 

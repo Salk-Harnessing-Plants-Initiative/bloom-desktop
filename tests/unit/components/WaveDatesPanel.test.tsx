@@ -129,6 +129,21 @@ describe('WaveDatesPanel', () => {
     );
   });
 
+  it('saves the germination colour with the dates, cleaned even if the field is never left (#429)', async () => {
+    const { onSave, setDate, setSowing, save } = renderPanel();
+    setDate(daysAgo(9));
+    setSowing();
+    fireEvent.change(screen.getByLabelText('Germination colour'), {
+      target: { value: 'germ red' },
+    });
+    fireEvent.click(save());
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({ germDayColor: 'GermRed' })
+      )
+    );
+  });
+
   it('needs a phenotyper before the date can be saved', () => {
     const onSave = vi.fn();
     render(
