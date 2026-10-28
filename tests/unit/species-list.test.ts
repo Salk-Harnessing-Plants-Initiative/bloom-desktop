@@ -22,10 +22,14 @@ const now = () => new Date('2026-10-24T10:00:00.000Z');
 const quiet = () => {};
 
 describe('cleanSpeciesNames', () => {
-  it('trims, drops empty and non-text names, de-duplicates and sorts', () => {
+  it('drops empty and non-text names, de-duplicates and sorts', () => {
     expect(
-      cleanSpeciesNames([' Rice ', 'Arabidopsis', '', null, 'Rice', 7])
+      cleanSpeciesNames(['Rice', 'Arabidopsis', '', '  ', null, 'Rice', 7])
     ).toEqual(['Arabidopsis', 'Rice']);
+  });
+
+  it('keeps each name exactly as Bloom has it, since uploads match it exactly', () => {
+    expect(cleanSpeciesNames(['Barley ', 'Rice'])).toEqual(['Barley ', 'Rice']);
   });
 });
 

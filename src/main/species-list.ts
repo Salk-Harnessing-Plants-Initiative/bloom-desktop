@@ -38,12 +38,14 @@ export const SAVED_SPECIES_FILE = 'species.json';
 /** Bloom's Species page, where a new species is added. */
 export const BLOOM_SPECIES_PAGE_URL = 'https://bloom.salk.edu/app/species';
 
-/** Trimmed, de-duplicated and sorted, ignoring empty names. */
+/**
+ * De-duplicated and sorted, ignoring empty names. Names are kept exactly as Bloom
+ * has them, since uploads must match Bloom's common_name character for character.
+ */
 export function cleanSpeciesNames(names: unknown[]): string[] {
-  const cleaned = names
-    .filter((n): n is string => typeof n === 'string')
-    .map((n) => n.trim())
-    .filter((n) => n !== '');
+  const cleaned = names.filter(
+    (n): n is string => typeof n === 'string' && n.trim() !== ''
+  );
   return [...new Set(cleaned)].sort((a, b) => a.localeCompare(b));
 }
 
