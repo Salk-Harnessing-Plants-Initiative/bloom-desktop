@@ -167,6 +167,45 @@ describe('scan-metadata-json', () => {
       expect(metadata.accession_name).toBeUndefined();
     });
 
+    it("records the plant's dates the age was computed from (#428)", () => {
+      const base = makeScannerSettings();
+      const settings = makeScannerSettings({
+        metadata: {
+          ...base.metadata!,
+          plant_age_days: 9,
+          germination_date: '2026-10-01',
+          sowing_date: '2026-09-28',
+        },
+      });
+      const metadata = buildMetadataObject(settings, new Date());
+
+      expect(metadata.plant_age_days).toBe(9);
+      expect(metadata.germination_date).toBe('2026-10-01');
+      expect(metadata.sowing_date).toBe('2026-09-28');
+      // Transferred the germination day: left out.
+      expect(metadata).not.toHaveProperty('transfer_date');
+    });
+
+    it("records the plant's germination colour (#429)", () => {
+      const base = makeScannerSettings();
+      const settings = makeScannerSettings({
+        metadata: { ...base.metadata!, germ_day_color: 'GermRed' },
+      });
+      expect(buildMetadataObject(settings, new Date()).germ_day_color).toBe(
+        'GermRed'
+      );
+      expect(
+        buildMetadataObject(makeScannerSettings(), new Date())
+      ).not.toHaveProperty('germ_day_color');
+    });
+
+    it('omits the dates when none were given', () => {
+      const metadata = buildMetadataObject(makeScannerSettings(), new Date());
+
+      expect(metadata).not.toHaveProperty('germination_date');
+      expect(metadata).not.toHaveProperty('sowing_date');
+    });
+
     it('prefers metadata.scan_path (relative) over output_path (absolute)', () => {
       const settings = makeScannerSettings({
         output_path: '/absolute/path/to/scan',

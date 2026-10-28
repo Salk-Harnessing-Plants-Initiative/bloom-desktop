@@ -51,6 +51,8 @@ import {
 import { registerDatabaseHandlers } from './database-handlers';
 import { createSpeciesStore, SAVED_SPECIES_FILE } from './species-list';
 import { fetchBloomSpecies, registerSpeciesHandlers } from './species-handlers';
+import { registerCylinderWaveHandlers } from './cylinder-wave-handlers';
+import { registerCylinderPlantHandlers } from './cylinder-plant-handlers';
 import {
   loadEnvConfig,
   saveEnvConfig,
@@ -1241,6 +1243,8 @@ app.on('ready', async () => {
       markMetadataDeleted,
       getMainWindow: () => mainWindow,
     });
+    registerCylinderWaveHandlers({ ipcMain, db: getDatabase() });
+    registerCylinderPlantHandlers({ ipcMain, db: getDatabase() });
     console.log('[Main] Database initialized and handlers registered');
 
     // The species list for new experiments comes from Bloom: fetched now, in the

@@ -45,6 +45,14 @@ import type {
 } from '../types/database';
 // eslint-disable-next-line import/no-unresolved
 import type { GraviWedgeEvent } from '../types/graviscan';
+import type {
+  CylinderWaveCreateInput,
+  CylinderWaveDateChangeInput,
+  CylinderPlantDatesInput,
+  CylinderPlantUseWaveDatesInput,
+  CylinderWaveSameDatesInput,
+  CylinderWaveDatesPerPlantInput,
+} from '../types/cylinder-wave';
 
 /**
  * Python backend API exposed to renderer
@@ -213,6 +221,26 @@ const databaseAPI: DatabaseAPI = {
       ),
     listGraviMetadata: (experimentId: string) =>
       ipcRenderer.invoke('db:experiments:listGraviMetadata', experimentId),
+  },
+  cylinderWaves: {
+    list: (experimentId: string) =>
+      ipcRenderer.invoke('db:cylinderWaves:list', experimentId),
+    create: (input: CylinderWaveCreateInput) =>
+      ipcRenderer.invoke('db:cylinderWaves:create', input),
+    changeDates: (input: CylinderWaveDateChangeInput) =>
+      ipcRenderer.invoke('db:cylinderWaves:changeDates', input),
+    useSameDates: (input: CylinderWaveSameDatesInput) =>
+      ipcRenderer.invoke('db:cylinderWaves:useSameDates', input),
+    useDatesPerPlant: (input: CylinderWaveDatesPerPlantInput) =>
+      ipcRenderer.invoke('db:cylinderWaves:useDatesPerPlant', input),
+  },
+  cylinderPlants: {
+    list: (waveId: string) =>
+      ipcRenderer.invoke('db:cylinderPlants:list', waveId),
+    setDates: (input: CylinderPlantDatesInput) =>
+      ipcRenderer.invoke('db:cylinderPlants:setDates', input),
+    useWaveDates: (input: CylinderPlantUseWaveDatesInput) =>
+      ipcRenderer.invoke('db:cylinderPlants:useWaveDates', input),
   },
   scans: {
     list: (filters?: ScanFilters | PaginatedScanFilters) =>

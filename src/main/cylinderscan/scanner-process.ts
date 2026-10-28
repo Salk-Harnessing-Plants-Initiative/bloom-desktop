@@ -16,6 +16,12 @@ import type {
   ScanProgress,
 } from '../../types/scanner';
 import { writeMetadataJson } from './scan-metadata-json';
+import {
+  plantAgeError,
+  plantForScan,
+  plantRowForScan,
+} from '../cylinder-plant-scan';
+import type { CylinderWaveDbLike } from '../cylinder-wave-db';
 import type { ImageStatus } from '../../types/database';
 
 /**
@@ -46,7 +52,23 @@ export class ScannerProcess extends EventEmitter {
    */
   async initialize(
     settings: ScannerSettings
-  ): Promise<{ success: boolean; initialized: boolean }> {
+  ): Promise<{ success: boolean; initialized: boolean; error?: string }> {
+    // Refuse a plant age that isn't the days since the plant's germination date,
+    // before anything is captured (#407, #428).
+    const ageError = settings.metadata
+      ? await plantAgeError(
+          getDatabase() as unknown as CylinderWaveDbLike,
+          settings.metadata,
+          new Date()
+        )
+      : null;
+    if (ageError) {
+      console.error('[Scanner] Refused to start:', ageError);
+      // A scan() after this must not save under the previous plant's settings.
+      this.currentSettings = null;
+      return { success: false, initialized: false, error: ageError };
+    }
+
     // Store settings for database persistence
     this.currentSettings = settings;
 
@@ -220,7 +242,11 @@ export class ScannerProcess extends EventEmitter {
 
     // Read actual image files from output directory
     // This is more reliable than progress events since files are guaranteed to exist
-    const images = [];
+    const images: {
+      frame_number: number;
+      path: string;
+      status: ImageStatus;
+    }[] = [];
     if (fs.existsSync(scanResult.output_path)) {
       const files = fs
         .readdirSync(scanResult.output_path)
@@ -252,32 +278,51 @@ export class ScannerProcess extends EventEmitter {
 
     // Create scan with nested images using Prisma nested create pattern (pilot pattern)
     const prisma = getDatabase();
-    const newScan = await prisma.scan.create({
-      data: {
-        // Metadata fields
-        experiment_id: metadata.experiment_id,
-        phenotyper_id: metadata.phenotyper_id,
-        scanner_name: metadata.scanner_name,
-        plant_id: metadata.plant_id,
-        accession_name: metadata.accession_name,
-        plant_age_days: metadata.plant_age_days,
-        wave_number: metadata.wave_number,
+    // The scan is saved under its plant: the plant's row is created from its wave's
+    // dates at its first scan, in the same transaction.
+    const found = await plantForScan(
+      prisma as unknown as CylinderWaveDbLike,
+      metadata.experiment_id,
+      metadata.wave_number,
+      metadata.plant_id
+    );
+    const newScan = await prisma.$transaction(async (tx) => {
+      const plant = found
+        ? await plantRowForScan(
+            tx as unknown as Parameters<typeof plantRowForScan>[0],
+            found,
+            metadata.plant_id,
+            metadata.phenotyper_id
+          )
+        : null;
+      return tx.scan.create({
+        data: {
+          // Metadata fields
+          experiment_id: metadata.experiment_id,
+          phenotyper_id: metadata.phenotyper_id,
+          scanner_name: metadata.scanner_name,
+          plant_id: metadata.plant_id,
+          accession_name: metadata.accession_name,
+          plant_age_days: metadata.plant_age_days,
+          wave_number: metadata.wave_number,
+          cylinder_plant_id: plant?.id ?? null,
 
-        // Scan parameters — store relative path (pilot compatible)
-        path: relativeScanPath,
-        num_frames: scanResult.frames_captured,
-        exposure_time: cameraSettings.exposure_time,
-        gain: cameraSettings.gain,
-        brightness: 0, // Unsupported on acA2000-50gm; identity default for metadata compat
-        contrast: 0,
-        gamma: cameraSettings.gamma ?? 1,
-        seconds_per_rot: settings.daq.seconds_per_rot,
+          // Scan parameters — store relative path (pilot compatible)
+          path: relativeScanPath,
+          num_frames: scanResult.frames_captured,
+          exposure_time: cameraSettings.exposure_time,
+          gain: cameraSettings.gain,
+          brightness: 0, // Unsupported on acA2000-50gm; identity default for metadata compat
+          contrast: 0,
+          gamma: cameraSettings.gamma ?? 1,
+          seconds_per_rot: settings.daq.seconds_per_rot,
 
-        // Nested image creation (atomic transaction)
-        images: {
-          create: images,
+          // Nested image creation (atomic transaction)
+          images: {
+            create: images,
+          },
         },
-      },
+      });
     });
 
     console.log('[Scanner] Successfully saved scan to database:', {

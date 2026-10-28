@@ -16,6 +16,7 @@
 
 import { PrismaClient, Prisma } from '@prisma/client';
 import type { ImageStatus } from '../types/database';
+import { germDay } from '../utils/wave-dates';
 import {
   loadEnvConfig,
   getScansDir as getConfiguredScansDir,
@@ -102,8 +103,12 @@ type ScanWithRelations = Prisma.ScanGetPayload<{
       };
     };
     phenotyper: true;
+    cylinderPlant: true;
   };
 }>;
+
+/** What Bloom stores for a plant with no germination colour (as always sent before). */
+const NO_GERM_DAY_COLOR = 'none';
 
 /**
  * Image uploader service for uploading scan images to Bloom storage
@@ -199,8 +204,9 @@ export class ImageUploader {
       species: scan.experiment?.species,
       experiment: scan.experiment?.name,
       wave_number: scan.wave_number ?? undefined,
-      germ_day: 0,
-      germ_day_color: 'none',
+      // From the plant's dates (#429); 0 and "none" for scans from before them.
+      germ_day: scan.cylinderPlant ? germDay(scan.cylinderPlant) : 0,
+      germ_day_color: scan.cylinderPlant?.germ_day_color || NO_GERM_DAY_COLOR,
       plant_age_days: scan.plant_age_days ?? undefined,
       date_scanned: scan.capture_date?.toISOString(),
       device_name: scan.scanner_name ?? undefined,
@@ -325,6 +331,7 @@ export class ImageUploader {
           },
         },
         phenotyper: true,
+        cylinderPlant: true,
       },
     });
 

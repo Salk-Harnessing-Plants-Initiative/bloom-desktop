@@ -12,14 +12,19 @@ import * as os from 'os';
 import type { ScanResult, ScannerSettings } from '../../src/types/scanner';
 
 const mockScanCreate = vi.fn();
+const db = vi.hoisted(() => ({ current: null as unknown }));
 
 vi.mock('../../src/main/database', () => ({
-  getDatabase: vi.fn(() => ({
-    scan: { create: mockScanCreate },
-  })),
+  getDatabase: vi.fn(() => db.current),
 }));
 
 import { ScannerProcess } from '../../src/main/cylinderscan/scanner-process';
+import { fakeScannerDb } from './helpers/fake-scanner-db';
+
+// Wave 1 of exp-001 germinated 14 days ago, so plant-001 is 14 days old today.
+beforeEach(() => {
+  db.current = fakeScannerDb(mockScanCreate, 14);
+});
 
 const FRAMES = 72;
 
@@ -155,6 +160,53 @@ describe('ScannerProcess — database save outcome (#392)', () => {
     expect(completeEvents[0].db_saved).toBe(true);
   });
 
+  it("saves the scan under the plant's row, created from its wave's dates at its first scan (#428)", async () => {
+    mockScanCreate.mockResolvedValue({ id: 'scan-124' });
+    await scanner.initialize(buildSettings(outputDir, true));
+
+    await scanner.scan();
+
+    const fake = db.current as ReturnType<typeof fakeScannerDb>;
+    expect(fake.$transaction).toHaveBeenCalled();
+    expect(fake.tx.cylinderPlant.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        wave_id: 'wave-1',
+        plant_barcode: 'plant-001',
+        uses_wave_dates: true,
+      }),
+    });
+    expect(mockScanCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        phenotyper_id: 'user-001',
+        plant_age_days: 14,
+        cylinder_plant_id: 'plant-1',
+      }),
+    });
+    // The new row's history starts with the wave's dates, in the same transaction.
+    expect(fake.saved.plantChanges).toEqual([
+      expect.objectContaining({
+        plant_id: 'plant-1',
+        old_germination_date: null,
+        reason: "From wave 1's dates, at the plant's first scan",
+        changed_by_phenotyper_id: 'user-001',
+      }),
+    ]);
+  });
+
+  it("doesn't keep the plant's new row when the scan can't be saved (#428)", async () => {
+    mockScanCreate.mockRejectedValue(new Error('database is locked'));
+    await scanner.initialize(buildSettings(outputDir, true));
+
+    const result = await scanner.scan();
+
+    const fake = db.current as ReturnType<typeof fakeScannerDb>;
+    expect(result.db_saved).toBe(false);
+    // The plant row was written in the same transaction, so it went with the scan.
+    expect(fake.tx.cylinderPlant.create).toHaveBeenCalled();
+    expect(fake.saved.plants).toEqual([]);
+    expect(fake.saved.plantChanges).toEqual([]);
+  });
+
   it('leaves db_saved undefined when no metadata was provided (no save attempted)', async () => {
     await scanner.initialize(buildSettings(outputDir, false));
 
@@ -163,5 +215,52 @@ describe('ScannerProcess — database save outcome (#392)', () => {
     expect(mockScanCreate).not.toHaveBeenCalled();
     expect(result.db_saved).toBeUndefined();
     expect(result.success).toBe(true);
+  });
+});
+
+describe('ScannerProcess — the plant age is checked before scanning (#407, #428)', () => {
+  it("refuses an age that isn't the days since the plant's germination date, without starting the scanner", async () => {
+    const sendCommand = vi.fn().mockResolvedValue({ success: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scanner = new ScannerProcess({ sendCommand } as any);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const settings = buildSettings(os.tmpdir(), true);
+    settings.metadata = { ...settings.metadata!, plant_age_days: 13 };
+    expect(await scanner.initialize(settings)).toEqual({
+      success: false,
+      initialized: false,
+      error:
+        "The plant age (13) isn't the days since this plant's germination date (14).",
+    });
+    expect(sendCommand).not.toHaveBeenCalled();
+  });
+
+  it("refuses a wave whose dates aren't set", async () => {
+    const sendCommand = vi.fn().mockResolvedValue({ success: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scanner = new ScannerProcess({ sendCommand } as any);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const settings = buildSettings(os.tmpdir(), true);
+    settings.metadata = { ...settings.metadata!, wave_number: 2 };
+    expect((await scanner.initialize(settings)).error).toBe(
+      "Set wave 2's dates first."
+    );
+  });
+
+  it("doesn't keep the previous plant's settings after a refusal", async () => {
+    const sendCommand = vi.fn().mockResolvedValue({ success: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const scanner = new ScannerProcess({ sendCommand } as any);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await scanner.initialize(buildSettings(os.tmpdir(), true));
+    const bad = buildSettings(os.tmpdir(), true);
+    bad.metadata = {
+      ...bad.metadata!,
+      plant_id: 'plant-002',
+      plant_age_days: 3,
+    };
+    expect((await scanner.initialize(bad)).success).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((scanner as any).currentSettings).toBeNull();
   });
 });

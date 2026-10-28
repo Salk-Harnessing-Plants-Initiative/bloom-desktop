@@ -16,6 +16,7 @@ import { PrismaClient } from '@prisma/client';
 import { ScannerProcess } from '../../src/main/cylinderscan/scanner-process';
 import { PythonProcess } from '../../src/main/python-process';
 import { initializeDatabase } from '../../src/main/database';
+import { toIsoDate } from '../../src/utils/wave-dates';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -131,6 +132,24 @@ async function setupTestDatabase(): Promise<{
     },
   });
   console.log(`[PASS] Created test experiment: ${experiment.id}`);
+
+  // Wave 1 germinated 14 days ago, so the scan's plant age of 14 is the days since
+  // germination: the scanner refuses any other age (#428).
+  const today = new Date();
+  const daysAgo = (days: number) =>
+    toIsoDate(
+      new Date(today.getFullYear(), today.getMonth(), today.getDate() - days)
+    );
+  await prisma.cylinderWave.create({
+    data: {
+      experiment_id: experiment.id,
+      wave_number: 1,
+      germination_date: daysAgo(14),
+      sowing_date: daysAgo(17),
+      set_by_phenotyper_id: phenotyper.id,
+    },
+  });
+  console.log('[PASS] Created wave 1, germinated 14 days ago');
 
   return {
     prisma,
@@ -263,6 +282,12 @@ async function runTest(): Promise<void> {
       throw new Error('Scan wave_number mismatch');
     }
     console.log('[PASS] Scan wave_number matches');
+
+    // The scan is saved under its plant, created from wave 1's dates.
+    if (!savedScan.cylinder_plant_id) {
+      throw new Error('Scan is not linked to its plant');
+    }
+    console.log('[PASS] Scan is linked to its plant');
 
     // Verify scan parameters
     if (savedScan.num_frames !== scanResult.frames_captured) {
