@@ -42,9 +42,6 @@ export interface ScanMetadata {
   /** The plant's transfer-to-cylinder date; left out when it's the germination day */
   transfer_date?: string;
 
-  /** The plant's germination colour (#429), with its dates; left out when it has none */
-  germ_day_color?: string;
-
   /** Relative scan directory path (e.g., "2026-03-04/PLANT-001/uuid"), pilot-compatible */
   scan_path?: string;
 }

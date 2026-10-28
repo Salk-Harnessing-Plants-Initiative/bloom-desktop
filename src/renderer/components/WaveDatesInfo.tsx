@@ -126,12 +126,6 @@ export function WaveDatesInfo({
                   : 'the same day as germination'}
               </span>
             </p>
-            {wave.germ_day_color && (
-              <p>
-                <span className={LABEL}>Germination colour:</span>{' '}
-                <span className="text-gray-900">{wave.germ_day_color}</span>
-              </p>
-            )}
           </>
         )}
         <p className="text-xs text-gray-500">

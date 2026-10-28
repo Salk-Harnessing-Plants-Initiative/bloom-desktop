@@ -116,7 +116,6 @@ async function withScanCounts(
     germination_date: row.germination_date,
     sowing_date: row.sowing_date,
     transfer_date: row.transfer_date,
-    germ_day_color: row.germ_day_color,
     note: row.note,
     set_by_name: nameOf(row.set_by_phenotyper_id),
     set_at: row.updatedAt.toISOString(),
@@ -130,8 +129,6 @@ async function withScanCounts(
         new_sowing_date: c.new_sowing_date,
         old_transfer_date: c.old_transfer_date,
         new_transfer_date: c.new_transfer_date,
-        old_germ_day_color: c.old_germ_day_color,
-        new_germ_day_color: c.new_germ_day_color,
         reason: c.reason,
         changed_by_name: nameOf(c.changed_by_phenotyper_id),
         changed_at: c.changedAt.toISOString(),
@@ -190,7 +187,6 @@ export async function createWave(
         germination_date: null,
         sowing_date: null,
         transfer_date: null,
-        germ_day_color: null,
       }
     : datesToSave(dates);
   try {
@@ -244,8 +240,6 @@ export async function createWave(
           new_sowing_date: toSave.sowing_date,
           old_transfer_date: null,
           new_transfer_date: toSave.transfer_date,
-          old_germ_day_color: null,
-          new_germ_day_color: toSave.germ_day_color,
           reason: note || null,
           changed_by_phenotyper_id: phenotyperId,
         },
@@ -314,8 +308,6 @@ export async function changeDates(
           new_sowing_date: toSave.sowing_date,
           old_transfer_date: wave.transfer_date,
           new_transfer_date: toSave.transfer_date,
-          old_germ_day_color: wave.germ_day_color,
-          new_germ_day_color: toSave.germ_day_color,
           reason: reason || null,
           changed_by_phenotyper_id: phenotyperId,
         },

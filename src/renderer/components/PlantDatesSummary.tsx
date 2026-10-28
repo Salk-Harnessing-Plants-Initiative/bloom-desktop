@@ -33,12 +33,6 @@ function DateLines({ dates }: { dates: PlantDates }) {
           ? formatWaveDate(dates.transfer_date)
           : 'the same day as germination'}
       </p>
-      {dates.germ_day_color && (
-        <p>
-          <span className={LABEL}>Germination colour:</span>{' '}
-          {dates.germ_day_color}
-        </p>
-      )}
     </>
   );
 }

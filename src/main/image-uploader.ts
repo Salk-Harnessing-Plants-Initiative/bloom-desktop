@@ -107,7 +107,7 @@ type ScanWithRelations = Prisma.ScanGetPayload<{
   };
 }>;
 
-/** What Bloom stores for a plant with no germination colour (as always sent before). */
+/** Bloom's germ_day_color: Bloom Desktop doesn't collect one (waves group the plants). */
 const NO_GERM_DAY_COLOR = 'none';
 
 /**
@@ -206,7 +206,7 @@ export class ImageUploader {
       wave_number: scan.wave_number ?? undefined,
       // From the plant's dates (#429); 0 and "none" for scans from before them.
       germ_day: scan.cylinderPlant ? germDay(scan.cylinderPlant) : 0,
-      germ_day_color: scan.cylinderPlant?.germ_day_color || NO_GERM_DAY_COLOR,
+      germ_day_color: NO_GERM_DAY_COLOR,
       plant_age_days: scan.plant_age_days ?? undefined,
       date_scanned: scan.capture_date?.toISOString(),
       device_name: scan.scanner_name ?? undefined,

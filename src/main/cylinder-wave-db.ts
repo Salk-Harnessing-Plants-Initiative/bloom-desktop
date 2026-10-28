@@ -4,16 +4,11 @@
  * pass a fake.
  */
 
-/**
- * A set of dates as stored: "YYYY-MM-DD"; a null transfer date is the germination day.
- * The germination colour (#429) travels with them: it marks the plants that germinated
- * together, so it's set, copied, locked and logged with the dates.
- */
+/** A set of dates as stored: "YYYY-MM-DD"; a null transfer date is the germination day. */
 export interface DateColumns {
   germination_date: string;
   sowing_date: string | null;
   transfer_date: string | null;
-  germ_day_color: string | null;
 }
 
 export interface WaveRow {
@@ -26,7 +21,6 @@ export interface WaveRow {
   sowing_date: string | null;
   transfer_date: string | null;
   /** Null when the dates are per plant, or there's no colour. */
-  germ_day_color: string | null;
   note: string | null;
   set_by_phenotyper_id: string | null;
   updatedAt: Date;
@@ -41,8 +35,6 @@ export interface ChangeRow {
   new_sowing_date: string | null;
   old_transfer_date: string | null;
   new_transfer_date: string | null;
-  old_germ_day_color: string | null;
-  new_germ_day_color: string | null;
   reason: string | null;
   changed_by_phenotyper_id: string | null;
   changedAt: Date;
@@ -67,8 +59,6 @@ export interface PlantChangeRow {
   new_sowing_date: string | null;
   old_transfer_date: string | null;
   new_transfer_date: string | null;
-  old_germ_day_color: string | null;
-  new_germ_day_color: string | null;
   reason: string | null;
   changed_by_phenotyper_id: string | null;
   changedAt: Date;
@@ -81,7 +71,6 @@ type WaveCreateData = {
   germination_date: string | null;
   sowing_date: string | null;
   transfer_date: string | null;
-  germ_day_color: string | null;
   note: string | null;
   set_by_phenotyper_id: string | null;
 };
@@ -163,7 +152,6 @@ export interface CylinderWaveTxLike {
         germination_date: string | null;
         sowing_date: string | null;
         transfer_date: string | null;
-        germ_day_color: string | null;
         set_by_phenotyper_id?: string;
         /** Switching between one set of dates for all plants and dates per plant. */
         dates_per_plant?: boolean;
@@ -180,8 +168,6 @@ export interface CylinderWaveTxLike {
         new_sowing_date: string | null;
         old_transfer_date: string | null;
         new_transfer_date: string | null;
-        old_germ_day_color: string | null;
-        new_germ_day_color: string | null;
         reason: string | null;
         changed_by_phenotyper_id: string | null;
       };
