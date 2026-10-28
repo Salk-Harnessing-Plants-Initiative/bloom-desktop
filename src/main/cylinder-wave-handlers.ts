@@ -1,0 +1,368 @@
+/**
+ * CylinderScan wave dates (#407, #428): each wave's sowing, germination and
+ * transfer-to-cylinder dates. Capture Scan computes the plant age from the
+ * germination date, so the dates are checked here as well as in the renderer:
+ * germination and sowing are required and not in the future, sowing is on or
+ * before germination, a germination date out of order with another wave's (or a
+ * wave number that skips ahead) needs a note, and once a wave has scans its dates
+ * only change with a reason. Every set and change is logged with the dates before
+ * and after. Saved scans keep the age they were saved with.
+ */
+
+import type { IpcMain } from 'electron';
+import type { DatabaseResponse } from '../types/database';
+import type {
+  CylinderWaveCreateInput,
+  CylinderWaveDateChangeInput,
+  CylinderWaveInfo,
+} from '../types/cylinder-wave';
+import {
+  MAX_REASON_LENGTH,
+  checkNewWave,
+  checkWaveDateChange,
+  storedWaveDates,
+  warningText,
+  waveNumberWarning,
+} from '../utils/wave-dates';
+
+import type { CylinderWaveDbLike, WaveRow } from './cylinder-wave-db';
+import {
+  datesToSave,
+  enteredDates,
+  fail,
+  isNonNegativeInteger,
+  phenotyperError,
+  phenotyperNames,
+  trimmed,
+} from './cylinder-dates-common';
+import { plantInfos } from './cylinder-plant-handlers';
+import { logPlantsOnWaveDates } from './cylinder-plant-log';
+
+export type {
+  CylinderWaveDbLike,
+  CylinderWaveTxLike,
+} from './cylinder-wave-db';
+
+export interface CylinderWaveDeps {
+  db: CylinderWaveDbLike;
+  /** Today's date; injectable for tests. */
+  now?: () => Date;
+}
+
+export { PHENOTYPER_REQUIRED, SET_BY_ADMIN } from './cylinder-dates-common';
+
+async function withScanCounts(
+  db: CylinderWaveDbLike,
+  rows: WaveRow[]
+): Promise<CylinderWaveInfo[]> {
+  const changes =
+    rows.length > 0
+      ? await db.cylinderWaveDateChange.findMany({
+          where: { wave_id: { in: rows.map((r) => r.id) } },
+          orderBy: { changedAt: 'asc' },
+        })
+      : [];
+  const nameOf = await phenotyperNames(db, [
+    ...rows.map((r) => r.set_by_phenotyper_id),
+    ...changes.map((c) => c.changed_by_phenotyper_id),
+  ]);
+  const ownDates =
+    rows.length > 0
+      ? await plantInfos(
+          db,
+          await db.cylinderPlant.findMany({
+            where: {
+              wave_id: { in: rows.map((r) => r.id) },
+              uses_wave_dates: false,
+            },
+            orderBy: { updatedAt: 'desc' },
+          })
+        )
+      : [];
+  // One query for every wave's live scans, rather than one per wave.
+  const counts =
+    rows.length > 0
+      ? await db.scan.groupBy({
+          by: ['experiment_id', 'wave_number'],
+          where: {
+            experiment_id: {
+              in: [...new Set(rows.map((r) => r.experiment_id))],
+            },
+            wave_number: { in: [...new Set(rows.map((r) => r.wave_number))] },
+            deleted: false,
+          },
+          _count: { _all: true },
+        })
+      : [];
+  const scanCount = (row: WaveRow) =>
+    counts.find(
+      (c) =>
+        c.experiment_id === row.experiment_id &&
+        c.wave_number === row.wave_number
+    )?._count._all ?? 0;
+  // Scans taken with a wave's dates are the ones saved under its plants: older scans
+  // of the same wave number (before its dates were recorded) don't lock its dates.
+  const datedScanCounts = await Promise.all(
+    rows.map((row) =>
+      db.scan.count({
+        where: { cylinderPlant: { wave_id: row.id }, deleted: false },
+      })
+    )
+  );
+  return rows.map((row, i) => ({
+    id: row.id,
+    wave_number: row.wave_number,
+    dates_per_plant: row.dates_per_plant,
+    germination_date: row.germination_date,
+    sowing_date: row.sowing_date,
+    transfer_date: row.transfer_date,
+    germ_day_color: row.germ_day_color,
+    note: row.note,
+    set_by_name: nameOf(row.set_by_phenotyper_id),
+    set_at: row.updatedAt.toISOString(),
+    changes: changes
+      .filter((c) => c.wave_id === row.id)
+      .map((c) => ({
+        id: c.id,
+        old_germination_date: c.old_germination_date,
+        new_germination_date: c.new_germination_date,
+        old_sowing_date: c.old_sowing_date,
+        new_sowing_date: c.new_sowing_date,
+        old_transfer_date: c.old_transfer_date,
+        new_transfer_date: c.new_transfer_date,
+        old_germ_day_color: c.old_germ_day_color,
+        new_germ_day_color: c.new_germ_day_color,
+        reason: c.reason,
+        changed_by_name: nameOf(c.changed_by_phenotyper_id),
+        changed_at: c.changedAt.toISOString(),
+      })),
+    scanCount: scanCount(row),
+    datedScanCount: datedScanCounts[i],
+    plantsWithOwnDates: ownDates.filter((p) => p.wave_id === row.id),
+  }));
+}
+
+export async function listWaves(
+  deps: CylinderWaveDeps,
+  experimentId: string
+): Promise<DatabaseResponse<CylinderWaveInfo[]>> {
+  if (!trimmed(experimentId)) {
+    return { success: false, error: 'experimentId must be a non-empty string' };
+  }
+  try {
+    const rows = await deps.db.cylinderWave.findMany({
+      where: { experiment_id: experimentId },
+      orderBy: { wave_number: 'asc' },
+    });
+    return { success: true, data: await withScanCounts(deps.db, rows) };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function createWave(
+  deps: CylinderWaveDeps,
+  input: CylinderWaveCreateInput
+): Promise<DatabaseResponse<CylinderWaveInfo>> {
+  const experimentId = trimmed(input?.experimentId);
+  const note = trimmed(input?.note);
+  const phenotyperId = trimmed(input?.phenotyperId);
+  if (!experimentId) {
+    return { success: false, error: 'experimentId must be a non-empty string' };
+  }
+  if (!isNonNegativeInteger(input.waveNumber)) {
+    return {
+      success: false,
+      error: 'waveNumber must be a non-negative integer',
+    };
+  }
+  if (note.length > MAX_REASON_LENGTH) {
+    return {
+      success: false,
+      error: `Keep the note under ${MAX_REASON_LENGTH} characters.`,
+    };
+  }
+  const datesPerPlant = input?.datesPerPlant === true;
+  const dates = enteredDates(input);
+  // A wave whose plants' dates differ stores none: each plant's are set before its first scan.
+  const toSave = datesPerPlant
+    ? {
+        germination_date: null,
+        sowing_date: null,
+        transfer_date: null,
+        germ_day_color: null,
+      }
+    : datesToSave(dates);
+  try {
+    const who = await phenotyperError(deps.db, phenotyperId);
+    if (who) return { success: false, error: who };
+    const existing = await deps.db.cylinderWave.findMany({
+      where: { experiment_id: experimentId },
+      orderBy: { wave_number: 'asc' },
+    });
+    if (existing.some((w) => w.wave_number === input.waveNumber)) {
+      return {
+        success: false,
+        error: `Wave ${input.waveNumber} already has its dates.`,
+      };
+    }
+    const skipped = waveNumberWarning(input.waveNumber, existing);
+    const check = datesPerPlant
+      ? {
+          error: null as string | null,
+          noteNeeded: skipped
+            ? `${warningText(skipped)} Add a note to proceed.`
+            : null,
+        }
+      : checkNewWave(
+          input.waveNumber,
+          dates,
+          existing,
+          (deps.now ?? (() => new Date()))()
+        );
+    if (check.error) return { success: false, error: check.error };
+    if (check.noteNeeded && !note)
+      return { success: false, error: check.noteNeeded };
+    // The first dates are logged too, so the history shows who set them and when.
+    const row = await deps.db.$transaction(async (tx) => {
+      const created = await tx.cylinderWave.create({
+        data: {
+          experiment_id: experimentId,
+          wave_number: input.waveNumber,
+          dates_per_plant: datesPerPlant,
+          ...toSave,
+          note: note || null,
+          set_by_phenotyper_id: phenotyperId,
+        },
+      });
+      await tx.cylinderWaveDateChange.create({
+        data: {
+          wave_id: created.id,
+          old_germination_date: null,
+          new_germination_date: toSave.germination_date,
+          old_sowing_date: null,
+          new_sowing_date: toSave.sowing_date,
+          old_transfer_date: null,
+          new_transfer_date: toSave.transfer_date,
+          old_germ_day_color: null,
+          new_germ_day_color: toSave.germ_day_color,
+          reason: note || null,
+          changed_by_phenotyper_id: phenotyperId,
+        },
+      });
+      return created;
+    });
+    const [info] = await withScanCounts(deps.db, [row]);
+    return { success: true, data: info };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export async function changeDates(
+  deps: CylinderWaveDeps,
+  input: CylinderWaveDateChangeInput
+): Promise<DatabaseResponse<CylinderWaveInfo>> {
+  const waveId = trimmed(input?.waveId);
+  const reason = trimmed(input?.reason);
+  const phenotyperId = trimmed(input?.phenotyperId);
+  if (!waveId)
+    return { success: false, error: 'waveId must be a non-empty string' };
+  const dates = enteredDates(input);
+  const toSave = datesToSave(dates);
+  try {
+    const wave = await deps.db.cylinderWave.findUnique({
+      where: { id: waveId },
+    });
+    if (!wave) return { success: false, error: 'That wave no longer exists.' };
+    if (wave.dates_per_plant) {
+      return {
+        success: false,
+        error: "This wave's dates are per plant: change them for each plant.",
+      };
+    }
+    const who = await phenotyperError(deps.db, phenotyperId);
+    if (who) return { success: false, error: who };
+    const [current] = await withScanCounts(deps.db, [wave]);
+    const others = (
+      await deps.db.cylinderWave.findMany({
+        where: { experiment_id: wave.experiment_id },
+        orderBy: { wave_number: 'asc' },
+      })
+    ).filter((w) => w.id !== wave.id);
+    const { saveError } = checkWaveDateChange(
+      {
+        waveNumber: wave.wave_number,
+        current: storedWaveDates(wave),
+        next: storedWaveDates(toSave),
+        reason,
+        // Only scans taken with these dates make them final.
+        waveHasScans: current.datedScanCount > 0,
+      },
+      others,
+      (deps.now ?? (() => new Date()))()
+    );
+    if (saveError) return { success: false, error: saveError };
+
+    const updated = await deps.db.$transaction(async (tx) => {
+      await tx.cylinderWaveDateChange.create({
+        data: {
+          wave_id: wave.id,
+          old_germination_date: wave.germination_date,
+          new_germination_date: toSave.germination_date,
+          old_sowing_date: wave.sowing_date,
+          new_sowing_date: toSave.sowing_date,
+          old_transfer_date: wave.transfer_date,
+          new_transfer_date: toSave.transfer_date,
+          old_germ_day_color: wave.germ_day_color,
+          new_germ_day_color: toSave.germ_day_color,
+          reason: reason || null,
+          changed_by_phenotyper_id: phenotyperId,
+        },
+      });
+      // Plants still on the wave's dates follow the correction (each logged); their
+      // earlier scans keep their age. Plants with their own dates aren't touched.
+      await logPlantsOnWaveDates(
+        tx,
+        wave.id,
+        toSave,
+        reason
+          ? `Wave ${wave.wave_number}'s dates changed: ${reason}`
+          : `Wave ${wave.wave_number}'s dates changed`,
+        phenotyperId
+      );
+      await tx.cylinderPlant.updateMany({
+        where: { wave_id: wave.id, uses_wave_dates: true },
+        data: toSave,
+      });
+      // "Set by" follows the latest change; the change table keeps the history.
+      return tx.cylinderWave.update({
+        where: { id: wave.id },
+        data: {
+          ...toSave,
+          set_by_phenotyper_id: phenotyperId,
+        },
+      });
+    });
+    const [info] = await withScanCounts(deps.db, [updated]);
+    return { success: true, data: info };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+export function registerCylinderWaveHandlers(
+  deps: CylinderWaveDeps & { ipcMain: Pick<IpcMain, 'handle'> }
+): void {
+  deps.ipcMain.handle('db:cylinderWaves:list', (_event, experimentId: string) =>
+    listWaves(deps, experimentId)
+  );
+  deps.ipcMain.handle(
+    'db:cylinderWaves:create',
+    (_event, input: CylinderWaveCreateInput) => createWave(deps, input)
+  );
+  deps.ipcMain.handle(
+    'db:cylinderWaves:changeDates',
+    (_event, input: CylinderWaveDateChangeInput) => changeDates(deps, input)
+  );
+}

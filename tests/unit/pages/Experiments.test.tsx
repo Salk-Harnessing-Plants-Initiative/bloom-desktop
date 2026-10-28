@@ -66,6 +66,27 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     };
   });
 
+  it('expands the experiments box to show everything, and shrinks it back', async () => {
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [makeExperiment()],
+    });
+    const { container } = renderPage('cylinderscan');
+    await waitFor(() =>
+      expect(container.querySelector('ul.experiments-list')).not.toBeNull()
+    );
+    const box = () => container.querySelector('ul.experiments-list')!;
+    // A fixed height that scrolls, and can be dragged taller or shorter.
+    expect(box()).toHaveClass('h-64', 'overflow-auto', 'resize-y');
+    const toggle = screen.getByTestId('experiments-list-toggle');
+    expect(toggle).toHaveTextContent('Expand');
+    await userEvent.click(toggle);
+    expect(box()).not.toHaveClass('h-64');
+    expect(toggle).toHaveTextContent('Shrink');
+    await userEvent.click(toggle);
+    expect(box()).toHaveClass('h-64');
+  });
+
   it('shows linked waves inline for a graviscan experiment, with Unlink gated by confirm()', async () => {
     listExperiments.mockResolvedValue({
       success: true,

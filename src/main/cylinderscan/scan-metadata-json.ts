@@ -25,6 +25,14 @@ export interface ScanMetadataJson {
   accession_name?: string;
   plant_age_days: number;
   wave_number: number;
+  /** The plant's germination date the age was computed from (#428) */
+  germination_date?: string;
+  /** The plant's sowing date, when known */
+  sowing_date?: string;
+  /** The plant's transfer date; absent when it's the germination day */
+  transfer_date?: string;
+  /** The plant's germination colour (#429), when it has one */
+  germ_day_color?: string;
   capture_date: string;
   num_frames: number;
   /**
@@ -102,6 +110,14 @@ export function buildMetadataObject(
   // Include optional fields only when provided
   if (meta.accession_name !== undefined) {
     result.accession_name = meta.accession_name;
+  }
+  for (const key of [
+    'germination_date',
+    'sowing_date',
+    'transfer_date',
+    'germ_day_color',
+  ] as const) {
+    if (meta[key] !== undefined) result[key] = meta[key];
   }
   const scanPath = meta.scan_path ?? settings.output_path;
   if (scanPath !== undefined) {

@@ -33,6 +33,18 @@ export interface ScanMetadata {
   /** Wave number for this scan (typically 1-4 for multiple time points) */
   wave_number: number;
 
+  /** The plant's germination date the age was computed from, "YYYY-MM-DD" (#428) */
+  germination_date?: string;
+
+  /** The plant's sowing date, when known */
+  sowing_date?: string;
+
+  /** The plant's transfer-to-cylinder date; left out when it's the germination day */
+  transfer_date?: string;
+
+  /** The plant's germination colour (#429), with its dates; left out when it has none */
+  germ_day_color?: string;
+
   /** Relative scan directory path (e.g., "2026-03-04/PLANT-001/uuid"), pilot-compatible */
   scan_path?: string;
 }
@@ -148,7 +160,7 @@ export interface ScannerAPI {
    */
   initialize: (
     settings: ScannerSettings
-  ) => Promise<{ success: boolean; initialized: boolean }>;
+  ) => Promise<{ success: boolean; initialized: boolean; error?: string }>;
 
   /**
    * Cleanup scanner resources.

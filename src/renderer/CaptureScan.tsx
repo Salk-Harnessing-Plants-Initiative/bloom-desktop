@@ -26,10 +26,12 @@ import type {
 import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
 import { buildScanPath, toRelativeScanPath } from '../utils/scan-path';
+import { plantAgeDays } from '../utils/wave-dates';
 import {
   validateWaveNumber,
   validatePlantAgeDays,
 } from '../utils/metadata-validation';
+import { useWaveDateFields } from './hooks/useWaveDateFields';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -90,6 +92,24 @@ export function CaptureScan() {
   const [duplicateScanWarning, setDuplicateScanWarning] = useState<
     string | null
   >(null);
+
+  // The plant age comes from the plant's germination date (#407, #428).
+  const setPlantAgeDays = useCallback((age: string) => {
+    setMetadata((prev) =>
+      prev.plantAgeDays === age ? prev : { ...prev, plantAgeDays: age }
+    );
+  }, []);
+  const {
+    waveDates,
+    holdsStartScan,
+    startScanHold,
+    waveNote,
+    plantAgeNote,
+    savePlantDatesForScan,
+  } = useWaveDateFields(metadata, setPlantAgeDays, isScanning);
+  // The scan listeners are registered once: reach the latest reload through a ref.
+  const reloadWavesRef = useRef(waveDates.reload);
+  reloadWavesRef.current = waveDates.reload;
 
   // Handle barcode validation changes from MetadataForm
   const handleBarcodeValidationChange = useCallback(
@@ -290,8 +310,9 @@ export function CaptureScan() {
             // Convert numbers from session to strings for form state
             waveNumber:
               session.waveNumber !== null ? String(session.waveNumber) : '',
-            plantAgeDays:
-              session.plantAgeDays !== null ? String(session.plantAgeDays) : '',
+            // The plant age isn't restored: it's always computed from the plant's
+            // dates (#407, #428), and a saved one could land after the computed
+            // one and replace it in the form.
             accessionName: session.accessionName ?? '',
             // Note: plantQrCode is NOT restored - it's unique per scan
           }));
@@ -416,6 +437,10 @@ export function CaptureScan() {
           setTimeout(() => setShowSuccessMessage(false), 5000);
         }
 
+        // The wave and plant now have a scan (and the plant its row): changing their
+        // dates now needs a reason.
+        void reloadWavesRef.current();
+
         // Reset metadata for next scan (optional)
         // For now, keep the same experiment/phenotyper but increment plant
       } else {
@@ -479,13 +504,19 @@ export function CaptureScan() {
   };
 
   const errors = validateMetadata();
+  // The age is computed from the plant's dates, never typed: a blank age (no dates
+  // yet) isn't the operator's to fix, so it isn't flagged (Start Scan still waits).
+  const shownErrors = !metadata.plantAgeDays
+    ? { ...errors, plantAgeDays: undefined }
+    : errors;
   const isFormValid = Object.keys(errors).length === 0;
   const canStartScan =
     isFormValid &&
     cameraConfigured &&
     !isScanning &&
     !barcodeValidationError &&
-    !duplicateScanWarning;
+    !duplicateScanWarning &&
+    !holdsStartScan;
 
   // Start scan handler
   const handleStartScan = async () => {
@@ -507,6 +538,14 @@ export function CaptureScan() {
       setUnsavedScan(null);
       setShowIdleResetBanner(false);
 
+      // A per-plant wave's plant dates are saved first; if they can't be, don't scan.
+      // The age is then taken from the dates the scan uses, as of now (a correction
+      // just saved, or a day that has changed since the form was filled in).
+      const plantDates = await savePlantDatesForScan();
+      const plantAge = plantDates
+        ? plantAgeDays(plantDates.germination_date, new Date())
+        : parseInt(metadata.plantAgeDays, 10);
+
       // Initialize scanner
       // Build pilot-compatible scan directory path: YYYY-MM-DD/<plant_qr_code>/<scan_uuid>
       const scanUuid = crypto.randomUUID();
@@ -516,7 +555,7 @@ export function CaptureScan() {
       const numFrames = scanNumFrames ?? 72;
       const secondsPerRot = scanSecondsPerRot ?? 7.0;
 
-      await window.electron.scanner.initialize({
+      const init = await window.electron.scanner.initialize({
         camera: cameraSettings,
         daq: {
           ...DEFAULT_DAQ_SETTINGS,
@@ -531,11 +570,20 @@ export function CaptureScan() {
           scanner_name: scannerName,
           plant_id: metadata.plantQrCode,
           accession_name: metadata.accessionName || undefined,
-          plant_age_days: parseInt(metadata.plantAgeDays, 10),
+          plant_age_days: plantAge,
           wave_number: parseInt(metadata.waveNumber, 10),
+          // The plant's dates the age was computed from, for metadata.json.
+          germination_date: plantDates?.germination_date,
+          sowing_date: plantDates?.sowing_date ?? undefined,
+          transfer_date: plantDates?.transfer_date ?? undefined,
+          germ_day_color: plantDates?.germ_day_color ?? undefined,
           scan_path: relativePath,
         },
       });
+      // Don't scan when the scanner refused to start (e.g. a bad plant age).
+      if (init?.success === false) {
+        throw new Error(init.error ?? 'The scanner could not start.');
+      }
 
       // Start scan
       await window.electron.scanner.scan();
@@ -673,8 +721,16 @@ export function CaptureScan() {
                 values={metadata}
                 onChange={setMetadata}
                 disabled={isScanning}
-                errors={errors}
+                errors={shownErrors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
+                waveNote={waveNote}
+                plantAgeReadOnly
+                plantAgeNote={plantAgeNote}
+                plantAgeLabel={
+                  waveDates.wave?.dates_per_plant
+                    ? 'Compute Plant Age (Days)'
+                    : undefined
+                }
               />
 
               {/* Duplicate Scan Warning */}
@@ -798,6 +854,9 @@ export function CaptureScan() {
                       Camera not configured
                     </p>
                   )}
+                {startScanHold && (
+                  <p className="text-sm text-red-600 mt-2">{startScanHold}</p>
+                )}
               </div>
             </div>
           </div>

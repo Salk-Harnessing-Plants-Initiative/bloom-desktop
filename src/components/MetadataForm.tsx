@@ -6,7 +6,13 @@
  * Integrates PlantBarcodeInput for barcode validation and autocomplete.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  type ReactNode,
+} from 'react';
 import { ExperimentChooser } from '../renderer/components/ExperimentChooser';
 import { PhenotyperChooser } from '../renderer/components/PhenotyperChooser';
 import { PlantBarcodeInput } from './PlantBarcodeInput';
@@ -33,6 +39,14 @@ export interface MetadataFormProps {
   errors?: Partial<Record<keyof ScanMetadata, string>>;
   /** Callback when barcode validation state changes */
   onBarcodeValidationChange?: (isValid: boolean, error?: string) => void;
+  /** The age is calculated from the wave's germination date and can't be typed (#407) */
+  plantAgeReadOnly?: boolean;
+  /** Shown under the plant age, e.g. where it came from */
+  plantAgeNote?: ReactNode;
+  /** The plant age field's label, e.g. "Compute Plant Age (Days)" for a per-plant wave */
+  plantAgeLabel?: string;
+  /** Shown under the wave number, e.g. the box asking for its germination date */
+  waveNote?: ReactNode;
 }
 
 export function MetadataForm({
@@ -41,6 +55,10 @@ export function MetadataForm({
   disabled = false,
   errors = {},
   onBarcodeValidationChange,
+  plantAgeReadOnly = false,
+  plantAgeNote,
+  plantAgeLabel = 'Plant Age (Days)',
+  waveNote,
 }: MetadataFormProps) {
   // State for experiment's accession ID (fetched when experiment changes)
   const [experimentAccessionId, setExperimentAccessionId] = useState<
@@ -203,12 +221,13 @@ export function MetadataForm({
         {errors.waveNumber && (
           <p className={errorClassName}>{errors.waveNumber}</p>
         )}
+        {waveNote}
       </div>
 
       {/* Plant Age (Days) */}
       <div>
         <label htmlFor="plantAgeDays" className={labelClassName}>
-          Plant Age (Days) <span className="text-red-500">*</span>
+          {plantAgeLabel} <span className="text-red-500">*</span>
         </label>
         <input
           id="plantAgeDays"
@@ -218,9 +237,11 @@ export function MetadataForm({
           value={values.plantAgeDays}
           onChange={(e) => handleFieldChange('plantAgeDays', e.target.value)}
           disabled={disabled}
+          readOnly={plantAgeReadOnly}
           className={inputClassName}
           placeholder="e.g., 14"
         />
+        {plantAgeNote}
         {errors.plantAgeDays && (
           <p className={errorClassName}>{errors.plantAgeDays}</p>
         )}
