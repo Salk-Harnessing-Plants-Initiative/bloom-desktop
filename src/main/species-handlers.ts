@@ -8,6 +8,9 @@ import type { IpcMain } from 'electron';
 import type { MachineConfig } from './config-store';
 import { BLOOM_SPECIES_PAGE_URL, type SpeciesStore } from './species-list';
 
+/** How long the sign-in and species query may take together before giving up. */
+export const BLOOM_SPECIES_FETCH_TIMEOUT_MS = 15_000;
+
 /** The parts of the machine config the fetch and the Species page link need. */
 export type BloomSpeciesConfig = Pick<
   MachineConfig,
@@ -30,25 +33,48 @@ export async function fetchBloomSpecies(
   }
   // Loaded on first use, as the uploader does, to keep app start-up light.
   const { createClient } = await import('@supabase/supabase-js');
+  // One time limit for the sign-in and the query together, so a Bloom that never
+  // answers can't keep Refresh waiting.
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    BLOOM_SPECIES_FETCH_TIMEOUT_MS
+  );
+  const timedOut = (): Error =>
+    new Error(
+      `Bloom didn't answer within ${BLOOM_SPECIES_FETCH_TIMEOUT_MS / 1000} seconds`
+    );
   const supabase = createClient(config.bloom_api_url, config.bloom_anon_key, {
     auth: { persistSession: false },
+    global: {
+      fetch: (input, init) => {
+        init?.signal?.addEventListener('abort', () => controller.abort());
+        return fetch(input, { ...init, signal: controller.signal });
+      },
+    },
   });
-  const { error: authError } = await supabase.auth.signInWithPassword({
-    email: config.bloom_scanner_username,
-    password: config.bloom_scanner_password,
-  });
-  if (authError)
-    throw new Error(`Couldn't sign in to Bloom: ${authError.message}`);
-  // No sign-out: the session isn't kept, and signOut() would end the account's
-  // sessions everywhere, including running uploads.
-  const { data, error } = await supabase
-    .from('species')
-    .select('common_name')
-    .is('deleted_at', null);
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(
-    (row: { common_name: string | null }) => row.common_name ?? ''
-  );
+  try {
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: config.bloom_scanner_username,
+      password: config.bloom_scanner_password,
+    });
+    if (controller.signal.aborted) throw timedOut();
+    if (authError)
+      throw new Error(`Couldn't sign in to Bloom: ${authError.message}`);
+    // No sign-out: the session isn't kept, and signOut() would end the account's
+    // sessions everywhere, including running uploads.
+    const { data, error } = await supabase
+      .from('species')
+      .select('common_name')
+      .is('deleted_at', null);
+    if (controller.signal.aborted) throw timedOut();
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(
+      (row: { common_name: string | null }) => row.common_name ?? ''
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export interface SpeciesHandlerDeps {

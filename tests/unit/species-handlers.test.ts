@@ -13,6 +13,7 @@ vi.mock('@supabase/supabase-js', () => ({
 
 import { createClient } from '@supabase/supabase-js';
 import {
+  BLOOM_SPECIES_FETCH_TIMEOUT_MS,
   fetchBloomSpecies,
   registerSpeciesHandlers,
 } from '../../src/main/species-handlers';
@@ -44,6 +45,7 @@ describe('fetchBloomSpecies', () => {
       'anon',
       {
         auth: { persistSession: false },
+        global: { fetch: expect.any(Function) },
       }
     );
     expect(signIn).toHaveBeenCalledWith({
@@ -70,6 +72,45 @@ describe('fetchBloomSpecies', () => {
     await expect(fetchBloomSpecies(CONFIG)).rejects.toThrow(
       "Couldn't sign in to Bloom: Invalid login credentials"
     );
+  });
+
+  it("gives up when Bloom doesn't answer within the time limit", async () => {
+    vi.useFakeTimers();
+    try {
+      // A Bloom that accepts the request and never answers, until it's aborted.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(
+          (_input: unknown, init?: RequestInit) =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () =>
+                reject(new Error('aborted'))
+              );
+            })
+        )
+      );
+      signIn.mockImplementation(async () => {
+        const options = vi.mocked(createClient).mock.calls[0][2] as {
+          global: { fetch: typeof fetch };
+        };
+        try {
+          await options.global.fetch('https://api.bloom.salk.edu/proxy/auth');
+          return { error: null };
+        } catch {
+          return { error: { message: 'fetch failed' } };
+        }
+      });
+      const result = fetchBloomSpecies(CONFIG);
+      const assertion = expect(result).rejects.toThrow(
+        "Bloom didn't answer within 15 seconds"
+      );
+      await vi.advanceTimersByTimeAsync(BLOOM_SPECIES_FETCH_TIMEOUT_MS);
+      await assertion;
+      expect(from).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
   });
 
   it('passes on a query error', async () => {
