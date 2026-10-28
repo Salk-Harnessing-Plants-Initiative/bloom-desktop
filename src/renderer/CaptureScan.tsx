@@ -576,7 +576,6 @@ export function CaptureScan() {
           germination_date: plantDates?.germination_date,
           sowing_date: plantDates?.sowing_date ?? undefined,
           transfer_date: plantDates?.transfer_date ?? undefined,
-          germ_day_color: plantDates?.germ_day_color ?? undefined,
           scan_path: relativePath,
         },
       });

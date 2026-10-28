@@ -16,8 +16,6 @@ export interface PlantDates {
   germination_date: string;
   sowing_date: string | null;
   transfer_date: string | null;
-  /** The germination colour (#429), which goes with the dates; null for none. */
-  germ_day_color: string | null;
 }
 
 export interface UseWaveDatesResult {
@@ -170,7 +168,6 @@ export function useWaveDates(
           germination_date: wave.germination_date,
           sowing_date: wave.sowing_date,
           transfer_date: wave.transfer_date,
-          germ_day_color: wave.germ_day_color,
         }
       : null;
   const plantDates = plant ?? waveDates;
@@ -184,14 +181,12 @@ export function useWaveDates(
       (p) =>
         p.germination_date === first.germination_date &&
         p.sowing_date === first.sowing_date &&
-        p.transfer_date === first.transfer_date &&
-        p.germ_day_color === first.germ_day_color
+        p.transfer_date === first.transfer_date
     )
       ? {
           germination_date: first.germination_date,
           sowing_date: first.sowing_date,
           transfer_date: first.transfer_date,
-          germ_day_color: first.germ_day_color,
         }
       : null;
   const canUseSameDates =

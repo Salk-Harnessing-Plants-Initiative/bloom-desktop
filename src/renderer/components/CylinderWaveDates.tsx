@@ -53,7 +53,6 @@ function changedDates(
       change.new_sowing_date &&
         `sowing ${formatWaveDate(change.new_sowing_date)}`,
       `transfer ${transferText(change.new_transfer_date)}`,
-      change.new_germ_day_color && `colour ${change.new_germ_day_color}`,
     ]
       .filter(Boolean)
       .join(', ');
@@ -72,13 +71,6 @@ function changedDates(
   if (change.old_transfer_date !== change.new_transfer_date) {
     parts.push(
       `transfer ${transferText(change.old_transfer_date)} → ${transferText(change.new_transfer_date)}`
-    );
-  }
-  if (
-    (change.old_germ_day_color ?? null) !== (change.new_germ_day_color ?? null)
-  ) {
-    parts.push(
-      `colour ${change.old_germ_day_color ?? 'none'} → ${change.new_germ_day_color ?? 'none'}`
     );
   }
   return parts.join('; ');
@@ -134,7 +126,6 @@ function PlantsWithOwnDates({
               {plant.sowing_date &&
                 ` · sown ${formatWaveDate(plant.sowing_date)}`}
               {` · transferred ${transferText(plant.transfer_date)}`}
-              {plant.germ_day_color && ` · colour ${plant.germ_day_color}`}
               {plant.reason ? `. Reason: ${plant.reason}` : ''}
               {plant.changes.length > 0 && (
                 <ul className="ml-4 text-gray-500">
@@ -207,7 +198,6 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
                     {wave.transfer_date
                       ? ` · transferred ${formatWaveDate(wave.transfer_date)}`
                       : ' · transferred the same day'}
-                    {wave.germ_day_color && ` · colour ${wave.germ_day_color}`}
                   </span>
                 </>
               )}

@@ -87,7 +87,6 @@ function plantDatesText(p: PlantDates): string {
     p.transfer_date
       ? `transferred ${formatWaveDate(p.transfer_date)}`
       : 'transferred the same day',
-    p.germ_day_color && `colour ${p.germ_day_color}`,
   ]
     .filter(Boolean)
     .join(' · ');

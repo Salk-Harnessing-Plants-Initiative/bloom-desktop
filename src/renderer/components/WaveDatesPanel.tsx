@@ -96,7 +96,6 @@ export function WaveDatesPanel({
               germinationDate: entered.germination,
               sowingDate: entered.sowing,
               transferDate: entered.transfer || undefined,
-              germDayColor: entered.color || undefined,
               note: savedNote || undefined,
               phenotyperId,
             }

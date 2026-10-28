@@ -186,19 +186,6 @@ describe('scan-metadata-json', () => {
       expect(metadata).not.toHaveProperty('transfer_date');
     });
 
-    it("records the plant's germination colour (#429)", () => {
-      const base = makeScannerSettings();
-      const settings = makeScannerSettings({
-        metadata: { ...base.metadata!, germ_day_color: 'GermRed' },
-      });
-      expect(buildMetadataObject(settings, new Date()).germ_day_color).toBe(
-        'GermRed'
-      );
-      expect(
-        buildMetadataObject(makeScannerSettings(), new Date())
-      ).not.toHaveProperty('germ_day_color');
-    });
-
     it('omits the dates when none were given', () => {
       const metadata = buildMetadataObject(makeScannerSettings(), new Date());
 

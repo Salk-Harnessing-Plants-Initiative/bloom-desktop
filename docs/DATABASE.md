@@ -193,7 +193,7 @@ model Image {
 Every plant in a CylinderScan wave has a sowing, germination and transfer-to-cylinder date, local calendar dates stored as `"YYYY-MM-DD"`. Capture Scan computes the plant age from the plant's **germination date**, always: the calendar days from it to the scan date (days after germination, which is what the processing pipeline expects). A plant is its wave plus its barcode, since barcodes are reused across waves.
 
 - **The wave** (`CylinderWave`): the first time a wave is used, Capture Scan asks whether all its plants share their dates. If they do, the three dates are entered once on the wave. If not (`dates_per_plant`), the wave has no dates and each plant's are asked for before its first scan. The wave's Edit switches between the two: a wave can go per plant at any time (plants on the wave's dates keep them as their own), and back to one set of dates for all its plants before its first scan, or after it only with the dates all its plants share.
-- **The plant** (`CylinderPlant`): created at the plant's first scan from its wave's dates (`uses_wave_dates`), or when its own dates are set ("Different dates for this plant", with a reason, or a plant in a per-plant wave, whose dates are saved as its first scan starts). A correction to the wave's dates reaches the plants still on them; plants with their own dates aren't touched. Each plant's history (`CylinderPlantDateChange`) records everything that happened to its dates, including through its wave: the row created from the wave's dates at its first scan, a wave correction passed on to it, and the wave going per plant (it keeps the wave's dates as its own). The germination colour goes with the dates: set once on the wave (and copied to each plant) or with each plant's dates, and locked and logged with them (`old_germ_day_color`/`new_germ_day_color` in both change logs). On upload, Bloom's `germ_day` is the days from the plant's sowing to its germination and `germ_day_color` its colour (`none` when it has none); scans with no plant send 0 and `none`, as before.
+- **The plant** (`CylinderPlant`): created at the plant's first scan from its wave's dates (`uses_wave_dates`), or when its own dates are set ("Different dates for this plant", with a reason, or a plant in a per-plant wave, whose dates are saved as its first scan starts). A correction to the wave's dates reaches the plants still on them; plants with their own dates aren't touched. Each plant's history (`CylinderPlantDateChange`) records everything that happened to its dates, including through its wave: the row created from the wave's dates at its first scan, a wave correction passed on to it, and the wave going per plant (it keeps the wave's dates as its own). On upload, Bloom's `germ_day` is the days from the plant's sowing to its germination (0 for scans with no plant, as before); `germ_day_color` is always `none`, since waves group the plants.
 - **Rules**, the same for both: germination and sowing can't be in the future, sowing is before germination (not the same day), and a transfer date (null for the germination day) is on or after germination. A sowing or germination date out of order with another wave's (on or before an earlier wave's, or on or after a later one's), or a wave number that skips ahead, needs a `note`. Once a wave or plant has scans taken with its dates (saved under its plants; older scans of the same wave number don't count), its dates are final (the main process refuses a change); a mistake is corrected with the Bloom team.
 - **Logs:** every set and change is recorded with each date before and after (`CylinderWaveDateChange`, `CylinderPlantDateChange`). Saved scans keep their age. An entry with no phenotyper was written by the backfill, and is shown as set by admin.
 - **Scanning:** before a scan starts, the main process checks the age is the days since the plant's germination date; the scan is then saved under the plant (`Scan.cylinder_plant_id`), in one transaction with the plant's row.
@@ -207,7 +207,6 @@ model CylinderWave {
   germination_date     String?  // null when the dates are per plant
   sowing_date          String?
   transfer_date        String?  // null: the germination day
-  germ_day_color       String?  // the wave's germination colour (#429); null when per plant, or none
   note                 String?
   set_by_phenotyper_id String?
   createdAt            DateTime @default(now())
@@ -225,7 +224,6 @@ model CylinderPlant {
   transfer_date        String?  // null: the germination day
   uses_wave_dates      Boolean  @default(true)
   reason               String?  // why this plant's dates differ from its wave's
-  germ_day_color       String?  // the plant's germination colour, camel case (#429); null for none
   set_by_phenotyper_id String?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

@@ -60,7 +60,6 @@ interface MockScan {
   cylinderPlant?: {
     germination_date: string;
     sowing_date: string | null;
-    germ_day_color: string | null;
   } | null;
 }
 
@@ -1004,13 +1003,12 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         });
       });
 
-      it("sends germ_day as the days from the plant's sowing to its germination, with its colour (#429)", async () => {
+      it("sends germ_day as the days from the plant's sowing to its germination, and colour none (#429)", async () => {
         mockPrismaClient.scan.findUnique.mockResolvedValue({
           ...mockScan,
           cylinderPlant: {
             germination_date: '2026-10-04',
             sowing_date: '2026-10-01',
-            germ_day_color: 'GermRed',
           },
         });
         const uploader = new ImageUploader(mockPrismaClient);
@@ -1020,11 +1018,11 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         const metadata = (uploadImages as Mock).mock.calls[0][1];
         expect(metadata[0]).toMatchObject({
           germ_day: 3,
-          germ_day_color: 'GermRed',
+          germ_day_color: 'none',
         });
       });
 
-      it('sends germ_day 0 and colour "none" as before for a scan with no plant dates, or a plant with no colour', async () => {
+      it('sends germ_day 0 for a scan with no plant dates, and colour "none" always', async () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
         await uploader.uploadScan('scan-123');
@@ -1038,7 +1036,6 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
           cylinderPlant: {
             germination_date: '2026-10-04',
             sowing_date: '2026-10-02',
-            germ_day_color: null,
           },
         });
         await uploader.uploadScan('scan-123');

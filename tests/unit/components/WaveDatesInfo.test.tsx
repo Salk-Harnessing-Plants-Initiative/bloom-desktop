@@ -155,23 +155,6 @@ describe('WaveDatesInfo', () => {
     await waitFor(() => expect(onUseDatesPerPlant).toHaveBeenCalled());
   });
 
-  it("sends a change to the wave's colour alone, cleaned, before the first scan", async () => {
-    const onChangeDate = renderInfo();
-    fireEvent.click(screen.getByTestId('wave-dates-edit'));
-    // Typed and saved without leaving the field.
-    fireEvent.change(screen.getByLabelText('Germination colour'), {
-      target: { value: 'germ red' },
-    });
-    const save = screen.getByTestId('wave-dates-edit-save');
-    expect(save).not.toBeDisabled();
-    fireEvent.click(save);
-    await waitFor(() =>
-      expect(onChangeDate).toHaveBeenCalledWith(
-        expect.objectContaining({ germDayColor: 'GermRed' })
-      )
-    );
-  });
-
   it('before scans, needs no reason and shows no warning', () => {
     renderInfo();
     fireEvent.click(screen.getByTestId('wave-dates-edit'));

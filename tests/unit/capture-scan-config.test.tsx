@@ -1254,57 +1254,6 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     });
   });
 
-  it("asks a per-plant wave's plant for its germination colour with its dates, cleaned and sent (#429)", async () => {
-    perPlantWave();
-    plantsSetDates().mockResolvedValue({ success: true, data: null });
-    renderCaptureScan();
-    await screen.findByTestId('plant-dates-box');
-    // The colour is an optional field next to the dates, with an ⓘ.
-    const color = screen.getByLabelText('Germination colour');
-    expect(color).toHaveAttribute('placeholder', 'none');
-    fireEvent.click(screen.getByTestId('germ-day-color-info'));
-    expect(screen.getByTestId('germ-day-color-info-text')).toHaveTextContent(
-      "You can add the plant's germination colour, for example Red or GermRed."
-    );
-    fireEvent.change(color, { target: { value: 'arctic blue' } });
-    fireEvent.blur(color);
-    expect(color).toHaveValue('ArcticBlue');
-
-    fireEvent.change(screen.getByLabelText('Sowing date'), {
-      target: { value: sownDaysAgo(12) },
-    });
-    fireEvent.change(screen.getByLabelText('Germination date'), {
-      target: { value: sownDaysAgo(9) },
-    });
-    const plantIdInput = screen.getByPlaceholderText('e.g., PLANT_001');
-    await act(async () => {
-      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
-    });
-    const start = screen.getByRole('button', { name: /start scan/i });
-    await waitFor(() => expect(start).not.toBeDisabled());
-    await act(async () => {
-      fireEvent.click(start);
-    });
-    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
-    expect(plantsSetDates()).toHaveBeenCalledWith(
-      expect.objectContaining({ germDayColor: 'ArcticBlue' })
-    );
-    expect(scanMetadata()).toMatchObject({ germ_day_color: 'ArcticBlue' });
-  });
-
-  it("shows a same-dates wave's germination colour with its dates, and sends it with the scan", async () => {
-    wavesList().mockResolvedValue({
-      success: true,
-      data: [waveRow({ germ_day_color: 'GermRed' })],
-    });
-    await fillFormAndStartScan();
-    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
-    expect(screen.getByTestId('wave-dates-info')).toHaveTextContent(
-      'Germination colour: GermRed'
-    );
-    expect(scanMetadata()).toMatchObject({ germ_day_color: 'GermRed' });
-  });
-
   it("saves the calculated age, not the session's typed age", async () => {
     // The session remembers 21 from before; wave 1 germinated 14 days ago.
     mockSessionGet.mockResolvedValue({

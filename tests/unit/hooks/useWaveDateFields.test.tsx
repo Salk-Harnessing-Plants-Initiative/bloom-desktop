@@ -47,7 +47,6 @@ describe('useWaveDateFields', () => {
           germination_date: daysAgo(14),
           sowing_date: daysAgo(20),
           transfer_date: null,
-          germ_day_color: null,
           note: null,
           set_by_name: 'Demo Phenotyper',
           set_at: '2026-01-02T09:00:00.000Z',

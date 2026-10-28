@@ -19,9 +19,6 @@ export interface CylinderWaveDateChange {
   /** Null means the same day as germination. */
   old_transfer_date: string | null;
   new_transfer_date: string | null;
-  /** The germination colour before and after (#429); null for none. */
-  old_germ_day_color: string | null;
-  new_germ_day_color: string | null;
   reason: string | null;
   changed_by_name: string | null;
   /** When the change was made (ISO 8601). */
@@ -40,8 +37,6 @@ export interface CylinderWaveInfo {
   sowing_date: string | null;
   /** Null means the same day as germination. */
   transfer_date: string | null;
-  /** Every plant's germination colour (#429); null when per plant, or none. */
-  germ_day_color: string | null;
   note: string | null;
   /** Who set the current dates, when known. */
   set_by_name: string | null;
@@ -70,9 +65,6 @@ export interface CylinderPlantDateChange {
   new_sowing_date: string | null;
   old_transfer_date: string | null;
   new_transfer_date: string | null;
-  /** The germination colour before and after (#429); null for none. */
-  old_germ_day_color: string | null;
-  new_germ_day_color: string | null;
   reason: string | null;
   changed_by_name: string | null;
   /** ISO 8601. */
@@ -92,8 +84,6 @@ export interface CylinderPlantInfo {
   uses_wave_dates: boolean;
   /** Why this plant's dates differ from its wave's. */
   reason: string | null;
-  /** The lab's germination colour (#429), camel case; null when none. */
-  germ_day_color: string | null;
   set_by_name: string | null;
   /** ISO 8601. */
   set_at: string;
@@ -141,8 +131,6 @@ export interface WaveDatesInput {
   sowingDate: string;
   /** Left out (or empty) when it's the same day as germination. */
   transferDate?: string;
-  /** The lab's germination colour (#429), optional; cleaned to camel case when saved. */
-  germDayColor?: string;
 }
 
 export interface CylinderWaveCreateInput extends Partial<WaveDatesInput> {
