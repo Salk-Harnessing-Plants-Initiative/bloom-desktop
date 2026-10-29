@@ -38,6 +38,7 @@ import {
   ScanFilters,
   PaginatedScanFilters,
   PaginatedScansResponse,
+  PaginatedScanSummariesResponse,
   ScansExportData,
   ScansExportProgress,
 } from './database';
@@ -447,6 +448,10 @@ export interface DatabaseAPI {
      * @returns Array of scans (legacy) OR paginated response object
      */
     list: {
+      // Paginated list of summaries: no image rows (summary: true)
+      (
+        filters: PaginatedScanFilters & { summary: true }
+      ): Promise<DatabaseResponse<PaginatedScanSummariesResponse>>;
       // Overload 1: Paginated list (when page/pageSize provided)
       (
         filters: PaginatedScanFilters

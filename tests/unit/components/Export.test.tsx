@@ -138,6 +138,38 @@ describe('Export page', () => {
     }
   });
 
+  it('shows a spinner with how many scans have loaded while it loads', async () => {
+    const firstPage = Array.from({ length: 1000 }, (_, i) => makeScan(`s${i}`));
+    getDb().list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        success: true,
+        data: { scans: firstPage, total: 1500, page: 1, pageSize: 1000 },
+      })
+      // The second page never arrives, so the page stays loading.
+      .mockReturnValueOnce(new Promise(() => undefined));
+    render(<Export />);
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Loading scans…');
+    expect(status.querySelector('.animate-spin')).not.toBeNull();
+    expect(
+      await screen.findByText('Loading scans… 1,000 of 1,500')
+    ).toBeInTheDocument();
+  });
+
+  it('loads scan summaries (no image rows) in large pages', async () => {
+    mockList([makeScan('a')]);
+    render(<Export />);
+    await screen.findByText(/Experiment A/);
+
+    expect(getDb().list).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 1000,
+      summary: true,
+    });
+  });
+
   it('renders the group header with a scan-count label', async () => {
     mockList([makeScan('a'), makeScan('b'), makeScan('c')]);
     render(<Export />);

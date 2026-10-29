@@ -8,11 +8,17 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import { getDatabase } from './database';
 import type { Prisma, PrismaClient } from '@prisma/client';
+import type { PaginatedScanSummariesResponse } from '../types/database';
 import { ImageUploader, UploadResult } from './image-uploader';
 import { resolveScanPath } from './scan-protocol';
 import { getScansDir } from './config-store';
 import * as fs from 'fs';
 import * as path from 'path';
+
+/** Largest page of full scans (with image rows) db:scans:list returns. */
+const MAX_PAGE_SIZE = 100;
+/** Largest page of scan summaries (no image rows) db:scans:list returns. */
+export const MAX_SUMMARY_PAGE_SIZE = 1000;
 
 // This file is shared code and must not import from graviscan/ directly
 // (enforced by @typescript-eslint/no-restricted-imports). GraviScan-specific
@@ -1613,6 +1619,36 @@ export async function checkDuplicateScan(
  *   cached), matching `graviscan:download-images`'s convention, since the
  *   window may close mid-export.
  */
+/**
+ * One page of scans with only what a scan list shows (ScanSummary): no image rows,
+ * scientist or phenotyper. Newest first, like the full list.
+ */
+export async function listScanSummaries(
+  db: Pick<PrismaClient, 'scan'>,
+  where: Prisma.ScanWhereInput,
+  page: number,
+  pageSize: number
+): Promise<PaginatedScanSummariesResponse> {
+  const [total, scans] = await Promise.all([
+    db.scan.count({ where }),
+    db.scan.findMany({
+      where,
+      select: {
+        id: true,
+        experiment_id: true,
+        plant_id: true,
+        capture_date: true,
+        scanner_name: true,
+        experiment: { select: { name: true } },
+      },
+      orderBy: { capture_date: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ]);
+  return { scans, total, page, pageSize };
+}
+
 export function registerDatabaseHandlers(deps: {
   markMetadataDeleted: (outputDir: string) => void;
   getMainWindow?: () => BrowserWindow | null;
@@ -2179,6 +2215,7 @@ export function registerDatabaseHandlers(deps: {
         experimentId?: string;
         dateFrom?: string;
         dateTo?: string;
+        summary?: boolean;
       }
     ): Promise<DatabaseResponse> => {
       try {
@@ -2190,7 +2227,13 @@ export function registerDatabaseHandlers(deps: {
         if (isPaginated) {
           // Paginated query (BrowseScans feature)
           const page = Math.max(1, filters.page!);
-          const pageSize = Math.min(100, Math.max(1, filters.pageSize!));
+          // Only `true` asks for summaries; the types allow nothing else.
+          const summary = filters.summary === true;
+          const maxPageSize = summary ? MAX_SUMMARY_PAGE_SIZE : MAX_PAGE_SIZE;
+          const pageSize = Math.min(
+            maxPageSize,
+            Math.max(1, filters.pageSize!)
+          );
           const skip = (page - 1) * pageSize;
 
           // Build where clause - always exclude soft-deleted scans
@@ -2237,6 +2280,16 @@ export function registerDatabaseHandlers(deps: {
                 filters.dateTo + 'T23:59:59.999'
               );
             }
+          }
+
+          if (summary) {
+            const data = await listScanSummaries(db, where, page, pageSize);
+            logDatabaseOperation(
+              'READ',
+              'Scan',
+              `list summaries page=${page} pageSize=${pageSize} total=${data.total}`
+            );
+            return { success: true, data };
           }
 
           // Execute count and findMany in parallel

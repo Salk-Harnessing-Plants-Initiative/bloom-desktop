@@ -2,7 +2,7 @@
  * Unit tests for BrowseScans page — delete flow
  * (add-cylinderscan-delete-upload-integrity, tasks.md 2.3/2.5/2.7).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
@@ -259,6 +259,28 @@ describe('BrowseScans color palette', () => {
 });
 
 describe('thumbnail column', () => {
+  // Every row counts as on screen here; LazyThumbnail.test.tsx covers rows that aren't.
+  beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(private callback: IntersectionObserverCallback) {}
+        observe(target: Element) {
+          this.callback(
+            [{ isIntersecting: true, target } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver
+          );
+        }
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return [];
+        }
+      }
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
   it('renders a lazy-loaded thumbnail sourced from the lowest-frame_number image', async () => {
     mockList.mockResolvedValue(
       makeListResponse([
@@ -444,5 +466,47 @@ describe('camera-settings column', () => {
 
     expect(title).not.toContain('Brightness');
     expect(title).not.toContain('Contrast');
+  });
+});
+
+describe('thumbnail column, rows off screen', () => {
+  // An observer that never reports a row on screen, like rows below the fold.
+  beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return [];
+        }
+      }
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows a placeholder and requests no image until the row comes near the screen', async () => {
+    mockList.mockResolvedValue(
+      makeListResponse([
+        {
+          ...baseScan,
+          images: [
+            {
+              id: 'img-1',
+              status: 'uploaded',
+              path: 'frame_000.jpg',
+              frame_number: 0,
+            },
+          ],
+        },
+      ])
+    );
+
+    renderPage();
+    await screen.findByText('PLANT-001');
+
+    expect(await screen.findByTestId('thumbnail-loading')).toBeInTheDocument();
+    expect(screen.queryByAltText(/thumbnail/i)).not.toBeInTheDocument();
   });
 });

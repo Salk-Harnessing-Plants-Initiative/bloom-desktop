@@ -164,6 +164,31 @@ export interface PaginatedScanFilters {
   dateFrom?: string;
   /** Filter by end date (ISO string, inclusive) */
   dateTo?: string;
+  /**
+   * Only the fields a scan list needs (ScanSummary): no image rows, scientist or
+   * phenotyper. Pages may then hold up to MAX_SUMMARY_PAGE_SIZE scans.
+   */
+  summary?: boolean;
+}
+
+/** A scan as a list of scans shows it (see PaginatedScanFilters.summary). */
+export type ScanSummary = Prisma.ScanGetPayload<{
+  select: {
+    id: true;
+    experiment_id: true;
+    plant_id: true;
+    capture_date: true;
+    scanner_name: true;
+    experiment: { select: { name: true } };
+  };
+}>;
+
+/** Response for a paginated scan query with `summary: true`. */
+export interface PaginatedScanSummariesResponse {
+  scans: ScanSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 /**
