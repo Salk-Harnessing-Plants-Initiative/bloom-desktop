@@ -165,7 +165,7 @@ describe('Layout nav links', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('orders cylinderscan-mode links Daily-Workflow-first: Home, Camera Settings, Capture Scan, Browse Scans, Export Scans, then Setup: Scientists, Phenotypers, Accessions, Experiments', async () => {
+  it('orders cylinderscan-mode links as the pilot app did: Home, Capture Scan, Browse Scans, Camera Settings, Phenotypers, Scientists, Accessions, Experiments, Export Scans', async () => {
     renderLayout('cylinderscan');
     await waitFor(() => screen.getByText(/scanner:/i));
 
@@ -174,14 +174,14 @@ describe('Layout nav links', () => {
       .map((link) => link.getAttribute('href'));
     expect(hrefs).toEqual([
       '/',
-      '/camera-settings',
       '/capture-scan',
       '/browse-scans',
-      '/export',
-      '/scientists',
+      '/camera-settings',
       '/phenotypers',
+      '/scientists',
       '/accessions',
       '/experiments',
+      '/export',
     ]);
   });
 
@@ -202,6 +202,64 @@ describe('Layout nav links', () => {
       '/metadata',
       '/experiments',
     ]);
+  });
+
+  it('draws a faint lime edge around the window that never takes clicks', async () => {
+    renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const glow = screen.getByTestId('window-glow');
+    expect(glow).toHaveAttribute('aria-hidden', 'true');
+    expect(glow.className).toContain('pointer-events-none');
+    expect(glow.className).toContain('fixed inset-0');
+    expect(glow.className).toMatch(/rgba\(132,204,22,0\.\d+\)/);
+  });
+
+  it('shows the Bloom Desktop title in plain black', async () => {
+    renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const title = screen.getByRole('heading', { name: 'Bloom Desktop' });
+    expect(title.className).not.toMatch(/text-shadow|text-stroke/);
+    expect(title.className).toContain('text-black');
+    // One line next to the icon, in the sidebar's width.
+    expect(title.className).toContain('whitespace-nowrap');
+  });
+
+  it('shows the scanner mode in dark bold green', async () => {
+    renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const mode = screen.getByText('CylinderScan');
+    expect(mode.className).toContain('font-bold');
+    expect(mode.className).toContain('text-green-800');
+  });
+
+  it("shows the app's icon beside the title, hidden from screen readers", async () => {
+    const { container } = renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const logo = container.querySelector('img');
+    expect(logo?.getAttribute('src')).toMatch(/icon\.png/);
+    expect(logo).toHaveAttribute('alt', '');
+  });
+
+  it('shows the scanner name in dark bold green', async () => {
+    renderLayout('cylinderscan');
+    const scanner = await waitFor(() => screen.getByText(/scanner:/i));
+    expect(scanner.className).toContain('font-bold');
+    expect(scanner.className).toContain('text-green-800');
+  });
+
+  it('puts the scanner mode right under the title, beside the icon', async () => {
+    renderLayout('cylinderscan');
+    await waitFor(() => screen.getByText(/scanner:/i));
+
+    const title = screen.getByRole('heading', { name: 'Bloom Desktop' });
+    const mode = screen.getByText('CylinderScan');
+    expect(title.parentElement).toBe(mode.parentElement);
+    expect(title.nextElementSibling).toBe(mode);
+    expect(title.parentElement?.previousElementSibling?.tagName).toBe('IMG');
   });
 
   it('leaves the default/no-mode link order unchanged: Home, Scientists, Phenotypers, Experiments, Browse Scans, Export Scans', async () => {
@@ -260,30 +318,34 @@ describe('Layout shell and nav-link colors', () => {
     const homeLink = screen.getByRole('link', { name: /^home$/i });
     expect(homeLink.className).toContain('bg-stone-50');
     expect(homeLink.className).toContain('text-lime-700');
-    expect(homeLink.className).toContain('font-medium');
+    expect(homeLink.className).toContain('font-bold');
     expect(homeLink.className).not.toContain('border-r-4');
     expect(homeLink.className).not.toMatch(/border-lime/);
   });
 
-  it('non-active links hover to a stone-50/70 / stone-900 treatment, not lime', async () => {
+  it('non-active links get a soft lime glow on hover', async () => {
     renderLayout('cylinderscan', '/');
     await waitFor(() => screen.getByText(/scanner:/i));
 
     const scientistsLink = screen.getByRole('link', { name: /^scientists$/i });
-    // salk-bloom's real hover class is hover:bg-stone-50/70 (70% opacity), not
-    // a fully-opaque hover:bg-stone-50 — match it exactly, not just a substring.
-    expect(scientistsLink.className).toContain('hover:bg-stone-50/70');
-    expect(scientistsLink.className).toContain('hover:text-stone-900');
-    expect(scientistsLink.className).not.toMatch(/hover:text-lime/);
+    expect(scientistsLink.className).toContain('hover:bg-lime-50/60');
+    expect(scientistsLink.className).toContain('hover:text-lime-800');
+    expect(scientistsLink.className).toMatch(
+      /hover:shadow-\[inset_0_0_12px_rgba\(132,204,22,0\.\d+\)\]/
+    );
+    expect(scientistsLink.className).not.toContain('hover:bg-stone-50/70');
   });
 
-  it('non-active, non-hover links use stone-700 as their base text color, not gray-700', async () => {
+  it('links have bold black text and green icons', async () => {
     renderLayout('cylinderscan', '/');
     await waitFor(() => screen.getByText(/scanner:/i));
 
     const scientistsLink = screen.getByRole('link', { name: /^scientists$/i });
-    expect(scientistsLink.className).toContain('text-stone-700');
-    expect(scientistsLink.className).not.toContain('text-gray-700');
+    expect(scientistsLink.className).toContain('font-bold');
+    expect(scientistsLink.className).toContain('text-black');
+    const icon = scientistsLink.querySelector('svg');
+    expect(icon).toHaveAttribute('stroke', 'currentColor');
+    expect(icon?.parentElement?.className).toContain('text-green-800');
   });
 
   it('no nav link has any blue-* class in cylinderscan mode', async () => {

@@ -256,7 +256,7 @@ export function ExperimentForm({
             min={0}
             value={waveNumber}
             onChange={(e) => setWaveNumber(Number(e.target.value))}
-            className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 w-[200px] border border-gray-300"
+            className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500 w-[200px] border border-gray-300"
             disabled={isSubmitting}
           />
         </div>
