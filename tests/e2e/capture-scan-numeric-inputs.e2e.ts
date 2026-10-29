@@ -2,10 +2,11 @@
  * E2E Test: Capture Scan Numeric Input Fields
  *
  * Tests Wave Number and Plant Age field behavior:
- * - Clearing fields and typing new values
+ * - Clearing the wave number and typing a new value
  * - Validation for required fields
  * - Validation for integer-only values (no decimals)
  * - Wave number 0 is valid
+ * - The plant age is read-only, computed from the wave's germination date (#407, #428)
  *
  * **PREREQUISITES:**
  * 1. Start Electron Forge dev server: `npm run start` (keep running in Terminal 1)
@@ -41,6 +42,17 @@ let prisma: PrismaClient;
 
 const TEST_DB_PATH = path.join(__dirname, 'numeric-inputs-test.db');
 const TEST_DB_URL = `file:${TEST_DB_PATH}`;
+
+/** A local "YYYY-MM-DD" date `days` ago, by calendar arithmetic (DST-safe). */
+function localDaysAgo(days: number): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days);
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
+}
 
 /**
  * Helper: Launch Electron app with test database
@@ -139,12 +151,22 @@ test.describe('UI: Numeric Field Input Behavior', () => {
       },
     });
 
-    await prisma.experiment.create({
+    const experiment = await prisma.experiment.create({
       data: {
         name: 'Numeric Test Experiment',
         species: 'Arabidopsis',
         scientist_id: scientist.id,
         accession_id: accession.id,
+      },
+    });
+    // Wave 1 germinated 14 days ago, so its plants are 14 days old (#407, #428).
+    // Created before Capture Scan opens, which loads the experiment's waves.
+    await prisma.cylinderWave.create({
+      data: {
+        experiment_id: experiment.id,
+        wave_number: 1,
+        germination_date: localDaysAgo(14),
+        sowing_date: localDaysAgo(20),
       },
     });
 
@@ -174,22 +196,6 @@ test.describe('UI: Numeric Field Input Behavior', () => {
     await expect(waveNumberInput).toHaveValue('10');
   });
 
-  test('should allow clearing Plant Age field and typing new value', async () => {
-    const plantAgeInput = window.locator('#plantAgeDays');
-
-    // Type initial value
-    await plantAgeInput.fill('14');
-    await expect(plantAgeInput).toHaveValue('14');
-
-    // Clear and type new value
-    await plantAgeInput.fill('');
-    await expect(plantAgeInput).toHaveValue('');
-
-    // Type new value
-    await plantAgeInput.fill('21');
-    await expect(plantAgeInput).toHaveValue('21');
-  });
-
   test('should show validation error when Wave Number is empty', async () => {
     const waveNumberInput = window.locator('#waveNumber');
 
@@ -203,17 +209,27 @@ test.describe('UI: Numeric Field Input Behavior', () => {
     });
   });
 
-  test('should show validation error when Plant Age is empty', async () => {
+  test("should show the plant age, read-only, computed from the wave's germination date", async () => {
+    await window.locator('#waveNumber').fill('1');
+
     const plantAgeInput = window.locator('#plantAgeDays');
+    await expect(plantAgeInput).toHaveAttribute('readonly');
+    await expect(plantAgeInput).toHaveValue('14');
+  });
 
-    // Clear the field
-    await plantAgeInput.fill('');
-    await plantAgeInput.blur();
+  test('should leave the plant age blank, without an error, until the wave has dates', async () => {
+    // Wave 2 is new: its dates are asked for first, and there's no age to show yet.
+    await window.locator('#waveNumber').fill('2');
 
-    // Should show required error
-    await expect(window.locator('text=Plant age is required')).toBeVisible({
+    const plantAgeInput = window.locator('#plantAgeDays');
+    await expect(plantAgeInput).toHaveAttribute('readonly');
+    await expect(window.locator("text=How are wave 2's dates")).toBeVisible({
       timeout: 5000,
     });
+    await expect(plantAgeInput).toHaveValue('');
+    await expect(
+      window.locator('text=Plant age is required')
+    ).not.toBeVisible();
   });
 });
 
@@ -345,29 +361,14 @@ test.describe('UI: Integer Validation', () => {
     ).toBeVisible({ timeout: 5000 });
   });
 
-  test('should show validation error for decimal Plant Age', async () => {
-    const plantAgeInput = window.locator('#plantAgeDays');
-
-    // Enter decimal value
-    await plantAgeInput.fill('14.5');
-    await plantAgeInput.blur();
-
-    // Should show error
-    await expect(
-      window.locator('text=Plant age must be a whole number')
-    ).toBeVisible({ timeout: 5000 });
-  });
-
-  test('should accept integer values without error', async () => {
+  test('should accept an integer Wave Number without error', async () => {
     const waveNumberInput = window.locator('#waveNumber');
-    const plantAgeInput = window.locator('#plantAgeDays');
 
-    // Enter valid integers
+    // Enter a valid integer
     await waveNumberInput.fill('5');
-    await plantAgeInput.fill('14');
 
     // Blur to trigger validation
-    await plantAgeInput.blur();
+    await waveNumberInput.blur();
 
     // Should NOT show any decimal-related errors
     await expect(window.locator('text=must be a whole number')).not.toBeVisible(

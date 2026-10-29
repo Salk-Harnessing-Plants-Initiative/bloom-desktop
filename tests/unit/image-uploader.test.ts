@@ -56,6 +56,11 @@ interface MockScan {
   images: MockImage[];
   experiment?: MockExperiment;
   phenotyper?: MockPhenotyper;
+  /** The plant the scan's age came from (#428); null for scans from before. */
+  cylinderPlant?: {
+    germination_date: string;
+    sowing_date: string | null;
+  } | null;
 }
 
 // Mock modules before importing
@@ -998,6 +1003,48 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         });
       });
 
+      it("sends germ_day as the days from the plant's sowing to its germination, and colour none (#429)", async () => {
+        mockPrismaClient.scan.findUnique.mockResolvedValue({
+          ...mockScan,
+          cylinderPlant: {
+            germination_date: '2026-10-04',
+            sowing_date: '2026-10-01',
+          },
+        });
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+
+        const metadata = (uploadImages as Mock).mock.calls[0][1];
+        expect(metadata[0]).toMatchObject({
+          germ_day: 3,
+          germ_day_color: 'none',
+        });
+      });
+
+      it('sends germ_day 0 for a scan with no plant dates, and colour "none" always', async () => {
+        const uploader = new ImageUploader(mockPrismaClient);
+        await uploader.authenticate();
+        await uploader.uploadScan('scan-123');
+        expect((uploadImages as Mock).mock.calls[0][1][0]).toMatchObject({
+          germ_day: 0,
+          germ_day_color: 'none',
+        });
+
+        mockPrismaClient.scan.findUnique.mockResolvedValue({
+          ...mockScan,
+          cylinderPlant: {
+            germination_date: '2026-10-04',
+            sowing_date: '2026-10-02',
+          },
+        });
+        await uploader.uploadScan('scan-123');
+        expect((uploadImages as Mock).mock.calls[1][1][0]).toMatchObject({
+          germ_day: 2,
+          germ_day_color: 'none',
+        });
+      });
+
       it('should build CylImageMetadata with correct camera settings', async () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
@@ -1120,6 +1167,7 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
               },
             },
             phenotyper: true,
+            cylinderPlant: true,
           },
         });
       });

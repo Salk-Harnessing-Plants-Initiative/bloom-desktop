@@ -56,6 +56,18 @@ const mockDatabaseAPI = {
     list: vi.fn().mockResolvedValue({ success: true, data: [] }),
     create: vi.fn().mockResolvedValue({ success: true, data: {} }),
   },
+  cylinderWaves: {
+    list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    create: vi.fn().mockResolvedValue({ success: true, data: null }),
+    changeDates: vi.fn().mockResolvedValue({ success: true, data: null }),
+    useSameDates: vi.fn().mockResolvedValue({ success: true, data: null }),
+    useDatesPerPlant: vi.fn().mockResolvedValue({ success: true, data: null }),
+  },
+  cylinderPlants: {
+    list: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    setDates: vi.fn().mockResolvedValue({ success: true, data: null }),
+    useWaveDates: vi.fn().mockResolvedValue({ success: true, data: null }),
+  },
   scans: {
     list: vi.fn().mockResolvedValue({
       success: true,
@@ -94,6 +106,16 @@ if ((global as any).window) {
     config: {
       getMode: vi.fn().mockResolvedValue({ mode: 'cylinderscan' }),
       browseDirectory: vi.fn().mockResolvedValue(null),
+    },
+    // The species list from Bloom; by default, a saved copy of the built-in list.
+    species: {
+      list: vi.fn().mockResolvedValue({
+        species: ['Alfalfa', 'Arabidopsis', 'Rice', 'Sorghum'],
+        source: 'saved',
+        updatedAt: '2026-10-24T09:00:00.000Z',
+      }),
+      refresh: vi.fn(),
+      openAddPage: vi.fn().mockResolvedValue({ success: true }),
     },
   };
 }

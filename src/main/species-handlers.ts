@@ -1,0 +1,100 @@
+/**
+ * IPC for the species list (species:list, species:refresh, species:openAddPage) and the
+ * Bloom fetch behind it. The fetch signs in with the scanner account, as uploads do;
+ * Bloom lets that account read species that haven't been removed.
+ */
+
+import type { IpcMain } from 'electron';
+import type { MachineConfig } from './config-store';
+import { BLOOM_SPECIES_PAGE_URL, type SpeciesStore } from './species-list';
+
+/** How long the sign-in and species query may take together before giving up. */
+export const BLOOM_SPECIES_FETCH_TIMEOUT_MS = 15_000;
+
+/** The parts of the machine config the fetch and the Species page link need. */
+export type BloomSpeciesConfig = Pick<
+  MachineConfig,
+  | 'bloom_api_url'
+  | 'bloom_anon_key'
+  | 'bloom_scanner_username'
+  | 'bloom_scanner_password'
+>;
+
+/** Species common names from Bloom. Throws when Bloom can't be reached or the sign-in fails. */
+export async function fetchBloomSpecies(
+  config: BloomSpeciesConfig
+): Promise<string[]> {
+  if (
+    !config.bloom_scanner_username ||
+    !config.bloom_scanner_password ||
+    !config.bloom_anon_key
+  ) {
+    throw new Error('Bloom credentials are not set up on this computer');
+  }
+  // Loaded on first use, as the uploader does, to keep app start-up light.
+  const { createClient } = await import('@supabase/supabase-js');
+  // One time limit for the sign-in and the query together, so a Bloom that never
+  // answers can't keep Refresh waiting.
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    BLOOM_SPECIES_FETCH_TIMEOUT_MS
+  );
+  const timedOut = (): Error =>
+    new Error(
+      `Bloom didn't answer within ${BLOOM_SPECIES_FETCH_TIMEOUT_MS / 1000} seconds`
+    );
+  const supabase = createClient(config.bloom_api_url, config.bloom_anon_key, {
+    auth: { persistSession: false },
+    global: {
+      fetch: (input, init) => {
+        init?.signal?.addEventListener('abort', () => controller.abort());
+        return fetch(input, { ...init, signal: controller.signal });
+      },
+    },
+  });
+  try {
+    const { error: authError } = await supabase.auth.signInWithPassword({
+      email: config.bloom_scanner_username,
+      password: config.bloom_scanner_password,
+    });
+    if (controller.signal.aborted) throw timedOut();
+    if (authError)
+      throw new Error(`Couldn't sign in to Bloom: ${authError.message}`);
+    // No sign-out: the session isn't kept, and signOut() would end the account's
+    // sessions everywhere, including running uploads.
+    const { data, error } = await supabase
+      .from('species')
+      .select('common_name')
+      .is('deleted_at', null);
+    if (controller.signal.aborted) throw timedOut();
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(
+      (row: { common_name: string | null }) => row.common_name ?? ''
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface SpeciesHandlerDeps {
+  ipcMain: Pick<IpcMain, 'handle'>;
+  store: SpeciesStore;
+  openExternal: (url: string) => Promise<void>;
+}
+
+export function registerSpeciesHandlers(deps: SpeciesHandlerDeps): void {
+  deps.ipcMain.handle('species:list', () => deps.store.current());
+  deps.ipcMain.handle('species:refresh', () => deps.store.refresh());
+  deps.ipcMain.handle('species:openAddPage', async () => {
+    try {
+      await deps.openExternal(BLOOM_SPECIES_PAGE_URL);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  });
+}

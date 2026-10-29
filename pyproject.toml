@@ -1,6 +1,6 @@
 [project]
 name = "bloom-hardware"
-version = "0.2.1"
+version = "0.2.2"
 description = "Python hardware interfaces for Bloom Desktop"
 requires-python = ">=3.11"
 dependencies = [
