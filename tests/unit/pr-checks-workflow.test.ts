@@ -51,6 +51,34 @@ const EXPECTED_TIMEOUTS: Record<string, number> = {
   'test-make-linux': 20,
 };
 
+/** When the full checks run; see the workflow's header comment. */
+const FULL_RUN_CONDITION =
+  "github.event_name != 'pull_request' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'run-ci')";
+
+/** Run on every pull request push, with no label needed. */
+const QUICK_JOBS = [
+  'lint-node',
+  'lint-python',
+  'compile-typescript',
+  'test-unit',
+  'test-python',
+  'test-db-migrations',
+  'test-e2e-coverage',
+];
+
+/** Run only for the full checks. */
+const FULL_JOBS = [
+  'build-python',
+  'test-integration',
+  'test-dev-database',
+  'test-e2e-dev',
+  'test-package-database',
+  'test-make',
+  'test-make-windows',
+  'test-make-linux',
+  'test-deploy-scripts',
+];
+
 function loadWorkflow(): WorkflowFile {
   return load(fs.readFileSync(WORKFLOW_PATH, 'utf8')) as WorkflowFile;
 }
@@ -189,7 +217,10 @@ describe('pr-checks.yml all-checks-passed', () => {
   it('passes the needs context to the verification step', () => {
     const step = verificationStep();
 
-    expect(step.env).toEqual({ NEEDS_JSON: '${{ toJSON(needs) }}' });
+    expect(step.env).toEqual({
+      NEEDS_JSON: '${{ toJSON(needs) }}',
+      FULL_RUN: `\${{ ${FULL_RUN_CONDITION} }}`,
+    });
   });
 
   it('succeeds when every needed job succeeded', () => {
@@ -222,15 +253,16 @@ describe('pr-checks.yml triggers', () => {
     expect(loadWorkflow().on.merge_group?.types).toEqual(['checks_requested']);
   });
 
-  it('runs on pushes to main and development', () => {
-    expect(loadWorkflow().on.push?.branches).toEqual(['main', 'development']);
+  it('runs on pushes to main only; the merge queue already checked development', () => {
+    expect(loadWorkflow().on.push?.branches).toEqual(['main']);
   });
 
-  it('still runs on pull_request opened, synchronize and reopened', () => {
+  it('runs on pull_request opened, synchronize, reopened and labeled', () => {
     expect(loadWorkflow().on.pull_request?.types).toEqual([
       'opened',
       'synchronize',
       'reopened',
+      'labeled',
     ]);
   });
 
@@ -256,12 +288,19 @@ function verificationStep(): {
 }
 
 /** Runs the verification step's shell script against a fake needs context. */
-function runVerification(needs: Record<string, { result: string }>): {
+function runVerification(
+  needs: Record<string, { result: string }>,
+  fullRun = 'true'
+): {
   status: number | null;
   stdout: string;
 } {
   const result = spawnSync('bash', ['-e', '-c', verificationStep().run], {
-    env: { ...process.env, NEEDS_JSON: JSON.stringify(needs) },
+    env: {
+      ...process.env,
+      NEEDS_JSON: JSON.stringify(needs),
+      FULL_RUN: fullRun,
+    },
     encoding: 'utf8',
   });
   return { status: result.status, stdout: result.stdout };
@@ -313,5 +352,77 @@ describe('pr-checks.yml Playwright browsers', () => {
         expect(step.run ?? '', `job ${name}`).not.toMatch(/playwright install/);
       }
     }
+  });
+});
+
+describe('pr-checks.yml full checks on request (run-ci label)', () => {
+  it('lists every job as quick or full, apart from the gate', () => {
+    const jobs = Object.keys(loadWorkflow().jobs).filter(
+      (name) => name !== 'all-checks-passed'
+    );
+    expect([...jobs].sort()).toEqual([...QUICK_JOBS, ...FULL_JOBS].sort());
+  });
+
+  it.each(['build-python', 'test-deploy-scripts'])(
+    'runs %s only for the full checks',
+    (name) => {
+      expect(loadWorkflow().jobs[name]?.if).toBe(FULL_RUN_CONDITION);
+    }
+  );
+
+  it('skips every other full job with build-python, which it needs', () => {
+    const jobs = loadWorkflow().jobs;
+    for (const name of FULL_JOBS.filter(
+      (n) => n !== 'build-python' && n !== 'test-deploy-scripts'
+    )) {
+      expect(jobs[name]?.needs, name).toBe('build-python');
+      expect(jobs[name]?.if, name).toBeUndefined();
+    }
+  });
+
+  it.each(QUICK_JOBS)('runs %s on every pull request push', (name) => {
+    expect(loadWorkflow().jobs[name]?.if).toBeUndefined();
+  });
+
+  it('fails the gate with the label message when only the quick checks ran', () => {
+    const result = runVerification(
+      {
+        'lint-node': { result: 'success' },
+        'build-python': { result: 'skipped' },
+        'test-e2e-dev': { result: 'skipped' },
+      },
+      'false'
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain(
+      "Full checks haven't run: add the run-ci label to this pull request to run them."
+    );
+    expect(result.stdout).not.toContain('did not succeed');
+  });
+
+  it('also names a quick check that failed when the full checks did not run', () => {
+    const result = runVerification(
+      {
+        'lint-node': { result: 'failure' },
+        'build-python': { result: 'skipped' },
+      },
+      'false'
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('lint-node: failure');
+    expect(result.stdout).not.toContain('build-python');
+    expect(result.stdout).toContain('add the run-ci label');
+  });
+
+  it('fails a full run in which a full job was skipped', () => {
+    const result = runVerification({
+      'lint-node': { result: 'success' },
+      'build-python': { result: 'skipped' },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('build-python: skipped');
   });
 });
