@@ -138,6 +138,18 @@ describe('Export page', () => {
     }
   });
 
+  it('loads scan summaries (no image rows) in large pages', async () => {
+    mockList([makeScan('a')]);
+    render(<Export />);
+    await screen.findByText(/Experiment A/);
+
+    expect(getDb().list).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 1000,
+      summary: true,
+    });
+  });
+
   it('renders the group header with a scan-count label', async () => {
     mockList([makeScan('a'), makeScan('b'), makeScan('c')]);
     render(<Export />);

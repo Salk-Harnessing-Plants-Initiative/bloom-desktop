@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import type {
-  ScanWithImageSummary,
-  PaginatedScansResponse,
+  ScanSummary,
   ScansExportFailure,
   ScansExportProgress,
 } from '../types/database';
@@ -25,7 +24,7 @@ type ResultBanner =
 interface ScanGroup {
   key: string;
   label: string;
-  scans: ScanWithImageSummary[];
+  scans: ScanSummary[];
 }
 
 function dayKey(date: Date | string): string {
@@ -55,7 +54,7 @@ function timestampLabel(date: Date | string): string {
   });
 }
 
-function groupScans(scans: ScanWithImageSummary[]): ScanGroup[] {
+function groupScans(scans: ScanSummary[]): ScanGroup[] {
   const groups = new Map<string, ScanGroup>();
   for (const scan of scans) {
     const key = `${scan.experiment_id}__${dayKey(scan.capture_date)}`;
@@ -77,7 +76,8 @@ function groupScans(scans: ScanWithImageSummary[]): ScanGroup[] {
   );
 }
 
-const SCANS_PAGE_SIZE = 100;
+// Summaries carry no image rows, so a page can hold many (MAX_SUMMARY_PAGE_SIZE).
+const SCANS_PAGE_SIZE = 1000;
 // Defense-in-depth only: at 100/page this covers 500k scans, far beyond any
 // real lab's scan count. Guards against an infinite fetch loop if
 // `db:scans:list`'s pagination ever regresses (e.g. a miscounted `total`)
@@ -86,19 +86,20 @@ const MAX_SCAN_PAGES = 5000;
 
 /** Fetches every non-deleted scan across all scanners, looping over `db:scans:list`'s
  * paginated branch (which already filters `deleted: false`, unlike the legacy branch). */
-async function fetchAllScans(): Promise<ScanWithImageSummary[]> {
+async function fetchAllScans(): Promise<ScanSummary[]> {
   let page = 1;
-  const all: ScanWithImageSummary[] = [];
+  const all: ScanSummary[] = [];
 
   while (page <= MAX_SCAN_PAGES) {
     const result = await window.electron.database.scans.list({
       page,
       pageSize: SCANS_PAGE_SIZE,
+      summary: true,
     });
     if (!result.success) {
       throw new Error(result.error || 'Failed to load scans');
     }
-    const data = result.data as PaginatedScansResponse;
+    const data = result.data;
     all.push(...data.scans);
     if (all.length >= data.total || data.scans.length === 0) return all;
     page++;
@@ -139,7 +140,7 @@ function GroupHeaderCheckbox({
 }
 
 export function Export() {
-  const [scans, setScans] = useState<ScanWithImageSummary[]>([]);
+  const [scans, setScans] = useState<ScanSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(
