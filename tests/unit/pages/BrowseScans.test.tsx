@@ -468,3 +468,45 @@ describe('camera-settings column', () => {
     expect(title).not.toContain('Contrast');
   });
 });
+
+describe('thumbnail column, rows off screen', () => {
+  // An observer that never reports a row on screen, like rows below the fold.
+  beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return [];
+        }
+      }
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows a placeholder and requests no image until the row comes near the screen', async () => {
+    mockList.mockResolvedValue(
+      makeListResponse([
+        {
+          ...baseScan,
+          images: [
+            {
+              id: 'img-1',
+              status: 'uploaded',
+              path: 'frame_000.jpg',
+              frame_number: 0,
+            },
+          ],
+        },
+      ])
+    );
+
+    renderPage();
+    await screen.findByText('PLANT-001');
+
+    expect(await screen.findByTestId('thumbnail-loading')).toBeInTheDocument();
+    expect(screen.queryByAltText(/thumbnail/i)).not.toBeInTheDocument();
+  });
+});

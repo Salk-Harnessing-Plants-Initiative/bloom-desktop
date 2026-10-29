@@ -2227,9 +2227,9 @@ export function registerDatabaseHandlers(deps: {
         if (isPaginated) {
           // Paginated query (BrowseScans feature)
           const page = Math.max(1, filters.page!);
-          const maxPageSize = filters.summary
-            ? MAX_SUMMARY_PAGE_SIZE
-            : MAX_PAGE_SIZE;
+          // Only `true` asks for summaries; the types allow nothing else.
+          const summary = filters.summary === true;
+          const maxPageSize = summary ? MAX_SUMMARY_PAGE_SIZE : MAX_PAGE_SIZE;
           const pageSize = Math.min(
             maxPageSize,
             Math.max(1, filters.pageSize!)
@@ -2282,7 +2282,7 @@ export function registerDatabaseHandlers(deps: {
             }
           }
 
-          if (filters.summary) {
+          if (summary) {
             const data = await listScanSummaries(db, where, page, pageSize);
             logDatabaseOperation(
               'READ',
