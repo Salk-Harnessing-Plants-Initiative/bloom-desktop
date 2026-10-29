@@ -78,7 +78,7 @@ function groupScans(scans: ScanSummary[]): ScanGroup[] {
 
 // Summaries carry no image rows, so a page can hold many (MAX_SUMMARY_PAGE_SIZE).
 const SCANS_PAGE_SIZE = 1000;
-// Defense-in-depth only: at 100/page this covers 500k scans, far beyond any
+// Defense-in-depth only: at SCANS_PAGE_SIZE (1,000) per page this covers 5M scans, far beyond any
 // real lab's scan count. Guards against an infinite fetch loop if
 // `db:scans:list`'s pagination ever regresses (e.g. a miscounted `total`)
 // rather than silently spinning forever.
@@ -86,7 +86,9 @@ const MAX_SCAN_PAGES = 5000;
 
 /** Fetches every non-deleted scan across all scanners, looping over `db:scans:list`'s
  * paginated branch (which already filters `deleted: false`, unlike the legacy branch). */
-async function fetchAllScans(): Promise<ScanSummary[]> {
+async function fetchAllScans(
+  onProgress?: (loaded: number, total: number) => void
+): Promise<ScanSummary[]> {
   let page = 1;
   const all: ScanSummary[] = [];
 
@@ -101,6 +103,7 @@ async function fetchAllScans(): Promise<ScanSummary[]> {
     }
     const data = result.data;
     all.push(...data.scans);
+    onProgress?.(all.length, data.total);
     if (all.length >= data.total || data.scans.length === 0) return all;
     page++;
   }
@@ -142,6 +145,10 @@ function GroupHeaderCheckbox({
 export function Export() {
   const [scans, setScans] = useState<ScanSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState<{
+    loaded: number;
+    total: number;
+  } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(
     new Set()
@@ -157,7 +164,9 @@ export function Export() {
       try {
         setIsLoading(true);
         setLoadError(null);
-        const all = await fetchAllScans();
+        const all = await fetchAllScans((loaded, total) => {
+          if (!cancelled) setLoadProgress({ loaded, total });
+        });
         if (!cancelled) setScans(all);
       } catch (err) {
         if (!cancelled) {
@@ -425,8 +434,19 @@ export function Export() {
 
       <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
         {isLoading ? (
-          <div className="h-96 flex items-center justify-center">
-            <p className="text-sm text-gray-500">Loading scans...</p>
+          <div
+            role="status"
+            className="h-96 flex flex-col items-center justify-center gap-3"
+          >
+            <div
+              aria-hidden="true"
+              className="h-8 w-8 animate-spin rounded-full border-4 border-lime-200 border-t-lime-700"
+            />
+            <p className="text-sm font-medium text-gray-700">
+              {loadProgress && loadProgress.total > 0
+                ? `Loading scans… ${loadProgress.loaded.toLocaleString()} of ${loadProgress.total.toLocaleString()}`
+                : 'Loading scans…'}
+            </p>
           </div>
         ) : groups.length === 0 ? (
           <div className="h-96 flex items-center justify-center">
