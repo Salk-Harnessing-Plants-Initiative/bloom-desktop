@@ -1,7 +1,7 @@
 {
   "name": "bloom-desktop",
   "productName": "Bloom Desktop",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Electron-react application for cylinder scanning and upload to bloom",
   "main": ".webpack/main",
   "engines": {
