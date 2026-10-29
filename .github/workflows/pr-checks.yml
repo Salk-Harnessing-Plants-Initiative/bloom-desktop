@@ -1,10 +1,22 @@
 name: PR Checks
 
-# Runs on every PR, every merge-queue group, and every push to main/development
+# Runs on every PR, every merge-queue group, and every push to main.
 # Checks: linting, formatting, compilation, tests (TypeScript + Python + integration)
+#
+# Quick checks (lint, typecheck, unit and Python tests, migrations, IPC coverage)
+# run on every PR push. The full checks (build-python and everything that needs
+# it, and the deploy-script tests) run on a PR into development only while it has
+# the `run-ci` label; adding the label starts them. Merge-queue groups, PRs into
+# main and pushes to main always run everything. Without the label,
+# "All Checks Passed" fails, so a PR can't merge without a full run.
+#
+# No run on pushes to development: the merge queue already ran every check on
+# the merged code, and the promotion PR into main runs them again.
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    # `labeled` starts the full checks when `run-ci` is added. Another label
+    # repeats the last push's run.
+    types: [opened, synchronize, reopened, labeled]
   # Required for the merge queue on development: the queue only merges a group
   # once this workflow has run on it and "All Checks Passed" succeeded.
   merge_group:
@@ -12,7 +24,6 @@ on:
   push:
     branches:
       - main
-      - development
 
 permissions:
   contents: read # Read repository contents
@@ -25,7 +36,7 @@ env:
 # Redundant runs for the same ref are grouped so they don't run in parallel.
 # - pull_request pushes: cancel-in-progress=true — only the latest commit's
 #   result matters before merge, so a new push cancels the stale run.
-# - push (main/development) and merge_group: cancel-in-progress=false —
+# - push (main) and merge_group: cancel-in-progress=false —
 #   merge-queue groups each get their own ref, and pushes queue sequentially instead,
 #   so a commit's run isn't cancelled once it starts running or is next in
 #   queue. NOTE: GitHub Actions only holds one pending run per group by
@@ -307,6 +318,9 @@ jobs:
   build-python:
     name: Build - Python Executable
     runs-on: ${{ matrix.os }}
+    # Full checks only (see the header). Every other full job needs this one, so
+    # it is skipped with it.
+    if: github.event_name != 'pull_request' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'run-ci')
     # Bounds a hung job so it can't indefinitely block a subsequently-queued
     # push-to-main run (see the concurrency block above). test-integration,
     # test-e2e-dev, test-make, and test-make-windows all `needs: build-python`,
@@ -947,6 +961,8 @@ jobs:
   test-deploy-scripts:
     name: Test - Deploy Scripts (${{ matrix.shell }})
     runs-on: windows-latest
+    # Full checks only (see the header).
+    if: github.event_name != 'pull_request' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'run-ci')
     # The station runs Windows PowerShell 5.1; test there and on PowerShell 7.
     strategy:
       fail-fast: false
@@ -985,6 +1001,7 @@ jobs:
       - test-unit
       - test-python
       - test-db-migrations
+      - test-e2e-coverage
       - build-python
       - test-integration
       - test-dev-database
@@ -999,7 +1016,19 @@ jobs:
       - name: Verify all needed jobs succeeded
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          # Same condition as build-python's and test-deploy-scripts'.
+          FULL_RUN: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'run-ci') }}
         run: |
+          if [ "$FULL_RUN" != "true" ]; then
+            # Only the quick checks ran; the full ones were skipped on purpose.
+            failed=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"')
+            if [ -n "$failed" ]; then
+              echo "These jobs did not succeed:"
+              echo "$failed"
+            fi
+            echo "Full checks haven't run: add the run-ci label to this pull request to run them."
+            exit 1
+          fi
           failed=$(echo "$NEEDS_JSON" | jq -r 'to_entries[] | select(.value.result != "success") | "\(.key): \(.value.result)"')
           if [ -n "$failed" ]; then
             echo "These jobs did not succeed:"

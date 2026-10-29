@@ -334,6 +334,14 @@ Please see migration issues in the [Issues](https://github.com/Salk-Harnessing-P
 - Reference the related issue number
 - Follow the migration plan in Issue #1
 
+### CI
+
+- **Every push to a PR** runs the quick checks: lint, typecheck, unit and Python tests, migrations and IPC coverage (about 2–3 minutes).
+- **The full checks** (integration, E2E and Make on Linux, Windows and macOS, the database and deploy-script tests) run while the PR has the **`run-ci`** label. Add it when the work is ready; adding it starts them. Remove it to push a batch of fixes without full runs, then add it again.
+- **Without the label, `All Checks Passed` fails** ("add the run-ci label"), so a PR can't join the merge queue untested.
+- **The merge queue, PRs into `main` and pushes to `main`** always run everything. Pushes to `development` don't run CI: the merge queue already checked that code.
+- **Merging into `development` without the merge queue** (an admin bypass) means no full CI on that code until the promotion PR into `main`.
+
 ## License
 
 BSD-2-Clause - See [LICENSE](LICENSE) file for details.
