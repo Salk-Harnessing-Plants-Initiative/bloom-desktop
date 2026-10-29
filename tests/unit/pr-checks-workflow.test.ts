@@ -208,6 +208,14 @@ describe('pr-checks.yml all-checks-passed', () => {
     expect(job?.needs).toContain('test-make-linux');
   });
 
+  it('needs every other job, so none can fail without failing the gate', () => {
+    const needs = loadWorkflow().jobs['all-checks-passed']?.needs;
+
+    expect([needs ?? []].flat().sort()).toEqual(
+      [...QUICK_JOBS, ...FULL_JOBS].sort()
+    );
+  });
+
   it('always runs, so a failed dependency fails it instead of skipping it', () => {
     const job = loadWorkflow().jobs['all-checks-passed'];
 
