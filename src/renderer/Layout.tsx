@@ -5,6 +5,7 @@ import { useUploadStatus } from './contexts/UploadStatusContext';
 import { useUnsavedChanges } from './contexts/UnsavedChangesContext';
 import { WedgeProvider } from './contexts/WedgeContext';
 import { BoxBackupProgress } from '../types/graviscan';
+import appIcon from '../../assets/icons/icon.png';
 
 function isSameProgress(
   a: BoxBackupProgress | null,
@@ -77,9 +78,9 @@ const homeLink = {
 /**
  * Shared "Setup" links visible in every mode — rendered after each mode's
  * Daily Workflow links, not first (see the `links` composition below).
- * Experiments is intentionally NOT in this array: it must be appended last,
- * after each mode's own Setup addition (Accessions/Metadata), to produce
- * that mode's target order.
+ * Experiments is intentionally NOT in this array, so each mode can place it
+ * after its own Setup addition (Accessions/Metadata). CylinderScan picks
+ * these links one by one to follow the pilot app's order.
  */
 const setupLinks = [
   {
@@ -251,6 +252,9 @@ const captureLinks = [
   },
 ];
 
+const [cameraSettingsLink, captureScanLink] = captureLinks;
+const [scientistsLink, phenotypersLink] = setupLinks;
+
 /**
  * Accessions — cylinderscan Setup addition, appended after `setupLinks`,
  * before `experimentsLink`.
@@ -406,15 +410,18 @@ export function Layout({ mode = null }: LayoutProps) {
 
   const showCaptureLinks = mode === 'cylinderscan';
   const showGraviscanLinks = mode === 'graviscan';
+  // CylinderScan follows the pilot app's order, which operators already know.
   const links = showCaptureLinks
     ? [
         homeLink,
-        ...captureLinks,
+        captureScanLink,
         browseScansLink,
-        exportScansLink,
-        ...setupLinks,
+        cameraSettingsLink,
+        phenotypersLink,
+        scientistsLink,
         accessionsLink,
         experimentsLink,
+        exportScansLink,
       ]
     : showGraviscanLinks
       ? [
@@ -474,11 +481,32 @@ export function Layout({ mode = null }: LayoutProps) {
 
   return (
     <div className="flex h-screen bg-stone-100">
+      {/* A faint lime edge around the window, Bloom's accent; it never takes clicks. */}
+      <div
+        aria-hidden="true"
+        data-testid="window-glow"
+        className="pointer-events-none fixed inset-0 z-50 shadow-[inset_0_0_0_1px_rgba(132,204,22,0.18),inset_0_0_14px_rgba(132,204,22,0.10)]"
+      />
       {/* Sidebar */}
       <div className="w-64 bg-stone-100 border-r border-stone-200 flex flex-col">
         <div className="p-6">
-          <h1 className="text-2xl font-bold text-gray-800">Bloom Desktop</h1>
-          <p className="text-sm text-gray-500 mt-1">{modeLabel(mode)}</p>
+          <div className="flex items-center gap-3">
+            {/* The app's own icon, as on the taskbar and Start menu. */}
+            <img
+              src={appIcon}
+              alt=""
+              className="h-11 w-11 shrink-0 rounded-lg"
+            />
+            {/* The name, with the scanner mode underneath it. */}
+            <div className="min-w-0">
+              <h1 className="whitespace-nowrap text-xl font-bold text-black [text-shadow:0_0_1px_#84cc16,0_0_4px_rgba(132,204,22,0.55)]">
+                Bloom Desktop
+              </h1>
+              <p className="text-sm font-bold text-green-800">
+                {modeLabel(mode)}
+              </p>
+            </div>
+          </div>
         </div>
 
         <nav className="mt-6 flex-1">
@@ -489,12 +517,15 @@ export function Layout({ mode = null }: LayoutProps) {
               end
               onClick={(event) => confirmNavAway(event, link.to)}
               className={({ isActive }) =>
-                `flex items-center px-6 py-3 text-stone-700 hover:bg-stone-50/70 hover:text-stone-900 transition-colors ${
-                  isActive ? 'bg-stone-50 text-lime-700 font-medium' : ''
+                `group flex items-center px-6 py-3 font-bold text-black hover:bg-lime-50/60 hover:text-lime-800 hover:shadow-[inset_0_0_12px_rgba(132,204,22,0.22)] transition duration-200 ${
+                  isActive ? 'bg-stone-50 !text-lime-700' : ''
                 }`
               }
             >
-              {link.icon}
+              {/* Icons stay green; they draw in this colour (currentColor). */}
+              <span className="flex text-green-800 group-hover:text-lime-800">
+                {link.icon}
+              </span>
               {link.label}
             </NavLink>
           ))}
@@ -502,7 +533,7 @@ export function Layout({ mode = null }: LayoutProps) {
 
         {/* Scanner name footer */}
         <div className="p-4 border-t border-gray-200">
-          <p className="text-xs text-gray-500">
+          <p className="text-xs font-bold text-green-800">
             Scanner: {scannerName || 'Not configured'}
           </p>
         </div>
