@@ -7,6 +7,7 @@ import type {
   ExperimentWithRelations,
 } from '../types/database';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { LazyThumbnail } from './components/LazyThumbnail';
 import { countUploadStatuses } from '../utils/upload-status';
 import { pathToFileUrl } from '../utils/file-url';
 import { isAbsolutePath } from '../utils/scan-path';
@@ -554,11 +555,9 @@ export function BrowseScans() {
                           );
                         }
                         return (
-                          <img
+                          <LazyThumbnail
                             src={thumbnailUrl}
                             alt={`${scan.plant_id} thumbnail`}
-                            loading="lazy"
-                            className="w-12 h-16 object-cover rounded border border-gray-200"
                             onError={() =>
                               setThumbnailErrors((prev) =>
                                 new Set(prev).add(scan.id)
