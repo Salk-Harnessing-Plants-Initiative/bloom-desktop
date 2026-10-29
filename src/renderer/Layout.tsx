@@ -499,7 +499,7 @@ export function Layout({ mode = null }: LayoutProps) {
             />
             {/* The name, with the scanner mode underneath it. */}
             <div className="min-w-0">
-              <h1 className="whitespace-nowrap text-xl font-bold text-black [text-shadow:0_0_1px_#84cc16,0_0_4px_rgba(132,204,22,0.55)]">
+              <h1 className="whitespace-nowrap text-xl font-bold text-black">
                 Bloom Desktop
               </h1>
               <p className="text-sm font-bold text-green-800">

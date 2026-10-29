@@ -215,14 +215,12 @@ describe('Layout nav links', () => {
     expect(glow.className).toMatch(/rgba\(132,204,22,0\.\d+\)/);
   });
 
-  it('shows the Bloom Desktop title in black with a soft lime edge', async () => {
+  it('shows the Bloom Desktop title in plain black', async () => {
     renderLayout('cylinderscan');
     await waitFor(() => screen.getByText(/scanner:/i));
 
     const title = screen.getByRole('heading', { name: 'Bloom Desktop' });
-    expect(title.className).toMatch(/\[text-shadow:[^\]]*#84cc16/);
-    // A text stroke draws over the letters' inner joins; a soft shadow doesn't.
-    expect(title.className).not.toContain('text-stroke');
+    expect(title.className).not.toMatch(/text-shadow|text-stroke/);
     expect(title.className).toContain('text-black');
     // One line next to the icon, in the sidebar's width.
     expect(title.className).toContain('whitespace-nowrap');
