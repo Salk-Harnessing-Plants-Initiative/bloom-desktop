@@ -57,11 +57,46 @@ function renderPanel(waveNumber = 2, waves = [wave1]) {
 }
 
 describe('WaveDatesPanel', () => {
+  it('shows the dates under Wave-level, once, and saves them with "Save dates"', () => {
+    const { save } = renderPanel();
+    fireEvent.click(screen.getByTestId('dates-mode-same'));
+
+    const datesBlock = screen.getByTestId('wave-level-dates');
+    // Between the two choices: after Wave-level, before Plant-level.
+    expect(
+      screen
+        .getByTestId('dates-mode-same')
+        .compareDocumentPosition(datesBlock) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      datesBlock.compareDocumentPosition(
+        screen.getByTestId('dates-mode-per-plant')
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(datesBlock).toHaveTextContent(
+      'Plant age is counted from this date.'
+    );
+    expect(datesBlock).toHaveTextContent('Same as germination date');
+    // The question isn't asked again once Wave-level is chosen.
+    expect(screen.getByTestId('wave-dates-panel')).not.toHaveTextContent(
+      /Please set the dates/
+    );
+    expect(save()).toHaveTextContent('Save dates');
+  });
+
   it("asks whether all the wave's plants share their dates, with nothing chosen yet", () => {
     const { save } = renderPanel();
-    expect(screen.getByTestId('dates-mode-question')).toHaveTextContent(
-      "How are wave 2's dates (sowing date, germination date and transfer to cylinder date) set?"
+    const question = screen.getByTestId('dates-mode-question');
+    expect(question).toHaveTextContent(
+      /^Set wave 2 datesSowing, germination, and transfer-to-cylinder/
     );
+    expect(question).toHaveTextContent(
+      'Wave-levelSame dates for every plant. Enter them once.'
+    );
+    expect(question).toHaveTextContent(
+      'Plant-levelDifferent dates per plant. Enter them when each barcode is first scanned.'
+    );
+    expect(save()).toHaveTextContent('Continue');
     expect(screen.getByTestId('dates-mode-same')).not.toBeChecked();
     expect(screen.getByTestId('dates-mode-per-plant')).not.toBeChecked();
     // No dates are asked for until they answer.
@@ -74,9 +109,7 @@ describe('WaveDatesPanel', () => {
   it('saves a wave whose dates are per plant, with no dates', async () => {
     const { onSave, save } = renderPanel();
     fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
-    expect(screen.getByTestId('dates-per-plant-note')).toHaveTextContent(
-      "Each plant's dates are asked for as it's first scanned"
-    );
+    expect(save()).toHaveTextContent('Continue');
     expect(
       screen.queryByTestId('germination-date-input')
     ).not.toBeInTheDocument();

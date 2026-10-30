@@ -223,7 +223,7 @@ test.describe('UI: Numeric Field Input Behavior', () => {
 
     const plantAgeInput = window.locator('#plantAgeDays');
     await expect(plantAgeInput).toHaveAttribute('readonly');
-    await expect(window.locator("text=How are wave 2's dates")).toBeVisible({
+    await expect(window.locator('text=Set wave 2 dates')).toBeVisible({
       timeout: 5000,
     });
     await expect(plantAgeInput).toHaveValue('');

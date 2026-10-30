@@ -1026,7 +1026,7 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
     await enterPlant();
 
     expect(await screen.findByTestId('wave-dates-panel')).toHaveTextContent(
-      "How are wave 1's dates (sowing date, germination date and transfer to cylinder date) set?"
+      'Set wave 1 dates'
     );
     expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
     expect(
@@ -1051,7 +1051,7 @@ describe("CaptureScan plant age from the plant's germination date (#407, #428)",
 
     // The plant's dates are fields of the form, like the rest of it.
     expect(await screen.findByTestId('plant-dates-box')).toHaveTextContent(
-      /^Sowing Date \*Germination Date \*Transfer to CylinderSame day as germination/
+      /^Sowing Date \*Germination Date \*Plant age is counted from this date\.Transfer to CylinderSame as germination date/
     );
     expect(screen.getByRole('button', { name: /start scan/i })).toBeDisabled();
     expect(

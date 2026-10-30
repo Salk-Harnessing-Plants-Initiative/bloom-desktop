@@ -159,7 +159,7 @@ export function waveDatesError(dates: WaveDates, today: Date): string | null {
   }
   if (dates.transfer) {
     if (!isIsoDate(dates.transfer)) {
-      return 'Enter the transfer date, or tick "Same day as germination".';
+      return 'Enter the transfer date, or tick "Same as germination date".';
     }
     if (plantAgeDays(dates.transfer, today) < 0) {
       return "The transfer date can't be in the future.";

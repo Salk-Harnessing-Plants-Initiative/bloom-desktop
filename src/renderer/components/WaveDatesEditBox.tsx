@@ -184,59 +184,55 @@ export function WaveDatesEditBox({
             : null
         }
         disabled={saving || disabled}
-      />
-
-      {mode === 'same' && (
-        <>
-          {sameLocked && (
-            <p className="text-gray-700" data-testid="same-dates-locked">
-              This wave has scans, so it can only use the dates its plants were
-              scanned with.
-            </p>
-          )}
-          <WaveDateInputs
-            dates={dates}
-            transferSameDay={transferSameDay}
-            onChange={(next, sameDay) => {
-              setDates(next);
-              setTransferSameDay(sameDay);
-            }}
-            disabled={sameLocked || datesLocked || saving || disabled}
+      >
+        {sameLocked && (
+          <p className="text-gray-700" data-testid="same-dates-locked">
+            This wave has scans, so it can only use the dates its plants were
+            scanned with.
+          </p>
+        )}
+        <WaveDateInputs
+          dates={dates}
+          transferSameDay={transferSameDay}
+          onChange={(next, sameDay) => {
+            setDates(next);
+            setTransferSameDay(sameDay);
+          }}
+          disabled={sameLocked || datesLocked || saving || disabled}
+        />
+        {datesLocked && (
+          <p
+            className="text-amber-800"
+            data-testid="wave-dates-edit-scans-warning"
+          >
+            {scannedWaveError(wave.wave_number)} If they&apos;re wrong, contact
+            the Bloom team.
+          </p>
+        )}
+        {error && <p className="text-red-600">{error}</p>}
+        {warning && (
+          <WaveOrderWarning
+            waveNumber={wave.wave_number}
+            sowing={entered.sowing}
+            germination={entered.germination}
+            warning={warning}
+            otherWaves={otherWaves}
+          >
+            <p>If these are right, give a reason to proceed.</p>
+          </WaveOrderWarning>
+        )}
+        {reasonNeeded && (
+          <textarea
+            aria-label="Reason"
+            placeholder="Reason for the change (required)"
+            value={reason}
+            maxLength={MAX_REASON_LENGTH}
+            onChange={(e) => setReason(e.target.value)}
+            disabled={saving || disabled}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
           />
-          {datesLocked && (
-            <p
-              className="text-amber-800"
-              data-testid="wave-dates-edit-scans-warning"
-            >
-              {scannedWaveError(wave.wave_number)} If they&apos;re wrong,
-              contact the Bloom team.
-            </p>
-          )}
-          {error && <p className="text-red-600">{error}</p>}
-          {warning && (
-            <WaveOrderWarning
-              waveNumber={wave.wave_number}
-              sowing={entered.sowing}
-              germination={entered.germination}
-              warning={warning}
-              otherWaves={otherWaves}
-            >
-              <p>If these are right, give a reason to proceed.</p>
-            </WaveOrderWarning>
-          )}
-          {reasonNeeded && (
-            <textarea
-              aria-label="Reason"
-              placeholder="Reason for the change (required)"
-              value={reason}
-              maxLength={MAX_REASON_LENGTH}
-              onChange={(e) => setReason(e.target.value)}
-              disabled={saving || disabled}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            />
-          )}
-        </>
-      )}
+        )}
+      </DatesModeChoice>
 
       {mode === 'perPlant' && (
         <PerPlantDatesNote plants={plants} switching={toPerPlant} />
