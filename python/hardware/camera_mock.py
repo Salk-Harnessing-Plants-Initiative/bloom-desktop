@@ -71,7 +71,6 @@ class MockCamera:
     """Mock camera that simulates Basler camera behavior using test images."""
 
     def __init__(self, settings: CameraSettings):
-        self._lock_file: Optional[TextIO] = None
         """Initialize the mock camera.
 
         Args:
@@ -79,6 +78,7 @@ class MockCamera:
         """
         self.settings = settings
         self.is_open = False
+        self._lock_file: Optional[TextIO] = None
         self.test_images = self._load_test_images()
 
     def _load_test_images(self) -> List[np.ndarray]:
