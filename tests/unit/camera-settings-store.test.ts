@@ -10,7 +10,11 @@ import {
   saveCameraSettings,
   saveErrorCode,
 } from '../../src/main/camera-settings-store';
-import { DEFAULT_CAMERA_SETTINGS, withoutSource } from '../../src/types/camera';
+import {
+  DEFAULT_CAMERA_SETTINGS,
+  formatCameraSetting,
+  withoutSource,
+} from '../../src/types/camera';
 
 let dir: string;
 let file: string;
@@ -50,7 +54,7 @@ describe('camera settings store', () => {
       gain: 120,
       gamma: 1.2,
     });
-    expect(fs.existsSync(`${file}.tmp`)).toBe(false);
+    expect(fs.readdirSync(dir)).toEqual([CAMERA_SETTINGS_FILE]);
   });
 
   it('treats a missing file as no saved settings, without logging', async () => {
@@ -151,9 +155,11 @@ describe('camera settings session', () => {
 
     expect(result.saved).toBe(false);
     expect(result.saveError?.code).toMatch(/^CAM-SAVE-/);
+    // Still applied this session, and the reason is kept for when the page reopens.
     expect(await s.get()).toMatchObject({
       exposure_time: 12000,
-      source: 'applied',
+      source: 'applied-unsaved',
+      saveError: result.saveError,
     });
     expect(log).toHaveBeenCalledWith(
       expect.stringContaining(
@@ -174,6 +180,47 @@ describe('camera settings session', () => {
       saveError: { code: 'CAM-SAVE-01' },
     });
     expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'reports a read-only folder as CAM-SAVE-02',
+    async () => {
+      fs.chmodSync(dir, 0o500);
+      try {
+        const result = await session().applied({
+          exposure_time: 12000,
+          gain: 120,
+          gamma: 1.2,
+        });
+        expect(result.saveError?.code).toBe('CAM-SAVE-02');
+      } finally {
+        fs.chmodSync(dir, 0o700);
+      }
+    }
+  );
+
+  it('clears the saved-error once a later Apply is saved', async () => {
+    const s = session();
+    await s.applied({ exposure_time: 60000, gain: 100, gamma: 1 });
+    await s.applied({ exposure_time: 12000, gain: 120, gamma: 1.2 });
+
+    const current = await s.get();
+    expect(current).toMatchObject({ source: 'applied' });
+    expect(current).not.toHaveProperty('saveError');
+  });
+
+  it('keeps settings applied while the first load is still reading the file', async () => {
+    await saveCameraSettings(file, { exposure_time: 5000, gain: 50, gamma: 1 });
+    const s = session();
+
+    const loading = s.get();
+    await s.applied({ exposure_time: 20000, gain: 200, gamma: 1.5 });
+    await loading;
+
+    expect(await s.get()).toMatchObject({
+      exposure_time: 20000,
+      source: 'applied',
+    });
   });
 
   it('reports a successful save', async () => {
@@ -211,6 +258,47 @@ describe('camera settings session', () => {
       exposure_time: 15000,
       gain: 150,
       gamma: 1.4,
+    });
+    expect(fs.readdirSync(dir)).toEqual([CAMERA_SETTINGS_FILE]);
+  });
+
+  it('saves two Applies at once without their temp files colliding', async () => {
+    await Promise.all([
+      saveCameraSettings(file, { exposure_time: 12000, gain: 120, gamma: 1.2 }),
+      saveCameraSettings(file, { exposure_time: 15000, gain: 150, gamma: 1.4 }),
+    ]);
+
+    expect(fs.readdirSync(dir)).toEqual([CAMERA_SETTINGS_FILE]);
+    expect(await loadSavedCameraSettings(file)).not.toBeNull();
+  });
+
+  it('leaves the old file intact when the new one cannot be written', async () => {
+    await saveCameraSettings(file, {
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+    });
+    const writeFile = vi
+      .spyOn(fs.promises, 'writeFile')
+      .mockRejectedValueOnce(
+        Object.assign(new Error('ENOSPC: no space left'), { code: 'ENOSPC' })
+      );
+    try {
+      await expect(
+        saveCameraSettings(file, {
+          exposure_time: 15000,
+          gain: 150,
+          gamma: 1.4,
+        })
+      ).rejects.toMatchObject({ code: 'CAM-SAVE-03' });
+    } finally {
+      writeFile.mockRestore();
+    }
+
+    expect(await loadSavedCameraSettings(file)).toEqual({
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
     });
     expect(fs.readdirSync(dir)).toEqual([CAMERA_SETTINGS_FILE]);
   });
@@ -255,5 +343,25 @@ describe('withoutSource', () => {
         source: 'saved',
       })
     ).toEqual({ exposure_time: 12000, gain: 120, gamma: 1.2 });
+  });
+
+  it('drops a save error too', () => {
+    expect(
+      withoutSource({
+        exposure_time: 12000,
+        gain: 120,
+        source: 'applied-unsaved',
+        saveError: { code: 'CAM-SAVE-02', message: 'EPERM' },
+      })
+    ).toEqual({ exposure_time: 12000, gain: 120 });
+  });
+});
+
+describe('formatCameraSetting', () => {
+  it('shows gamma with one decimal and other values with thousands separators', () => {
+    expect(formatCameraSetting('gamma', 2)).toBe('2.0');
+    expect(formatCameraSetting('gamma', 0.8)).toBe('0.8');
+    expect(formatCameraSetting('exposure_time', 12000)).toBe('12,000');
+    expect(formatCameraSetting('gain', 120)).toBe('120');
   });
 });

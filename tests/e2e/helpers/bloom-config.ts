@@ -32,6 +32,9 @@ const CAMERA_SETTINGS_BACKUP = `${CAMERA_SETTINGS_PATH}.e2e-backup`;
 // Backup path for original .env if it exists
 let originalEnvContent: string | null = null;
 
+// Whether this run set the camera settings aside, so cleanup only restores its own backup.
+let cameraSettingsSetAside = false;
+
 /**
  * Create a minimal ~/.bloom/.env file for E2E testing.
  *
@@ -52,11 +55,19 @@ export function createTestBloomConfig(testScansDir?: string): void {
   }
 
   // Set saved camera settings aside, so no test inherits another's (or the developer's).
-  // A backup left by a crashed run is the developer's: keep it, drop the test's file.
+  // A backup left by a crashed run is the developer's and stays the backup; the file
+  // next to it is kept as .e2e-stale-<time> rather than deleted, in case it's newer.
   if (fs.existsSync(CAMERA_SETTINGS_BACKUP)) {
-    fs.rmSync(CAMERA_SETTINGS_PATH, { force: true });
+    if (fs.existsSync(CAMERA_SETTINGS_PATH)) {
+      fs.renameSync(
+        CAMERA_SETTINGS_PATH,
+        `${CAMERA_SETTINGS_PATH}.e2e-stale-${Date.now()}`
+      );
+    }
+    cameraSettingsSetAside = true;
   } else if (fs.existsSync(CAMERA_SETTINGS_PATH)) {
     fs.renameSync(CAMERA_SETTINGS_PATH, CAMERA_SETTINGS_BACKUP);
+    cameraSettingsSetAside = true;
   }
 
   // Default test scans directory
@@ -103,9 +114,10 @@ export function cleanupTestBloomConfig(): void {
 
   // Put back the camera settings that were there before, or remove the test's
   fs.rmSync(CAMERA_SETTINGS_PATH, { force: true });
-  if (fs.existsSync(CAMERA_SETTINGS_BACKUP)) {
+  if (cameraSettingsSetAside && fs.existsSync(CAMERA_SETTINGS_BACKUP)) {
     fs.renameSync(CAMERA_SETTINGS_BACKUP, CAMERA_SETTINGS_PATH);
   }
+  cameraSettingsSetAside = false;
 }
 
 /**

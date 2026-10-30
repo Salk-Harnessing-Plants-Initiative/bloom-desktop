@@ -136,9 +136,10 @@ export function cameraSettingError(
     value <= limit.max &&
     (!whole || Number.isInteger(value));
   if (ok) return null;
-  return `${limit.label} must be ${whole ? 'a whole number ' : ''}between ${limit.min.toLocaleString(
-    'en-US'
-  )} and ${limit.max.toLocaleString('en-US')}${limit.unit}.`;
+  return `${limit.label} must be ${whole ? 'a whole number ' : ''}between ${formatCameraSetting(
+    field,
+    limit.min
+  )} and ${formatCameraSetting(field, limit.max)}${limit.unit}.`;
 }
 
 /** Every setting that can't be used, with the reason. Empty when all are fine. */
@@ -191,19 +192,34 @@ export interface CameraConfigureResult {
   saveError?: { code: CameraSettingsSaveErrorCode; message: string };
 }
 
-/** Where the current camera settings came from: saved on the station, or applied this session. */
-export type CameraSettingsSource = 'saved' | 'applied';
+/**
+ * Where the current camera settings came from: saved on the station, applied this
+ * session (and saved), or applied this session but not saved.
+ */
+export type CameraSettingsSource = 'saved' | 'applied' | 'applied-unsaved';
 
-/** What camera:get-settings returns: the settings, and where they came from. */
-export type CameraSettingsWithSource = CameraSettings & {
+/** What camera:get-settings returns: the settings, where they came from, and why the last Apply wasn't saved. */
+export interface CameraSettingsWithSource extends CameraSettings {
   source: CameraSettingsSource | null;
-};
+  saveError?: { code: CameraSettingsSaveErrorCode; message: string };
+}
 
 /** The settings to send to the camera: without where they came from. */
-export function withoutSource(
-  settings: Partial<CameraSettings> & { source?: unknown }
-): Partial<CameraSettings> {
+export function withoutSource<T extends object>(
+  settings: T
+): Omit<T, 'source' | 'saveError'> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { source, ...values } = settings;
+  const { source, saveError, ...values } = settings as T & {
+    source?: unknown;
+    saveError?: unknown;
+  };
   return values;
+}
+
+/** A setting as the operator reads it: gamma with one decimal, others with thousands separators. */
+export function formatCameraSetting(
+  field: LimitedCameraSetting,
+  value: number
+): string {
+  return field === 'gamma' ? value.toFixed(1) : value.toLocaleString('en-US');
 }

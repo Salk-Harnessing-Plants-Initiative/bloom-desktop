@@ -149,6 +149,10 @@ describe('CaptureScan color palette (camera-not-configured state)', () => {
     });
 
     const configureButton = await screen.findByText('Configure Camera');
+    // No settings to show while the camera isn't configured.
+    expect(
+      screen.queryByTestId('camera-settings-summary')
+    ).not.toBeInTheDocument();
     expect(configureButton.className).toContain('bg-lime-700');
     expect(configureButton.className).toContain('hover:bg-lime-800');
     expect(configureButton.className).not.toMatch(

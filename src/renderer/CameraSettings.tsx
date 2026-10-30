@@ -9,10 +9,13 @@ import { useState, useEffect } from 'react';
 import { Streamer } from '../components/Streamer';
 import { CameraSettingsForm } from '../components/CameraSettingsForm';
 import {
-  CAMERA_SETTINGS_SAVE_ERRORS,
-  type CameraConfigureResult,
+  CameraSaveErrorCodes,
+  CameraSaveErrorNotice,
+} from '../components/CameraSaveErrorNotice';
+import {
   type CameraSettings,
   type CameraSettingsSource,
+  type CameraSettingsWithSource,
   withoutSource,
 } from '../types/camera';
 
@@ -37,11 +40,11 @@ export function CameraSettings() {
   const [applyError, setApplyError] = useState<string | null>(null);
   // Where the shown settings came from: saved on this station, or applied this session.
   // 'applied-unsaved': the camera took them, but they couldn't be kept (saveError says why).
-  const [source, setSource] = useState<
-    CameraSettingsSource | 'applied-unsaved' | null
-  >(null);
+  const [source, setSource] = useState<CameraSettingsSource | null>(null);
   const [saveError, setSaveError] =
-    useState<CameraConfigureResult['saveError']>(undefined);
+    useState<CameraSettingsWithSource['saveError']>(undefined);
+  // An Apply is in progress: the button is disabled, so a double-click applies once.
+  const [applying, setApplying] = useState(false);
 
   // Hide the "applied" confirmation after a few seconds.
   useEffect(() => {
@@ -60,6 +63,8 @@ export function CameraSettings() {
         console.log('[CameraSettings] Updating state with settings');
         const values = withoutSource(settings);
         setSource(settings.source ?? null);
+        // A failed save is still reported after leaving the page and coming back.
+        setSaveError(settings.saveError);
         setCurrentSettings(values);
         setEditedSettings(values);
         setShowPreview(true); // Show preview if settings exist
@@ -89,6 +94,7 @@ export function CameraSettings() {
   }, [showPreview]);
 
   const handleApply = async () => {
+    setApplying(true);
     setApplied(false);
     setApplyError(null);
     setSaveError(undefined);
@@ -120,6 +126,8 @@ export function CameraSettings() {
     } catch (error) {
       console.error('Failed to apply settings:', error);
       setApplyError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -153,6 +161,7 @@ export function CameraSettings() {
               onChange={setEditedSettings}
               onApply={handleApply}
               onReset={handleReset}
+              applying={applying}
               showActions={true}
             />
 
@@ -194,51 +203,13 @@ export function CameraSettings() {
                   ✓ Camera settings applied and saved for future sessions
                 </p>
               )}
-              {saveError && (
-                <div
-                  role="alert"
-                  className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
-                >
-                  <p className="font-medium">
-                    Applied to the camera, but not saved for future sessions.
-                  </p>
-                  <p className="mt-1">
-                    <span className="font-mono font-semibold">
-                      {saveError.code}
-                    </span>
-                    : {CAMERA_SETTINGS_SAVE_ERRORS[saveError.code].title}.{' '}
-                    {CAMERA_SETTINGS_SAVE_ERRORS[saveError.code].help}
-                  </p>
-                  <p className="mt-1 text-xs text-amber-800">
-                    Details: {saveError.message}
-                  </p>
-                </div>
-              )}
+              {saveError && <CameraSaveErrorNotice error={saveError} />}
               {applyError && (
                 <p role="alert" className="mt-2 text-sm text-red-700">
                   Couldn't apply the settings: {applyError}
                 </p>
               )}
-              <details className="mt-3 text-xs text-gray-600">
-                <summary className="cursor-pointer">
-                  What do the save error codes mean?
-                </summary>
-                <dl className="mt-2 space-y-1">
-                  {Object.entries(CAMERA_SETTINGS_SAVE_ERRORS).map(
-                    ([code, { title, help }]) => (
-                      <div key={code}>
-                        <dt className="inline font-mono font-semibold">
-                          {code}
-                        </dt>
-                        <dd className="inline">
-                          {' '}
-                          {title}. {help}
-                        </dd>
-                      </div>
-                    )
-                  )}
-                </dl>
-              </details>
+              <CameraSaveErrorCodes />
             </div>
           </div>
 

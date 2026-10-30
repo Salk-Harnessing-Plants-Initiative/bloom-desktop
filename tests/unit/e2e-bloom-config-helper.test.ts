@@ -2,7 +2,16 @@
  * The E2E helper sets the developer's ~/.bloom/camera-settings.json aside on disk and
  * puts it back, including after a run that crashed before cleaning up.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  beforeEach,
+  afterAll,
+  afterEach,
+  vi,
+} from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -13,14 +22,16 @@ vi.mock('os', async (importOriginal) => {
   return { ...real, homedir: () => home };
 });
 
-const { createTestBloomConfig, cleanupTestBloomConfig } = await import(
-  '../e2e/helpers/bloom-config'
-);
+const { createTestBloomConfig, cleanupTestBloomConfig, getBloomDir } =
+  await import('../e2e/helpers/bloom-config');
 
 const bloom = path.join(home, '.bloom');
 const settings = path.join(bloom, 'camera-settings.json');
 const backup = `${settings}.e2e-backup`;
 
+// If the os mock ever stopped applying, the helper would move the real ~/.bloom files.
+beforeAll(() => expect(getBloomDir()).toBe(bloom));
+afterAll(() => fs.rmSync(home, { recursive: true, force: true }));
 beforeEach(() => fs.rmSync(bloom, { recursive: true, force: true }));
 afterEach(() => fs.rmSync(bloom, { recursive: true, force: true }));
 
@@ -60,5 +71,34 @@ describe('E2E bloom-config helper: saved camera settings', () => {
     cleanupTestBloomConfig();
 
     expect(fs.readFileSync(settings, 'utf8')).toBe('mine');
+  });
+
+  it('keeps a file found next to a leftover backup instead of deleting it', () => {
+    fs.mkdirSync(bloom, { recursive: true });
+    fs.writeFileSync(backup, 'mine');
+    fs.writeFileSync(settings, 'applied since the crash');
+
+    createTestBloomConfig(path.join(home, 'scans'));
+
+    const stale = fs
+      .readdirSync(bloom)
+      .filter((name) => name.startsWith('camera-settings.json.e2e-stale-'));
+    expect(stale).toHaveLength(1);
+    expect(fs.readFileSync(path.join(bloom, stale[0]), 'utf8')).toBe(
+      'applied since the crash'
+    );
+    cleanupTestBloomConfig();
+    expect(fs.readFileSync(settings, 'utf8')).toBe('mine');
+  });
+
+  it("doesn't restore a backup it didn't make", () => {
+    // Cleanup without a matching setup (e.g. a second cleanup) leaves the backup alone.
+    fs.mkdirSync(bloom, { recursive: true });
+    fs.writeFileSync(backup, 'mine');
+
+    cleanupTestBloomConfig();
+
+    expect(fs.readFileSync(backup, 'utf8')).toBe('mine');
+    expect(fs.existsSync(settings)).toBe(false);
   });
 });

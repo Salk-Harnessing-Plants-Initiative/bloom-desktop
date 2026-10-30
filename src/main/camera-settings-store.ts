@@ -92,6 +92,7 @@ export class CameraSettingsSaveError extends Error {
         ? `${CAMERA_SETTINGS_SAVE_ERRORS[code].title}: ${detail}`
         : CAMERA_SETTINGS_SAVE_ERRORS[code].title
     );
+    this.name = 'CameraSettingsSaveError';
   }
 }
 
@@ -157,6 +158,8 @@ export function createCameraSettingsSession(deps: CameraSettingsSessionDeps) {
   const log = deps.log ?? console.warn;
   let current: CameraSettings | null = null;
   let source: CameraSettingsSource | null = null;
+  // Why the last Apply wasn't saved, kept so the page still says so after leaving it.
+  let saveError: CameraSettingsWithSource['saveError'];
   let checked = false;
   let loading: Promise<void> | null = null;
 
@@ -174,7 +177,10 @@ export function createCameraSettingsSession(deps: CameraSettingsSessionDeps) {
         });
         await loading;
       }
-      return current ? { ...current, source } : null;
+      if (!current) return null;
+      return saveError
+        ? { ...current, source, saveError }
+        : { ...current, source };
     },
 
     /**
@@ -186,15 +192,13 @@ export function createCameraSettingsSession(deps: CameraSettingsSessionDeps) {
       saved: boolean;
       saveError?: { code: CameraSettingsSaveErrorCode; message: string };
     }> {
-      current = {
-        ...(current ?? deps.defaults),
-        ...settings,
-      } as CameraSettings;
-      source = 'applied';
+      current = { ...(current ?? deps.defaults), ...settings };
       // A first load after this must not replace what was just applied.
       checked = true;
       try {
         await saveCameraSettings(deps.file, current);
+        source = 'applied';
+        saveError = undefined;
         return { settings: current, saved: true };
       } catch (error) {
         const code =
@@ -202,6 +206,8 @@ export function createCameraSettingsSession(deps: CameraSettingsSessionDeps) {
         const message =
           error instanceof Error ? error.message : 'Unknown error';
         log(`[Camera] Couldn't save the camera settings (${code}): ${message}`);
+        source = 'applied-unsaved';
+        saveError = { code, message };
         return {
           settings: current,
           saved: false,

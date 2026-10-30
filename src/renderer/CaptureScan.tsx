@@ -23,7 +23,11 @@ import type {
   ScanProgress as ScanProgressData,
   ScanResult,
 } from '../types/scanner';
-import { DEFAULT_CAMERA_SETTINGS, withoutSource } from '../types/camera';
+import {
+  DEFAULT_CAMERA_SETTINGS,
+  formatCameraSetting,
+  withoutSource,
+} from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
 import { buildScanPath, toRelativeScanPath } from '../utils/scan-path';
 import { plantAgeDays } from '../utils/wave-dates';
@@ -825,9 +829,14 @@ export function CaptureScan() {
                 {cameraConfigured && (
                   <span data-testid="camera-settings-summary">
                     {' '}
-                    · Exposure {cameraSettings.exposure_time.toLocaleString()}{' '}
-                    µs · Gain {cameraSettings.gain} · Gamma{' '}
-                    {cameraSettings.gamma ?? 1}
+                    · Exposure{' '}
+                    {formatCameraSetting(
+                      'exposure_time',
+                      cameraSettings.exposure_time
+                    )}{' '}
+                    µs · Gain {formatCameraSetting('gain', cameraSettings.gain)}{' '}
+                    · Gamma{' '}
+                    {formatCameraSetting('gamma', cameraSettings.gamma ?? 1)}
                   </span>
                 )}
               </div>

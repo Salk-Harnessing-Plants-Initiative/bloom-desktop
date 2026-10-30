@@ -118,7 +118,7 @@ describe('CameraSettingsForm limits', () => {
     ],
     [
       { exposure_time: 10000, gain: 100, gamma: 2.5 },
-      'Gamma must be between 0.5 and 2.',
+      'Gamma must be between 0.5 and 2.0.',
     ],
   ])('marks %o and says why, and Apply is disabled', (settings, message) => {
     const onApply = renderWith(settings);
@@ -128,6 +128,42 @@ describe('CameraSettingsForm limits', () => {
     expect(apply).toBeDisabled();
     fireEvent.click(apply);
     expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('disables Apply and says so while an Apply is in progress', () => {
+    const onApply = vi.fn();
+    render(
+      <CameraSettingsForm
+        settings={{ exposure_time: 10000, gain: 100, gamma: 1 }}
+        onChange={vi.fn()}
+        onApply={onApply}
+        onReset={vi.fn()}
+        applying
+      />
+    );
+
+    const apply = screen.getByRole('button', { name: 'Applying…' });
+    expect(apply).toBeDisabled();
+    fireEvent.click(apply);
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('keeps a gamma below 1 as typed (no fallback to the default)', () => {
+    const onChange = vi.fn();
+    render(
+      <CameraSettingsForm
+        settings={{ exposure_time: 10000, gain: 100, gamma: 0 }}
+        onChange={onChange}
+        showActions={false}
+      />
+    );
+    // Typing "0.8" passes through 0 on the way; 0 must not become the default 1.
+    expect(screen.getAllByRole('spinbutton')[2]).toHaveValue(0);
+
+    fireEvent.change(screen.getAllByRole('spinbutton')[2], {
+      target: { value: '0.8' },
+    });
+    expect(onChange.mock.lastCall?.[0].gamma).toBe(0.8);
   });
 
   it('allows Apply when every value is within the limits', () => {

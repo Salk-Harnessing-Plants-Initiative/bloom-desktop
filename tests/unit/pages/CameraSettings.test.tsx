@@ -162,6 +162,46 @@ describe('CameraSettings Apply feedback', () => {
     expect(screen.queryByText(/applied and saved/)).not.toBeInTheDocument();
   });
 
+  it('still says the settings were not saved after leaving the page and coming back', async () => {
+    mockGetSettings.mockResolvedValue({
+      exposure_time: 60000,
+      gain: 100,
+      gamma: 1,
+      source: 'applied-unsaved',
+      saveError: { code: 'CAM-SAVE-01', message: 'Settings out of range' },
+    });
+    render(<CameraSettings />);
+
+    const notice = await screen.findByText(
+      'Applied to the camera, but not saved for future sessions.'
+    );
+    expect(notice.closest('[role="alert"]')).toHaveTextContent('CAM-SAVE-01');
+    expect(screen.getByTestId('camera-settings-status')).toHaveTextContent(
+      'Applied to the camera, but not saved for future sessions'
+    );
+    // The form marks the value that couldn't be kept as well.
+    expect(
+      screen.getByText('Exposure must be between 100 and 50,000 µs.')
+    ).toBeInTheDocument();
+  });
+
+  it('disables Apply until the camera answers', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    mockConfigure.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    render(<CameraSettings />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
+    const applying = await screen.findByRole('button', { name: 'Applying…' });
+    expect(applying).toBeDisabled();
+    fireEvent.click(applying);
+    expect(mockConfigure).toHaveBeenCalledTimes(1);
+
+    answer({ success: true, saved: true });
+    expect(
+      await screen.findByRole('button', { name: /Apply Settings/i })
+    ).toBeEnabled();
+  });
+
   it('lists every save error code on the page', () => {
     render(<CameraSettings />);
     for (const code of [

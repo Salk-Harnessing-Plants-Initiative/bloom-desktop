@@ -21,7 +21,11 @@ import { createScanProtocolHandler } from './scan-protocol';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './cylinderscan/camera-process';
 import type { CameraSettings } from './cylinderscan/camera-process';
-import { DEFAULT_CAMERA_SETTINGS, withoutSource } from '../types/camera';
+import {
+  cameraSettingsErrors,
+  DEFAULT_CAMERA_SETTINGS,
+  withoutSource,
+} from '../types/camera';
 import { DAQProcess } from './cylinderscan/daq-process';
 import type { DAQSettings } from '../types/daq';
 import { ScannerProcess } from './cylinderscan/scanner-process';
@@ -477,6 +481,11 @@ ipcMain.handle(
   'camera:configure',
   async (_event, requested: Partial<CameraSettings>) => {
     try {
+      // Refuse values the form's limits don't allow, whoever sends them.
+      const outOfRange = Object.values(cameraSettingsErrors(requested));
+      if (outOfRange.length > 0) {
+        return { success: false, error: outOfRange.join(' ') };
+      }
       // Where the settings came from is not a camera setting.
       const settings = applyCameraIp(
         withoutSource(requested),
