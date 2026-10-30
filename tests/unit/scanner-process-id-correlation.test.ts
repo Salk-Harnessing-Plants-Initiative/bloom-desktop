@@ -47,6 +47,7 @@ describe('ScannerProcess — IPC response id does not leak into the DB', () => {
     // Simulate the new correlation-tagged IPC response shape (#47) — every
     // sendCommand() response now carries an `id` field.
     const mockPythonProcess = {
+      on: vi.fn(),
       sendCommand: vi.fn().mockResolvedValue({
         success: true,
         frames_captured: 72,

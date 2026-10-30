@@ -22,7 +22,7 @@ export interface DAQSettings {
   /** Digital output line for stepper direction signal */
   dir_pin: number;
 
-  /** Number of steps for full 360° rotation */
+  /** Number of steps for one full turn of the turntable */
   steps_per_revolution: number;
 
   /** Number of frames to capture during rotation */
@@ -31,6 +31,12 @@ export interface DAQSettings {
   /** Time for one complete rotation in seconds */
   seconds_per_rot: number;
 }
+
+/**
+ * One full turn of the cylinder scanner's turntable: 20,000 microsteps per motor turn
+ * through 60/42 gears, rounded down (the same as python/hardware/daq_types.py).
+ */
+export const STEPS_PER_TURNTABLE_REV = 28571;
 
 /**
  * Default DAQ settings matching Python backend defaults.
@@ -56,7 +62,7 @@ export const DEFAULT_DAQ_SETTINGS: DAQSettings = {
   sampling_rate: 40_000,
   step_pin: 0,
   dir_pin: 1,
-  steps_per_revolution: 6400,
+  steps_per_revolution: STEPS_PER_TURNTABLE_REV,
   num_frames: 72,
   seconds_per_rot: 7.0, // Changed from 36.0 for faster scans - see docs/CONFIGURATION.md
 };

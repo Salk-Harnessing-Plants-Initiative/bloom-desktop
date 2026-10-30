@@ -851,8 +851,18 @@ def handle_scanner_command(cmd: Dict[str, Any]) -> None:
             if _scanner_instance is None or not _scanner_instance.is_initialized:
                 raise RuntimeError("Scanner not initialized. Call initialize() first.")
 
-            # Perform scan (no progress callback for now)
-            result = _scanner_instance.perform_scan()
+            total_frames = _scanner_instance.settings.num_frames
+
+            def report_progress(frame_idx: int, position: float) -> None:
+                # Its own line type: a DATA line would be taken as the scan's response.
+                progress = {
+                    "frame_number": frame_idx,
+                    "total_frames": total_frames,
+                    "position": position,
+                }
+                write_line(f"PROGRESS:{json.dumps(progress)}")
+
+            result = _scanner_instance.perform_scan(on_frame=report_progress)
 
             send_data(
                 {

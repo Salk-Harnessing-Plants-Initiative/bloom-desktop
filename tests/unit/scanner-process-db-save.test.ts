@@ -73,6 +73,7 @@ describe('ScannerProcess — database save outcome (#392)', () => {
     mockScanCreate.mockReset();
 
     const mockPythonProcess = {
+      on: vi.fn(),
       sendCommand: vi.fn().mockResolvedValue({
         success: true,
         frames_captured: FRAMES,
@@ -222,7 +223,7 @@ describe('ScannerProcess — the plant age is checked before scanning (#407, #42
   it("refuses an age that isn't the days since the plant's germination date, without starting the scanner", async () => {
     const sendCommand = vi.fn().mockResolvedValue({ success: true });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const scanner = new ScannerProcess({ sendCommand } as any);
+    const scanner = new ScannerProcess({ sendCommand, on: vi.fn() } as any);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const settings = buildSettings(os.tmpdir(), true);
     settings.metadata = { ...settings.metadata!, plant_age_days: 13 };
@@ -238,7 +239,7 @@ describe('ScannerProcess — the plant age is checked before scanning (#407, #42
   it("refuses a wave whose dates aren't set", async () => {
     const sendCommand = vi.fn().mockResolvedValue({ success: true });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const scanner = new ScannerProcess({ sendCommand } as any);
+    const scanner = new ScannerProcess({ sendCommand, on: vi.fn() } as any);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const settings = buildSettings(os.tmpdir(), true);
     settings.metadata = { ...settings.metadata!, wave_number: 2 };
@@ -250,7 +251,7 @@ describe('ScannerProcess — the plant age is checked before scanning (#407, #42
   it("doesn't keep the previous plant's settings after a refusal", async () => {
     const sendCommand = vi.fn().mockResolvedValue({ success: true });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const scanner = new ScannerProcess({ sendCommand } as any);
+    const scanner = new ScannerProcess({ sendCommand, on: vi.fn() } as any);
     vi.spyOn(console, 'error').mockImplementation(() => {});
     await scanner.initialize(buildSettings(os.tmpdir(), true));
     const bad = buildSettings(os.tmpdir(), true);

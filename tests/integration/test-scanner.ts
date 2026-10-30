@@ -10,7 +10,11 @@
  * Uses mock hardware for testing without physical devices.
  */
 
-import { spawn, ChildProcess } from 'child_process';
+import {
+  spawn,
+  ChildProcess,
+  ChildProcessWithoutNullStreams,
+} from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -102,21 +106,11 @@ function sendCommand(
 }
 
 /**
- * Main test function
+ * Start a hardware process with mock hardware, and wait until it's ready
  */
-async function runTest(): Promise<void> {
-  console.log('=== Scanner Integration Test ===\n');
-
-  // Check if Python executable exists
-  const fs = await import('fs');
-  if (!fs.existsSync(PYTHON_EXECUTABLE)) {
-    throw new Error(
-      `Python executable not found at: ${PYTHON_EXECUTABLE}\nRun 'npm run build:python' first.`
-    );
-  }
-
-  // Start Python process
-  console.log('Starting Python process...');
+async function startHardwareProcess(
+  extraEnv: NodeJS.ProcessEnv = {}
+): Promise<ChildProcessWithoutNullStreams> {
   const pythonProcess = spawn(PYTHON_EXECUTABLE, ['--ipc'], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: {
@@ -124,6 +118,7 @@ async function runTest(): Promise<void> {
       BLOOM_USE_MOCK_HARDWARE: 'true',
       BLOOM_USE_MOCK_CAMERA: 'true',
       BLOOM_USE_MOCK_DAQ: 'true',
+      ...extraEnv,
     },
   });
 
@@ -152,6 +147,27 @@ async function runTest(): Promise<void> {
       reject(new Error(`Python process exited prematurely with code ${code}`));
     });
   });
+
+  return pythonProcess;
+}
+
+/**
+ * Main test function
+ */
+async function runTest(): Promise<void> {
+  console.log('=== Scanner Integration Test ===\n');
+
+  // Check if Python executable exists
+  const fs = await import('fs');
+  if (!fs.existsSync(PYTHON_EXECUTABLE)) {
+    throw new Error(
+      `Python executable not found at: ${PYTHON_EXECUTABLE}\nRun 'npm run build:python' first.`
+    );
+  }
+
+  // Start Python process
+  console.log('Starting Python process...');
+  const pythonProcess = await startHardwareProcess();
 
   console.log('[PASS] Python process started successfully\n');
 
@@ -321,8 +337,91 @@ async function runTest(): Promise<void> {
   }
 }
 
+/**
+ * A real camera can only be open in one process. The preview and the scanner are two
+ * processes, so check the handoff between them against a mock camera that has the same
+ * limit: only closing the camera, not just stopping the stream, frees it.
+ */
+async function runExclusiveCameraTest(): Promise<void> {
+  console.log('\n=== Exclusive Camera Test ===\n');
+
+  const fs = await import('fs');
+  const lockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-camera-lock-'));
+  const start = () =>
+    startHardwareProcess({
+      BLOOM_MOCK_CAMERA_LOCK: path.join(lockDir, 'camera.lock'),
+    });
+  const preview = await start();
+  const scanner = await start();
+
+  const startPreview = () =>
+    sendCommand(preview, {
+      command: 'camera',
+      action: 'start_stream',
+      settings: SCANNER_SETTINGS.camera,
+    });
+  const startScanner = () =>
+    sendCommand(scanner, {
+      command: 'scanner',
+      action: 'initialize',
+      settings: SCANNER_SETTINGS,
+    });
+  // A refusal arrives either as an error or as data saying it failed.
+  type Reply = Awaited<ReturnType<typeof sendCommand>>;
+  const refusal = (reply: Reply) =>
+    reply.success
+      ? (reply.data as { success: boolean; error?: string }).success
+        ? null
+        : ((reply.data as { error?: string }).error ?? 'Failed')
+      : (reply.error ?? 'Failed');
+  const expectCameraHeld = (what: string, reply: Reply) => {
+    if (!refusal(reply)?.includes('another application')) {
+      throw new Error(
+        `${what}: expected the camera to be held, got ${JSON.stringify(reply)}`
+      );
+    }
+    console.log(`[PASS] ${what}: camera held`);
+  };
+  const expectStarted = (what: string, reply: Reply) => {
+    const refused = refusal(reply);
+    if (refused) throw new Error(`${what}: ${refused}`);
+    console.log(`[PASS] ${what}: started`);
+  };
+
+  try {
+    expectStarted('Preview', await startPreview());
+    expectCameraHeld('Scanner during the preview', await startScanner());
+
+    await sendCommand(preview, { command: 'camera', action: 'stop_stream' });
+    expectCameraHeld('Scanner after only stopping', await startScanner());
+
+    await sendCommand(preview, { command: 'camera', action: 'disconnect' });
+    expectStarted('Scanner after closing the preview', await startScanner());
+    expectCameraHeld('Preview during the scanner', await startPreview());
+
+    await sendCommand(scanner, { command: 'scanner', action: 'cleanup' });
+    expectStarted('Preview after the scanner cleaned up', await startPreview());
+
+    console.log('\n=== Exclusive Camera Test Passed ===');
+  } finally {
+    preview.kill();
+    scanner.kill();
+    // On Windows the lock file can't go until the processes have, and a leftover in
+    // the temp folder does no harm.
+    try {
+      fs.rmSync(lockDir, { recursive: true, force: true, maxRetries: 5 });
+    } catch (error) {
+      console.warn(
+        'Could not remove the lock file:',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    }
+  }
+}
+
 // Run the test
 runTest()
+  .then(runExclusiveCameraTest)
   .then(() => {
     process.exit(0);
   })

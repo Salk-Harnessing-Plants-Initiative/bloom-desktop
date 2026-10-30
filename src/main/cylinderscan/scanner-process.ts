@@ -38,6 +38,11 @@ export class ScannerProcess extends EventEmitter {
     super();
     this.pythonProcess = pythonProcess;
 
+    // Python reports each frame as it's saved.
+    this.pythonProcess.on('progress', (progress: ScanProgress) => {
+      this.emit('progress', progress);
+    });
+
     // Listen to our own progress events to collect them for database
     this.on('progress', (progress: ScanProgress) => {
       this.progressEvents.push(progress);

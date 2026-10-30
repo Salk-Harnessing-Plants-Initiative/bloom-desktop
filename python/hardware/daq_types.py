@@ -7,6 +7,16 @@ Defines the data structures for DAQ configuration and operation.
 from dataclasses import dataclass
 
 
+# The cylinder scanner's drive: the motor driver's microsteps per motor turn, and the
+# gears between the motor and the turntable (the pilot app's pylon_rot.py).
+MOTOR_MICROSTEPS_PER_REV = 20_000
+TURNTABLE_GEAR_TEETH = 60
+MOTOR_GEAR_TEETH = 42
+STEPS_PER_TURNTABLE_REV = (
+    MOTOR_MICROSTEPS_PER_REV * TURNTABLE_GEAR_TEETH // MOTOR_GEAR_TEETH
+)
+
+
 @dataclass
 class DAQSettings:
     """Configuration settings for NI-DAQ turntable control.
@@ -16,7 +26,8 @@ class DAQSettings:
         sampling_rate: DAQ sampling rate in Hz (default: 40000)
         step_pin: Digital output line for stepper step signal (default: 0)
         dir_pin: Digital output line for stepper direction signal (default: 1)
-        steps_per_revolution: Number of steps for full 360° rotation (default: 6400)
+        steps_per_revolution: Number of steps for one full turn of the turntable
+            (default: STEPS_PER_TURNTABLE_REV)
         num_frames: Number of frames to capture during rotation
         seconds_per_rot: Time for one complete rotation in seconds
     """
@@ -25,7 +36,7 @@ class DAQSettings:
     sampling_rate: int = 40_000
     step_pin: int = 0
     dir_pin: int = 1
-    steps_per_revolution: int = 6400
+    steps_per_revolution: int = STEPS_PER_TURNTABLE_REV
     num_frames: int = 72
     seconds_per_rot: float = 7.0  # Changed from 36.0 for faster scans
 
