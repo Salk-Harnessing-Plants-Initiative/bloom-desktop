@@ -20,7 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import '@testing-library/jest-dom';
 import { CaptureScan } from '../../../src/renderer/CaptureScan';
 
@@ -165,6 +165,29 @@ describe('CaptureScan color palette (camera-not-configured state)', () => {
     expect(link.className).toContain('text-lime-700');
     expect(link.className).toContain('hover:text-lime-800');
     expect(link.className).not.toMatch(/text-blue-600|hover:text-blue-800/);
+  });
+
+  it.each([
+    ['Configure Camera', false],
+    ['Go to Camera Settings →', true],
+  ])('"%s" opens Camera Settings', async (text, inPanel) => {
+    render(
+      <MemoryRouter initialEntries={['/capture-scan']}>
+        <Routes>
+          <Route path="/capture-scan" element={<CaptureScan />} />
+          <Route
+            path="/camera-settings"
+            element={<p>Camera Settings page</p>}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+    await waitFor(() => expect(mockCameraGetStatus).toHaveBeenCalled());
+    if (inPanel) fireEvent.click(await screen.findByText(/Camera Settings/));
+
+    fireEvent.click(await screen.findByText(text));
+
+    expect(await screen.findByText('Camera Settings page')).toBeInTheDocument();
   });
 
   it('leaves the amber warning banners and green Start Scan button unchanged (regression guard)', async () => {
