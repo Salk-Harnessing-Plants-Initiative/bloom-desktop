@@ -286,7 +286,7 @@ class TestScannerScan:
         self, small_scan_settings
     ):
         """A turntable left off its start must not pass silently."""
-        scanner = MockScanner(small_scan_settings)
+        scanner = MockScanner(ScannerSettings(**small_scan_settings))
         scanner.initialize()
         scanner.daq.rotate = Mock(side_effect=RuntimeError("Motor fault"))
         # Homing works at the start of the scan, then fails on the way back.

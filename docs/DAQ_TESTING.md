@@ -33,7 +33,7 @@ DATA:{"success": true, "initialized": false, "position": 0, "mock": true, "avail
 ### 2. Initialize DAQ
 
 ```bash
-echo '{"command":"daq","action":"initialize","settings":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":7.0}}' | ./dist/bloom-hardware --ipc
+echo '{"command":"daq","action":"initialize","settings":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":28571,"num_frames":72,"seconds_per_rot":7.0}}' | ./dist/bloom-hardware --ipc
 ```
 
 Expected output:
@@ -55,7 +55,7 @@ DATA:{"success": true, "initialized": true}
 ./dist/bloom-hardware --ipc
 
 # Then type these commands (one per line):
-{"command":"daq","action":"initialize","settings":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":7.0}}
+{"command":"daq","action":"initialize","settings":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":28571,"num_frames":72,"seconds_per_rot":7.0}}
 {"command":"daq","action":"rotate","degrees":90}
 {"command":"daq","action":"status"}
 {"command":"daq","action":"home"}
@@ -84,7 +84,7 @@ Once the Electron app is running, you can test the DAQ from the renderer process
     sampling_rate: 40000,
     step_pin: 0,
     dir_pin: 1,
-    steps_per_revolution: 6400,
+    steps_per_revolution: 28571,
     num_frames: 72,
     seconds_per_rot: 7.0,
   });
@@ -135,7 +135,7 @@ The DAQ accepts the following configuration settings:
 | `sampling_rate`        | number | `40000`       | DAQ sampling rate in Hz                  |
 | `step_pin`             | number | `0`           | Digital output line for step signal      |
 | `dir_pin`              | number | `1`           | Digital output line for direction signal |
-| `steps_per_revolution` | number | `6400`        | Steps for full 360° rotation             |
+| `steps_per_revolution` | number | `28571`       | Steps for full 360° rotation             |
 | `num_frames`           | number | `72`          | Number of frames to capture              |
 | `seconds_per_rot`      | number | `7.0`         | Time for complete rotation               |
 
