@@ -143,6 +143,37 @@ describe('Browse Scans while Upload all runs', () => {
     expect(await screen.findByText('All uploaded')).toBeInTheDocument();
   });
 
+  it("counts and uploads within the page's filters", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).electron.database;
+    api.experiments.list = vi.fn().mockResolvedValue({
+      success: true,
+      data: [{ id: 'exp-2', name: 'Exp 2', species: 'Arabidopsis' }],
+    });
+    render(
+      <MemoryRouter>
+        <BrowseScans />
+      </MemoryRouter>
+    );
+    await screen.findByRole('option', { name: /Exp 2/ });
+
+    fireEvent.change(screen.getAllByRole('combobox')[0], {
+      target: { value: 'exp-2' },
+    });
+
+    await waitFor(() =>
+      expect(api.scans.pendingUploads).toHaveBeenLastCalledWith(
+        expect.objectContaining({ experimentId: 'exp-2' })
+      )
+    );
+    fireEvent.click(await screen.findByText('Upload all (1)'));
+    await waitFor(() =>
+      expect(api.scans.uploadAll).toHaveBeenCalledWith(
+        expect.objectContaining({ experimentId: 'exp-2' })
+      )
+    );
+  });
+
   it('ignores a slower reload from before the filters changed', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).electron.database.experiments.list = vi

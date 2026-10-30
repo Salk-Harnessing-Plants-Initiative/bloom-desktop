@@ -4,10 +4,12 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import {
+  MAX_ERROR_LENGTH,
   MAX_LISTED_ERRORS,
   UPLOAD_ALL_DONE_CHANNEL,
   UPLOAD_ALL_PROGRESS_CHANNEL,
   WAITING_STATUSES,
+  readableUploadError,
   registerScanUploadAllHandlers,
   type ScanUploadDbLike,
   type UploaderLike,
@@ -27,6 +29,7 @@ function setup(
 ) {
   const handlers: Record<string, Handler> = {};
   const findMany = vi.fn(async () => scans);
+  const count = vi.fn(async () => scans.length);
   const send = vi.fn();
   const uploader = {
     authenticate: vi.fn(authenticate),
@@ -37,7 +40,7 @@ function setup(
     ipcMain: {
       handle: (channel: string, fn: Handler) => (handlers[channel] = fn),
     } as never,
-    db: { scan: { findMany } } as unknown as ScanUploadDbLike,
+    db: { scan: { findMany, count } } as unknown as ScanUploadDbLike,
     createUploader,
     getMainWindow: () =>
       ({ isDestroyed: () => false, webContents: { send } }) as never,
@@ -70,7 +73,7 @@ function setup(
       .map((c) => c[1]);
     return { started, done, progress };
   };
-  return { call, runToEnd, findMany, send, uploader, createUploader };
+  return { call, runToEnd, findMany, count, send, uploader, createUploader };
 }
 
 const scans = (n: number) =>
@@ -81,22 +84,34 @@ const scans = (n: number) =>
 
 describe('Upload all: which scans', () => {
   it("counts scans not deleted, within the filters, with frames 'pending' or 'failed'", async () => {
-    const { call, findMany } = setup(scans(3));
+    const { call, count, findMany } = setup(scans(3));
     const response = await call('db:scans:pendingUploads', {
       experimentId: 'exp-1',
       dateFrom: '2026-10-01',
     });
 
     expect(response).toEqual({ success: true, data: { count: 3 } });
+    // Counted in the database, without loading the rows.
+    expect(findMany).not.toHaveBeenCalled();
+    const { where } = count.mock.calls[0][0];
+    expect(where).toMatchObject({
+      deleted: false,
+      experiment_id: 'exp-1',
+      images: { some: { status: { in: ['pending', 'failed'] } } },
+    });
+    expect(where.capture_date.gte).toEqual(new Date('2026-10-01T00:00:00'));
+  });
+
+  it('uploads the same scans it counts, oldest first', async () => {
+    const { runToEnd, findMany } = setup(scans(1));
+    await runToEnd({ experimentId: 'exp-1' });
+
     const args = findMany.mock.calls[0][0];
     expect(args.where).toMatchObject({
       deleted: false,
       experiment_id: 'exp-1',
       images: { some: { status: { in: ['pending', 'failed'] } } },
     });
-    expect(args.where.capture_date.gte).toEqual(
-      new Date('2026-10-01T00:00:00')
-    );
     expect(args.orderBy).toEqual({ capture_date: 'asc' });
   });
 
@@ -340,6 +355,48 @@ describe('Upload all: remembered state', () => {
       ).toBe(false)
     );
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe('readableUploadError', () => {
+  it('drops the frame ID', () => {
+    expect(readableUploadError('Image 1aa7-b2: Upload failed')).toBe(
+      'Upload failed'
+    );
+  });
+
+  it("keeps only the message of Bloom's JSON, on one line", () => {
+    expect(
+      readableUploadError(
+        'Image 1aa7-b2: {\n  "message": "duplicate key",\n  "code": "23505"\n}'
+      )
+    ).toBe('duplicate key');
+  });
+
+  it('flattens other multi-line text and JSON without a message', () => {
+    expect(readableUploadError('Failed\n  to connect')).toBe(
+      'Failed to connect'
+    );
+    expect(readableUploadError('Image x: {\n  "code": 1\n}')).toBe(
+      '{ "code": 1 }'
+    );
+  });
+
+  it('shortens a very long reason', () => {
+    const shown = readableUploadError('x'.repeat(MAX_ERROR_LENGTH + 50));
+    expect(shown).toHaveLength(MAX_ERROR_LENGTH + 1);
+    expect(shown.endsWith('…')).toBe(true);
+  });
+
+  it('is what the result lists, for each failed scan', async () => {
+    const { runToEnd } = setup(scans(1), async () => ({
+      success: true,
+      failed: 72,
+      errors: ['Image 1aa7-b2: {\n  "message": "duplicate key"\n}'],
+    }));
+    expect((await runToEnd()).done.result.errors).toEqual([
+      'P1: duplicate key',
+    ]);
   });
 });
 

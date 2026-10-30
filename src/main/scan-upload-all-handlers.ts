@@ -11,7 +11,7 @@
  */
 
 import type { BrowserWindow, IpcMain } from 'electron';
-import type { DatabaseResponse } from '../types/database';
+import type { DatabaseResponse, ImageStatus } from '../types/database';
 import type {
   ScanListFilters,
   UploadAllDone,
@@ -21,20 +21,26 @@ import type {
 import { scanListWhere, type ScanWhere } from './scan-filters';
 
 /** Frame statuses that mean "not uploaded yet". */
-export const WAITING_STATUSES = ['pending', 'failed'];
+export const WAITING_STATUSES: readonly ImageStatus[] = ['pending', 'failed'];
 
 /** How many failures the result lists, so a long run's message stays readable. */
 export const MAX_LISTED_ERRORS = 5;
 
+/** The longest failure reason shown; the full one is in the log. */
+export const MAX_ERROR_LENGTH = 200;
+
 export const UPLOAD_ALL_PROGRESS_CHANNEL = 'db:scans:upload-all-progress';
 export const UPLOAD_ALL_DONE_CHANNEL = 'db:scans:upload-all-done';
 
+type WaitingWhere = ScanWhere & {
+  images: { some: { status: { in: string[] } } };
+};
+
 export interface ScanUploadDbLike {
   scan: {
+    count(args: { where: WaitingWhere }): Promise<number>;
     findMany(args: {
-      where: ScanWhere & {
-        images: { some: { status: { in: string[] } } };
-      };
+      where: WaitingWhere;
       select: { id: true; plant_id: true };
       orderBy: { capture_date: 'asc' };
     }): Promise<{ id: string; plant_id: string }[]>;
@@ -57,13 +63,40 @@ export interface ScanUploadAllDeps {
   getMainWindow: () => BrowserWindow | null;
 }
 
+function waitingWhere(where: ScanWhere): WaitingWhere {
+  return {
+    ...where,
+    images: { some: { status: { in: [...WAITING_STATUSES] } } },
+  };
+}
+
+/**
+ * A failure as the operator reads it. The uploader's errors start "Image <id>: " and
+ * can hold multi-line JSON from Bloom; this keeps just the reason, on one line.
+ */
+export function readableUploadError(raw: string): string {
+  const reason = raw.replace(/^Image \S+:\s*/, '');
+  let text = reason;
+  try {
+    const parsed: unknown = JSON.parse(reason);
+    const message = (parsed as { message?: unknown } | null)?.message;
+    if (typeof message === 'string') text = message;
+  } catch {
+    // Not JSON: the reason is already plain text.
+  }
+  const oneLine = text.replace(/\s+/g, ' ').trim();
+  return oneLine.length > MAX_ERROR_LENGTH
+    ? `${oneLine.slice(0, MAX_ERROR_LENGTH)}…`
+    : oneLine;
+}
+
 /** The scans with frames waiting to upload, oldest first. */
 export async function waitingScans(
   db: ScanUploadDbLike,
   where: ScanWhere
 ): Promise<{ id: string; plant_id: string }[]> {
   return db.scan.findMany({
-    where: { ...where, images: { some: { status: { in: WAITING_STATUSES } } } },
+    where: waitingWhere(where),
     select: { id: true, plant_id: true },
     orderBy: { capture_date: 'asc' },
   });
@@ -119,7 +152,9 @@ export function registerScanUploadAllHandlers(deps: ScanUploadAllDeps) {
           result.failedScans += 1;
           console.warn(`[Upload all] ${scan.plant_id}: ${problem}`);
           if (result.errors.length < MAX_LISTED_ERRORS) {
-            result.errors.push(`${scan.plant_id}: ${problem}`);
+            result.errors.push(
+              `${scan.plant_id}: ${readableUploadError(problem)}`
+            );
           }
         } else {
           result.uploadedScans += 1;
@@ -152,8 +187,10 @@ export function registerScanUploadAllHandlers(deps: ScanUploadAllDeps) {
       try {
         const query = scanListWhere(filters);
         if ('error' in query) return { success: false, error: query.error };
-        const scans = await waitingScans(deps.db, query.where);
-        return { success: true, data: { count: scans.length } };
+        const count = await deps.db.scan.count({
+          where: waitingWhere(query.where),
+        });
+        return { success: true, data: { count } };
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Unknown error';

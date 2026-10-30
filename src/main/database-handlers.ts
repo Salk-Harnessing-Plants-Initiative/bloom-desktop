@@ -5,9 +5,9 @@
  * for all models to the renderer process.
  */
 
-import { scanListWhere } from './scan-filters';
 import { ipcMain, BrowserWindow } from 'electron';
 import { getDatabase } from './database';
+import { scanListWhere } from './scan-filters';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { PaginatedScanSummariesResponse } from '../types/database';
 import { ImageUploader, UploadResult } from './image-uploader';

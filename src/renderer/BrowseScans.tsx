@@ -1,4 +1,3 @@
-import { UploadAllBar } from './components/UploadAllBar';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type {
@@ -10,6 +9,7 @@ import type {
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { HoverLabel } from './components/HoverLabel';
 import { LazyThumbnail } from './components/LazyThumbnail';
+import { UploadAllBar } from './components/UploadAllBar';
 import { countUploadStatuses } from '../utils/upload-status';
 import { pathToFileUrl } from '../utils/file-url';
 import { isAbsolutePath } from '../utils/scan-path';

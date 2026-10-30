@@ -244,6 +244,9 @@ export function UploadAllBar({
                 {result.errors.map((e) => (
                   <li key={e}>{e}</li>
                 ))}
+                {result.failedScans > result.errors.length && (
+                  <li>…and {result.failedScans - result.errors.length} more</li>
+                )}
               </ul>
             )}
           </div>

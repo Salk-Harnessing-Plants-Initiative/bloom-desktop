@@ -177,6 +177,24 @@ describe('UploadAllBar', () => {
     );
   });
 
+  it('says how many more failed than it lists', async () => {
+    renderBar();
+    await start();
+    act(() =>
+      sendDone({
+        result: result({
+          total: 8,
+          uploadedScans: 0,
+          failedScans: 7,
+          errors: ['P1: a', 'P2: b', 'P3: c', 'P4: d', 'P5: e'],
+        }),
+      })
+    );
+    expect(screen.getByTestId('upload-all-result')).toHaveTextContent(
+      '…and 2 more'
+    );
+  });
+
   it('tells the page when a run starts and ends', async () => {
     const onRunningChange = vi.fn();
     renderBar({ onRunningChange });
