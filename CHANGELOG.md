@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- CylinderScan: a scan no longer fails at its first move with "DAQ execution failed". Waiting for a move now retries on any error, as the pilot app does.
 - Capture Scan: **Start Scan** no longer fails with "device is controlled by another application" on a real camera. The live preview and the scanner run in separate processes, and the preview held the camera open. The preview now closes the camera and leaves the screen before the scanner opens it, and the scanner closes it before the preview returns.
 - CylinderScan: a scan now turns the plant one full 360° turn. The turntable used 6,400 steps per turn, which left out the scanner's gears, so a scan could cover only about 80°. It now uses 28,571 steps, the same drive numbers as the pilot app, with no rounding loss between frames, and the motor speed follows `seconds_per_rot`.
 - Capture Scan shows the scan's progress as it runs ("Frame 12 of 72", with a progress bar and time left). The view existed, but nothing sent it progress.

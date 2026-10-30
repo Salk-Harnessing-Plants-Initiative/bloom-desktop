@@ -32,9 +32,6 @@ DAQ_RETRY_MAX_ATTEMPTS = 1000  # Maximum retry attempts for DAQ wait_until_done
 DAQ_RETRY_TIMEOUT_MS = 5  # Milliseconds per retry attempt
 # Total timeout: 1000 * 5ms = 5 seconds
 
-# NI-DAQmx error codes
-DAQ_ERROR_TIMEOUT = -200563  # Wait operation timed out
-
 
 class DAQ:
     """NI-DAQmx controller for turntable rotation."""
@@ -289,23 +286,23 @@ class DAQ:
             # Start task
             self.task.start()
 
-            # Wait for completion with timeout and retry logic
+            # Wait for completion, retrying on any error as the pilot app does: "not done
+            # yet" arrives as an error, so a move longer than one wait always sees one.
             retry_count = 0
             done = False
+            last_error: Optional[Exception] = None
             while not done and retry_count < DAQ_RETRY_MAX_ATTEMPTS:
                 try:
                     self.task.wait_until_done(timeout=DAQ_RETRY_TIMEOUT_MS / 1000)
                     done = True
-                except nidaqmx.errors.DaqError as e:
-                    # Only retry for timeout errors
-                    if getattr(e, "error_code", None) == DAQ_ERROR_TIMEOUT:
-                        retry_count += 1
-                    else:
-                        raise
+                except Exception as e:
+                    last_error = e
+                    retry_count += 1
 
             if not done:
                 raise TimeoutError(
-                    f"DAQ task did not complete after {DAQ_RETRY_MAX_ATTEMPTS} retries (5s timeout)"
+                    f"DAQ task did not complete after {DAQ_RETRY_MAX_ATTEMPTS} retries "
+                    f"(5s timeout): {last_error}"
                 )
 
             # Stop task
