@@ -68,6 +68,20 @@ beforeEach(() => {
         delete: mockDelete,
         upload: mockUpload,
         uploadBatch: mockUploadBatch,
+        // The Upload all bar (#449); covered in UploadAllBar.test.tsx.
+        pendingUploads: vi.fn().mockResolvedValue({
+          success: true,
+          data: { count: 0 },
+        }),
+        uploadAll: vi.fn(),
+        stopUploadAll: vi.fn(),
+        onUploadAllProgress: vi.fn(() => () => undefined),
+        onUploadAllDone: vi.fn(() => () => undefined),
+        uploadAllStatus: vi.fn().mockResolvedValue({
+          success: true,
+          data: { running: false, progress: null, last: null },
+        }),
+        dismissUploadAllResult: vi.fn(),
       },
       experiments: {
         list: mockExperimentsList,

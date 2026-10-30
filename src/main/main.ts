@@ -53,6 +53,8 @@ import {
   getDatabasePath,
 } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
+import { registerScanUploadAllHandlers } from './scan-upload-all-handlers';
+import { ImageUploader } from './image-uploader';
 import { createSpeciesStore, SAVED_SPECIES_FILE } from './species-list';
 import { fetchBloomSpecies, registerSpeciesHandlers } from './species-handlers';
 import { registerCylinderWaveHandlers } from './cylinder-wave-handlers';
@@ -1264,6 +1266,12 @@ app.on('ready', async () => {
     });
     registerCylinderWaveHandlers({ ipcMain, db: getDatabase() });
     registerCylinderPlantHandlers({ ipcMain, db: getDatabase() });
+    registerScanUploadAllHandlers({
+      ipcMain,
+      db: getDatabase(),
+      createUploader: () => new ImageUploader(getDatabase()),
+      getMainWindow: () => mainWindow,
+    });
     console.log('[Main] Database initialized and handlers registered');
 
     // The species list for new experiments comes from Bloom: fetched now, in the

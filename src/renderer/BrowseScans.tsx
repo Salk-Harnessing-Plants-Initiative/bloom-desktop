@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type {
   ScanWithImageSummary,
@@ -9,6 +9,7 @@ import type {
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { HoverLabel } from './components/HoverLabel';
 import { LazyThumbnail } from './components/LazyThumbnail';
+import { UploadAllBar } from './components/UploadAllBar';
 import { countUploadStatuses } from '../utils/upload-status';
 import { pathToFileUrl } from '../utils/file-url';
 import { isAbsolutePath } from '../utils/scan-path';
@@ -40,6 +41,8 @@ export function BrowseScans() {
   const [scanPendingDelete, setScanPendingDelete] =
     useState<ScanWithImageSummary | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Upload all is running: single and selected uploads wait, so no scan is sent twice at once.
+  const [uploadAllRunning, setUploadAllRunning] = useState(false);
   const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(
     new Set()
   );
@@ -75,43 +78,56 @@ export function BrowseScans() {
 
   const totalPages = Math.ceil(total / pageSize);
 
-  const fetchScans = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  // Only the newest reload counts: a slower one, e.g. from before the filters changed
+  // during Upload all, must not replace the table.
+  const latestFetch = useRef(0);
 
-      const filters: PaginatedScanFilters = {
-        page,
-        pageSize,
-      };
+  // `quiet` refreshes the rows in place, without "Loading scans…" (e.g. during Upload all).
+  const fetchScans = useCallback(
+    async (options?: { quiet?: boolean }) => {
+      const quiet = options?.quiet === true;
+      const thisFetch = ++latestFetch.current;
+      try {
+        if (!quiet) setIsLoading(true);
+        setError(null);
 
-      if (experimentId) {
-        filters.experimentId = experimentId;
+        const filters: PaginatedScanFilters = {
+          page,
+          pageSize,
+        };
+
+        if (experimentId) {
+          filters.experimentId = experimentId;
+        }
+        if (dateFrom) {
+          filters.dateFrom = dateFrom;
+        }
+        if (dateTo) {
+          filters.dateTo = dateTo;
+        }
+
+        const result = await window.electron.database.scans.list(filters);
+        if (thisFetch !== latestFetch.current) return;
+
+        if (!result.success) {
+          setError(result.error || 'Failed to load scans');
+          return;
+        }
+
+        const data = result.data as PaginatedScansResponse;
+        setScans(data.scans);
+        setTotal(data.total);
+      } catch (err) {
+        console.error('Error fetching scans:', err);
+        if (thisFetch === latestFetch.current) {
+          setError('An unexpected error occurred while loading scans');
+        }
+      } finally {
+        if (thisFetch === latestFetch.current) setIsLoading(false);
       }
-      if (dateFrom) {
-        filters.dateFrom = dateFrom;
-      }
-      if (dateTo) {
-        filters.dateTo = dateTo;
-      }
-
-      const result = await window.electron.database.scans.list(filters);
-
-      if (!result.success) {
-        setError(result.error || 'Failed to load scans');
-        return;
-      }
-
-      const data = result.data as PaginatedScansResponse;
-      setScans(data.scans);
-      setTotal(data.total);
-    } catch (err) {
-      console.error('Error fetching scans:', err);
-      setError('An unexpected error occurred while loading scans');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, pageSize, experimentId, dateFrom, dateTo]);
+    },
+    [page, pageSize, experimentId, dateFrom, dateTo]
+  );
 
   const fetchExperiments = useCallback(async () => {
     try {
@@ -428,13 +444,22 @@ export function BrowseScans() {
         </div>
       )}
 
+      <UploadAllBar
+        filters={{ experimentId, dateFrom, dateTo }}
+        refreshKey={scans}
+        onFinished={() => fetchScans()}
+        onProgress={() => fetchScans({ quiet: true })}
+        onRunningChange={setUploadAllRunning}
+        disabled={batchUploadInProgress || uploadInProgress !== null}
+      />
+
       {/* Batch Actions */}
       {selectedScanIds.size > 0 && (
         <div className="mb-4 flex items-center gap-4">
           <button
             type="button"
             onClick={handleBatchUpload}
-            disabled={batchUploadInProgress}
+            disabled={batchUploadInProgress || uploadAllRunning}
             className="px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {batchUploadInProgress
@@ -635,6 +660,7 @@ export function BrowseScans() {
                           onClick={() => handleUpload(scan.id)}
                           disabled={
                             uploadInProgress === scan.id ||
+                            uploadAllRunning ||
                             uploadStatus.text === 'All uploaded' ||
                             uploadStatus.text === 'No images'
                           }

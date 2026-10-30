@@ -117,7 +117,7 @@ export function germinationDateError(
 
 /** Something unusual the phenotyper confirms, with a note, before saving. */
 export interface WaveWarning {
-  /** "Are you sure wave 3's germination date is correct?" */
+  /** "Are you sure wave 3's germination date is correct?", or "Wave 2 was skipped" */
   question: string;
   /** Why it is asked. */
   detail: string;
@@ -125,12 +125,15 @@ export interface WaveWarning {
   confirm?: string;
   /** For dates out of order with other waves': which ones. */
   conflicts?: WaveOrderConflict[];
+  /** For a wave number that skips ahead: the waves skipped, "wave 2" or "waves 2–4". */
+  skipped?: string;
 }
 
 /** The whole warning as one sentence, for the main process's error message. */
 export function warningText(warning: WaveWarning): string {
   return [warning.question, warning.detail, warning.confirm]
     .filter(Boolean)
+    .map((part) => (/[.?!]$/.test(part as string) ? part : `${part}.`))
     .join(' ');
 }
 
@@ -209,13 +212,19 @@ export function waveNumberWarning(
     existing.length > 0 ? -1 : 0
   );
   if (waveNumber <= highest + 1) return null;
+  const first = highest + 1;
+  const last = waveNumber - 1;
+  const skipped = first === last ? `wave ${first}` : `waves ${first}–${last}`;
   return {
-    question: 'Is the wave number correct?',
+    question:
+      first === last
+        ? `Wave ${first} was skipped`
+        : `Waves ${first}–${last} were skipped`,
     detail:
       existing.length > 0
-        ? `Previous wave: wave ${highest}.`
-        : "This is the experiment's first wave.",
-    confirm: `Are you sure you want to scan wave ${waveNumber}?`,
+        ? `The latest wave in this experiment is wave ${highest}.`
+        : 'This experiment has no waves yet.',
+    skipped,
   };
 }
 

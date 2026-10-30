@@ -247,17 +247,21 @@ describe('WaveDatesPanel', () => {
     );
   });
 
-  it('asks whether a skipped-ahead wave number is correct first, on its own, then the date', async () => {
+  it('says which waves were skipped first, on its own, then asks for the date', async () => {
     const { onSave, setDate, setSowing, save } = renderPanel(5);
     // Only the wave-number question: no date yet.
     expect(screen.getByTestId('wave-number-check')).toHaveTextContent(
-      'Is the wave number correct?Previous wave: wave 1.Are you sure you want to scan wave 5?Add a note to continue, or change the wave number above.'
+      'Waves 2–4 were skippedThe latest wave in this experiment is wave 1.To scan wave 5 anyway, add a note explaining why, or change the wave number above.'
+    );
+    expect(screen.getByTestId('wave-number-note')).toHaveAttribute(
+      'placeholder',
+      'Why are you skipping waves 2–4?'
     );
     expect(
       screen.queryByTestId('germination-date-input')
     ).not.toBeInTheDocument();
     const confirm = screen.getByTestId('wave-number-confirm');
-    expect(confirm).toHaveTextContent('Yes, wave 5 is correct');
+    expect(confirm).toHaveTextContent('Scan wave 5');
     expect(confirm).toBeDisabled();
     fireEvent.change(screen.getByTestId('wave-number-note'), {
       target: { value: 'Waves 2 to 4 were scanned on another PC' },
