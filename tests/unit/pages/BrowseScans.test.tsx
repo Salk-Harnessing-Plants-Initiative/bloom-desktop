@@ -76,6 +76,12 @@ beforeEach(() => {
         uploadAll: vi.fn(),
         stopUploadAll: vi.fn(),
         onUploadAllProgress: vi.fn(() => () => undefined),
+        onUploadAllDone: vi.fn(() => () => undefined),
+        uploadAllStatus: vi.fn().mockResolvedValue({
+          success: true,
+          data: { running: false, progress: null, last: null },
+        }),
+        dismissUploadAllResult: vi.fn(),
       },
       experiments: {
         list: mockExperimentsList,

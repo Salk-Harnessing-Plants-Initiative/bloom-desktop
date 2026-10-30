@@ -43,7 +43,11 @@ import type {
   PaginatedScanFilters,
   ScansExportProgress,
 } from '../types/database';
-import type { ScanListFilters, UploadAllProgress } from '../types/upload-all';
+import type {
+  ScanListFilters,
+  UploadAllDone,
+  UploadAllProgress,
+} from '../types/upload-all';
 // eslint-disable-next-line import/no-unresolved
 import type { GraviWedgeEvent } from '../types/graviscan';
 import type {
@@ -275,6 +279,15 @@ const databaseAPI: DatabaseAPI = {
     uploadAll: (filters?: ScanListFilters) =>
       ipcRenderer.invoke('db:scans:uploadAll', filters),
     stopUploadAll: () => ipcRenderer.invoke('db:scans:stopUploadAll'),
+    uploadAllStatus: () => ipcRenderer.invoke('db:scans:uploadAllStatus'),
+    dismissUploadAllResult: () =>
+      ipcRenderer.invoke('db:scans:dismissUploadAllResult'),
+    onUploadAllDone: (callback: (done: UploadAllDone) => void) => {
+      const listener = (_event: unknown, done: UploadAllDone) => callback(done);
+      ipcRenderer.on('db:scans:upload-all-done', listener);
+      return () =>
+        ipcRenderer.removeListener('db:scans:upload-all-done', listener);
+    },
     onUploadAllProgress: (callback: (progress: UploadAllProgress) => void) => {
       const listener = (_event: unknown, progress: UploadAllProgress) =>
         callback(progress);

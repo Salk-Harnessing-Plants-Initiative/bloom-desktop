@@ -13,7 +13,10 @@ import {
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { BrowseScans } from '../../../src/renderer/BrowseScans';
-import type { UploadAllProgress } from '../../../src/types/upload-all';
+import type {
+  UploadAllDone,
+  UploadAllProgress,
+} from '../../../src/types/upload-all';
 
 const scan = {
   id: 'scan-1',
@@ -39,7 +42,7 @@ const listResponse = (images = scan.images) => ({
 });
 
 let list: ReturnType<typeof vi.fn>;
-let finishRun: (value: unknown) => void;
+let sendDone: (d: UploadAllDone) => void;
 let sendProgress: (p: UploadAllProgress) => void;
 
 beforeEach(() => {
@@ -66,8 +69,19 @@ beforeEach(() => {
         pendingUploads: vi
           .fn()
           .mockResolvedValue({ success: true, data: { count: 1 } }),
-        uploadAll: vi.fn(() => new Promise((resolve) => (finishRun = resolve))),
+        uploadAll: vi
+          .fn()
+          .mockResolvedValue({ success: true, data: { total: 1 } }),
         stopUploadAll: vi.fn(),
+        uploadAllStatus: vi.fn().mockResolvedValue({
+          success: true,
+          data: { running: false, progress: null, last: null },
+        }),
+        dismissUploadAllResult: vi.fn(),
+        onUploadAllDone: (cb: (d: UploadAllDone) => void) => {
+          sendDone = cb;
+          return () => undefined;
+        },
         onUploadAllProgress: (cb: (p: UploadAllProgress) => void) => {
           sendProgress = cb;
           return () => undefined;
@@ -94,10 +108,9 @@ describe('Browse Scans while Upload all runs', () => {
     fireEvent.click(screen.getAllByRole('checkbox')[1]);
     expect(screen.getByText('Upload Selected (1)')).toBeDisabled();
 
-    await act(async () =>
-      finishRun({
-        success: true,
-        data: {
+    act(() =>
+      sendDone({
+        result: {
           total: 1,
           uploadedScans: 0,
           failedScans: 1,

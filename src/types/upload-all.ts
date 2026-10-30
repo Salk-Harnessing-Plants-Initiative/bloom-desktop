@@ -33,3 +33,21 @@ export interface UploadAllResult {
   /** The first few failures, "PLANT_ID: reason". */
   errors: string[];
 }
+
+/** How an Upload all run ended: its result, or why it couldn't run (e.g. no login). */
+export interface UploadAllDone {
+  result?: UploadAllResult;
+  error?: string;
+}
+
+/**
+ * Upload all as the main process remembers it, so Browse Scans shows a run (and its
+ * Stop button and result) even after the page was left and opened again.
+ */
+export interface UploadAllStatus {
+  running: boolean;
+  /** The latest progress of the run going now. */
+  progress: UploadAllProgress | null;
+  /** How the last run ended, until it is dismissed or a new run starts. */
+  last: UploadAllDone | null;
+}

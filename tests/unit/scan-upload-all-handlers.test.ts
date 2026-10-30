@@ -5,6 +5,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   MAX_LISTED_ERRORS,
+  UPLOAD_ALL_DONE_CHANNEL,
   UPLOAD_ALL_PROGRESS_CHANNEL,
   WAITING_STATUSES,
   registerScanUploadAllHandlers,
@@ -38,7 +39,8 @@ function setup(
     } as never,
     db: { scan: { findMany } } as unknown as ScanUploadDbLike,
     createUploader,
-    getMainWindow: () => ({ webContents: { send } }) as never,
+    getMainWindow: () =>
+      ({ isDestroyed: () => false, webContents: { send } }) as never,
   });
   const call = (channel: string, ...args: unknown[]) =>
     handlers[channel]({}, ...args) as Promise<{
@@ -46,7 +48,29 @@ function setup(
       data?: any; // eslint-disable-line @typescript-eslint/no-explicit-any
       error?: string;
     }>;
-  return { call, findMany, send, uploader, createUploader };
+  /** Start a run and wait for it to end; returns how it ended. */
+  const runToEnd = async (filters: unknown = {}) => {
+    const sentBefore = send.mock.calls.length;
+    const started = await call('db:scans:uploadAll', filters);
+    if (!started.success) return { started };
+    await vi.waitFor(() =>
+      expect(
+        send.mock.calls
+          .slice(sentBefore)
+          .some((c) => c[0] === UPLOAD_ALL_DONE_CHANNEL)
+      ).toBe(true)
+    );
+    const done = send.mock.calls
+      .slice(sentBefore)
+      .filter((c) => c[0] === UPLOAD_ALL_DONE_CHANNEL)
+      .at(-1)![1];
+    const progress = send.mock.calls
+      .slice(sentBefore)
+      .filter((c) => c[0] === UPLOAD_ALL_PROGRESS_CHANNEL)
+      .map((c) => c[1]);
+    return { started, done, progress };
+  };
+  return { call, runToEnd, findMany, send, uploader, createUploader };
 }
 
 const scans = (n: number) =>
@@ -94,17 +118,20 @@ describe('Upload all: which scans', () => {
 });
 
 describe('Upload all: a run', () => {
-  it('uploads each scan in order with one login, and reports progress after each', async () => {
-    const { call, uploader, send, createUploader } = setup(scans(3));
+  it('starts at once, uploads each scan in order with one login, and reports progress after each', async () => {
+    const { runToEnd, uploader, createUploader } = setup(scans(3));
 
-    const response = await call('db:scans:uploadAll', {});
+    const { started, done, progress } = await runToEnd();
 
-    expect(response.data).toEqual({
-      total: 3,
-      uploadedScans: 3,
-      failedScans: 0,
-      stopped: false,
-      errors: [],
+    expect(started).toEqual({ success: true, data: { total: 3 } });
+    expect(done).toEqual({
+      result: {
+        total: 3,
+        uploadedScans: 3,
+        failedScans: 0,
+        stopped: false,
+        errors: [],
+      },
     });
     expect(createUploader).toHaveBeenCalledTimes(1);
     expect(uploader.authenticate).toHaveBeenCalledTimes(1);
@@ -113,8 +140,8 @@ describe('Upload all: a run', () => {
       's2',
       's3',
     ]);
-    expect(send).toHaveBeenCalledTimes(3);
-    expect(send).toHaveBeenLastCalledWith(UPLOAD_ALL_PROGRESS_CHANNEL, {
+    expect(progress.map((p) => p.done)).toEqual([1, 2, 3]);
+    expect(progress.at(-1)).toEqual({
       done: 3,
       total: 3,
       uploadedScans: 3,
@@ -122,48 +149,80 @@ describe('Upload all: a run', () => {
     });
   });
 
-  it("does nothing, and doesn't log in, when no scan is waiting", async () => {
-    const { call, createUploader } = setup([]);
-    expect((await call('db:scans:uploadAll', {})).data).toMatchObject({
-      total: 0,
-    });
+  it("doesn't log in when no scan is waiting", async () => {
+    const { runToEnd, createUploader } = setup([]);
+    expect((await runToEnd()).done.result).toMatchObject({ total: 0 });
     expect(createUploader).not.toHaveBeenCalled();
   });
 
-  it('carries on past a failed scan, and lists the first few failures by plant', async () => {
-    const { call } = setup(scans(MAX_LISTED_ERRORS + 2), async (id) => {
+  it('counts a scan as failed when only some of its frames fail, and when it is refused', async () => {
+    const { runToEnd } = setup(scans(3), async (id) =>
+      id === 's1'
+        ? { success: true, failed: 2, errors: ['2 frames failed'] }
+        : id === 's2'
+          ? {
+              success: false,
+              failed: 0,
+              errors: ['Scan s2 is deleted; upload refused'],
+            }
+          : { success: true, failed: 0, errors: [] }
+    );
+
+    const { done, progress } = await runToEnd();
+
+    expect(done.result).toMatchObject({ uploadedScans: 1, failedScans: 2 });
+    expect(done.result.errors).toEqual([
+      'P1: 2 frames failed',
+      'P2: Scan s2 is deleted; upload refused',
+    ]);
+    expect(progress.map((p) => [p.uploadedScans, p.failedScans])).toEqual([
+      [0, 1],
+      [0, 2],
+      [1, 2],
+    ]);
+  });
+
+  it('carries on past a scan that throws, and lists only the first few failures', async () => {
+    const { runToEnd } = setup(scans(MAX_LISTED_ERRORS + 2), async (id) => {
       if (id === 's2') throw new Error('Network down');
       return id === 's1'
         ? { success: true, failed: 0, errors: [] }
         : { success: false, failed: 3, errors: ['3 frames failed'] };
     });
 
-    const { data } = await call('db:scans:uploadAll', {});
+    const { done } = await runToEnd();
 
-    expect(data.uploadedScans).toBe(1);
-    expect(data.failedScans).toBe(MAX_LISTED_ERRORS + 1);
-    expect(data.errors).toHaveLength(MAX_LISTED_ERRORS);
-    expect(data.errors[0]).toBe('P2: Network down');
-    expect(data.errors[1]).toBe('P3: 3 frames failed');
+    expect(done.result.uploadedScans).toBe(1);
+    expect(done.result.failedScans).toBe(MAX_LISTED_ERRORS + 1);
+    expect(done.result.errors).toHaveLength(MAX_LISTED_ERRORS);
+    expect(done.result.errors[0]).toBe('P2: Network down');
   });
 
-  it('stops after the scan in progress when asked', async () => {
+  it('stops after the scan in progress when asked, and the next run starts clean', async () => {
     const ref: { call?: ReturnType<typeof setup>['call'] } = {};
-    const { call } = setup(scans(5), async (id) => {
-      if (id === 's2') await ref.call?.('db:scans:stopUploadAll');
+    let stopAt: string | null = 's2';
+    const { call, runToEnd } = setup(scans(5), async (id) => {
+      if (id === stopAt) await ref.call?.('db:scans:stopUploadAll');
       return { success: true, failed: 0, errors: [] };
     });
     ref.call = call;
 
-    const { data } = await call('db:scans:uploadAll', {});
-
-    expect(data).toMatchObject({ total: 5, uploadedScans: 2, stopped: true });
+    expect((await runToEnd()).done.result).toMatchObject({
+      total: 5,
+      uploadedScans: 2,
+      stopped: true,
+    });
+    stopAt = null;
+    expect((await runToEnd()).done.result).toMatchObject({
+      uploadedScans: 5,
+      stopped: false,
+    });
   });
 
   it('refuses a second run while one is going, and allows one after', async () => {
     let release: (() => void) | null = null;
     let calls = 0;
-    const { call } = setup(scans(1), () => {
+    const { call, runToEnd } = setup(scans(1), () => {
       calls += 1;
       if (calls > 1)
         return Promise.resolve({ success: true, failed: 0, errors: [] });
@@ -172,27 +231,115 @@ describe('Upload all: a run', () => {
       });
     });
 
-    const first = call('db:scans:uploadAll', {});
+    const first = runToEnd();
     await vi.waitFor(() => expect(release).not.toBeNull());
     expect(await call('db:scans:uploadAll', {})).toEqual({
       success: false,
       error: 'An upload is already running.',
     });
     release!();
-    expect((await first).success).toBe(true);
-    expect((await call('db:scans:uploadAll', {})).success).toBe(true);
+    await first;
+    expect((await runToEnd()).done.result).toMatchObject({ uploadedScans: 1 });
   });
 
-  it('reports a login failure without uploading anything', async () => {
-    const { call, uploader } = setup(scans(2), undefined, async () => {
-      throw new Error('Bloom credentials are not set up on this computer');
+  it('reports a login failure without uploading anything, and can be tried again', async () => {
+    let failLogin = true;
+    const { runToEnd, uploader } = setup(scans(2), undefined, async () => {
+      if (failLogin)
+        throw new Error('Bloom credentials are not set up on this computer');
     });
 
-    expect(await call('db:scans:uploadAll', {})).toEqual({
-      success: false,
+    expect((await runToEnd()).done).toEqual({
       error: 'Bloom credentials are not set up on this computer',
     });
     expect(uploader.uploadScan).not.toHaveBeenCalled();
+    failLogin = false;
+    expect((await runToEnd()).done.result).toMatchObject({ uploadedScans: 2 });
+  });
+
+  it('refuses a malformed date before starting', async () => {
+    const { call, createUploader } = setup(scans(1));
+    expect(
+      await call('db:scans:uploadAll', { dateFrom: 'x2026-10-30x' })
+    ).toMatchObject({
+      success: false,
+      error: expect.stringContaining('Invalid dateFrom'),
+    });
+    expect(createUploader).not.toHaveBeenCalled();
+  });
+});
+
+describe('Upload all: remembered state', () => {
+  it('says a run is going, with its progress, so a reopened page can show it', async () => {
+    let release: (() => void) | null = null;
+    const { call, runToEnd } = setup(scans(2), (id) =>
+      id === 's2'
+        ? new Promise((resolve) => {
+            release = () => resolve({ success: true, failed: 0, errors: [] });
+          })
+        : Promise.resolve({ success: true, failed: 0, errors: [] })
+    );
+
+    const run = runToEnd();
+    await vi.waitFor(() => expect(release).not.toBeNull());
+    expect((await call('db:scans:uploadAllStatus')).data).toEqual({
+      running: true,
+      progress: { done: 1, total: 2, uploadedScans: 1, failedScans: 0 },
+      last: null,
+    });
+    release!();
+    await run;
+  });
+
+  it('keeps how the last run ended until it is dismissed', async () => {
+    const { call, runToEnd } = setup(scans(1));
+    await runToEnd();
+
+    expect((await call('db:scans:uploadAllStatus')).data).toEqual({
+      running: false,
+      progress: null,
+      last: {
+        result: {
+          total: 1,
+          uploadedScans: 1,
+          failedScans: 0,
+          stopped: false,
+          errors: [],
+        },
+      },
+    });
+    await call('db:scans:dismissUploadAllResult');
+    expect((await call('db:scans:uploadAllStatus')).data.last).toBeNull();
+  });
+
+  it("doesn't send to a closed window", async () => {
+    const handlers: Record<string, Handler> = {};
+    const send = vi.fn();
+    registerScanUploadAllHandlers({
+      ipcMain: {
+        handle: (c: string, fn: Handler) => (handlers[c] = fn),
+      } as never,
+      db: {
+        scan: { findMany: async () => scans(1) },
+      } as unknown as ScanUploadDbLike,
+      createUploader: () => ({
+        authenticate: async () => undefined,
+        uploadScan: async () => ({ success: true, failed: 0, errors: [] }),
+      }),
+      getMainWindow: () =>
+        ({ isDestroyed: () => true, webContents: { send } }) as never,
+    });
+    await handlers['db:scans:uploadAll']({}, {});
+    await vi.waitFor(async () =>
+      expect(
+        (
+          (await handlers['db:scans:uploadAllStatus']({})) as {
+            data: { running: boolean };
+          }
+        ).data.running
+      ).toBe(false)
+    );
+    expect(send).not.toHaveBeenCalled();
   });
 });
 
@@ -211,6 +358,13 @@ describe('scanListWhere', () => {
         },
       },
     });
+  });
+
+  it('refuses dates that are not exactly YYYY-MM-DD', () => {
+    expect(scanListWhere({ dateFrom: '2026-10-1' })).toHaveProperty('error');
+    expect(scanListWhere({ dateTo: '2026-10-30T00:00' })).toHaveProperty(
+      'error'
+    );
   });
 
   it('leaves out filters that are not set', () => {

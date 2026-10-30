@@ -51,8 +51,9 @@ import {
 import { UploadResult } from '../main/image-uploader';
 import type {
   ScanListFilters,
+  UploadAllDone,
   UploadAllProgress,
-  UploadAllResult,
+  UploadAllStatus,
 } from './upload-all';
 import {
   ResetUsbResult,
@@ -511,12 +512,21 @@ export interface DatabaseAPI {
     pendingUploads: (
       filters?: ScanListFilters
     ) => Promise<DatabaseResponse<{ count: number }>>;
-    /** Upload every scan with frames waiting, within these filters, oldest first (#449). */
+    /**
+     * Start uploading every scan with frames waiting, within these filters, oldest
+     * first (#449). Returns at once with how many; see onUploadAllProgress / onUploadAllDone.
+     */
     uploadAll: (
       filters?: ScanListFilters
-    ) => Promise<DatabaseResponse<UploadAllResult>>;
+    ) => Promise<DatabaseResponse<{ total: number }>>;
     /** Stop Upload all after the scan in progress. */
     stopUploadAll: () => Promise<DatabaseResponse>;
+    /** Whether Upload all is running, its progress, and how the last run ended. */
+    uploadAllStatus: () => Promise<DatabaseResponse<UploadAllStatus>>;
+    /** Forget the last run's result once it has been read. */
+    dismissUploadAllResult: () => Promise<DatabaseResponse>;
+    /** How a run ended. Returns a function that stops listening. */
+    onUploadAllDone: (callback: (done: UploadAllDone) => void) => () => void;
     /** Progress after each scan of Upload all. Returns a function that stops listening. */
     onUploadAllProgress: (
       callback: (progress: UploadAllProgress) => void
