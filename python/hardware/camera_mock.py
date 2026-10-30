@@ -214,6 +214,41 @@ class MockCamera:
         frame_idx = int(time.time() * 10) % len(self.test_images)
         return self.test_images[frame_idx].copy()
 
+    def start_triggered_capture(self, num_frames: int) -> None:
+        """Get ready to take frames on trigger.
+
+        Args:
+            num_frames: How many frames will be triggered
+
+        Raises:
+            RuntimeError: If camera is not open
+        """
+        if not self.is_open:
+            raise RuntimeError("Camera is not open")
+        self._triggered_frames: List[Optional[np.ndarray]] = []
+
+    def trigger_frame(self) -> None:
+        """Take a frame now. It's collected later by retrieve_triggered_frames."""
+        self._triggered_frames.append(self.grab_frame())
+
+    def retrieve_triggered_frames(self, num_frames: int) -> List[Optional[np.ndarray]]:
+        """Collect the triggered frames, in the order they were triggered.
+
+        Args:
+            num_frames: How many frames were triggered
+
+        Returns:
+            One entry per frame: its image, or None if that frame failed
+        """
+        frames = self._triggered_frames[:num_frames]
+        frames.extend([None] * (num_frames - len(frames)))
+        self._triggered_frames = []
+        return frames
+
+    def stop_triggered_capture(self) -> None:
+        """Stop triggered capture."""
+        self._triggered_frames = []
+
     def grab_frames(self, num_frames: Optional[int] = None) -> List[np.ndarray]:
         """Grab multiple frames from the mock camera.
 

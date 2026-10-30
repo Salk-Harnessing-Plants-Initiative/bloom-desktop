@@ -30,6 +30,11 @@ except ImportError:
     from python.protocol_io import write_line  # Development/test path
 
 
+# Triggered capture
+TRIGGER_READY_TIMEOUT_MS = 1000  # How long a trigger waits for the camera to be ready
+TRIGGERED_RETRIEVE_TIMEOUT_MS = 1000  # How long to wait for each triggered frame
+
+
 class Camera:
     """Basler camera control using PyPylon."""
 
@@ -142,6 +147,79 @@ class Camera:
         finally:
             if self.camera.IsGrabbing():
                 self.camera.StopGrabbing()
+
+    def start_triggered_capture(self, num_frames: int) -> None:
+        """Get ready to take frames on trigger, held by the camera driver until retrieved.
+
+        As in the pilot app, so a scan doesn't wait for each frame between turntable moves.
+
+        Args:
+            num_frames: How many frames will be triggered
+
+        Raises:
+            RuntimeError: If camera is not open
+        """
+        if not self.is_open or not self.camera:
+            raise RuntimeError("Camera is not open")
+
+        # Every frame stays in a buffer until the end, and the default is only 10.
+        self.camera.MaxNumBuffer.Value = num_frames
+        self.camera.TriggerSelector.Value = "FrameStart"
+        self.camera.TriggerMode.Value = "On"
+        self.camera.TriggerSource.Value = "Software"
+        self.camera.StartGrabbing(pylon.GrabStrategy_OneByOne)
+
+    def trigger_frame(self) -> None:
+        """Take a frame now. It's collected later by retrieve_triggered_frames.
+
+        Raises:
+            RuntimeError: If capture hasn't started, or the camera isn't ready in time
+        """
+        if not self.camera or not self.camera.IsGrabbing():
+            raise RuntimeError("Triggered capture has not started")
+
+        self.camera.WaitForFrameTriggerReady(
+            TRIGGER_READY_TIMEOUT_MS, pylon.TimeoutHandling_ThrowException
+        )
+        self.camera.ExecuteSoftwareTrigger()
+
+    def retrieve_triggered_frames(self, num_frames: int) -> List[Optional[np.ndarray]]:
+        """Collect the triggered frames, in the order they were triggered.
+
+        Args:
+            num_frames: How many frames were triggered
+
+        Returns:
+            One entry per frame: its image, or None if that frame failed
+        """
+        if not self.camera:
+            raise RuntimeError("Camera is not open")
+
+        frames: List[Optional[np.ndarray]] = []
+        for _ in range(num_frames):
+            try:
+                grab_result = self.camera.RetrieveResult(
+                    TRIGGERED_RETRIEVE_TIMEOUT_MS, pylon.TimeoutHandling_ThrowException
+                )
+            except Exception:
+                # Nothing more is coming; the frames not received count as failed.
+                break
+            try:
+                frames.append(
+                    grab_result.Array.copy() if grab_result.GrabSucceeded() else None
+                )
+            finally:
+                grab_result.Release()
+        frames.extend([None] * (num_frames - len(frames)))
+        return frames
+
+    def stop_triggered_capture(self) -> None:
+        """Stop triggered capture, and leave the camera free-running for the preview."""
+        if not self.camera:
+            return
+        if self.camera.IsGrabbing():
+            self.camera.StopGrabbing()
+        self.camera.TriggerMode.Value = "Off"
 
     def grab_frames(self, num_frames: Optional[int] = None) -> List[np.ndarray]:
         """Grab multiple frames from the camera.

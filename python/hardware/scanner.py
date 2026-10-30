@@ -8,8 +8,9 @@ import os
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Callable, Optional, Union
+from typing import Any, Callable, Optional, Union
 
 import imageio.v2 as iio
 
@@ -24,8 +25,9 @@ try:
 except ImportError:
     from python.protocol_io import write_line  # Development/test path
 
-# Time to wait after rotation for turntable to settle before capturing image
-STABILIZATION_WAIT_SECONDS = 0.05  # 50ms
+MICROSECONDS_PER_SECOND = 1_000_000
+EXPOSURE_MARGIN_SECONDS = 0.005  # Allowed on top of the exposure before the next move
+FRAME_SAVE_WORKERS = 8  # How many frames are saved at once at the end of a scan
 
 
 class Scanner:
@@ -149,6 +151,42 @@ class Scanner:
         self.is_initialized = False
         write_line("STATUS:Scanner cleanup complete")
 
+    def _save_frames(self, frames: list, output_dir: Path) -> int:
+        """Save the scan's frames in parallel, named by their position in the scan.
+
+        Args:
+            frames: One entry per frame: its image, or None if that frame failed
+            output_dir: Folder to save into
+
+        Returns:
+            How many frames were saved
+        """
+
+        def save(frame_idx: int, image: Any) -> None:
+            # Pilot-compatible naming: 001.png, 002.png, ...
+            # Reference: pilot pylon.py:62 uses f'{i + 1:03d}.png'
+            # Use pathlib with .as_posix() for cross-platform path handling
+            filepath = output_dir / f"{frame_idx + 1:03d}.png"
+            iio.imwrite(filepath.as_posix(), image)
+
+        saved = 0
+        write_line(f"STATUS:Saving {len(frames)} frames")
+        with ThreadPoolExecutor(max_workers=FRAME_SAVE_WORKERS) as executor:
+            futures = []
+            for frame_idx, image in enumerate(frames):
+                if image is None:
+                    print(
+                        f"WARNING:Frame {frame_idx + 1} capture failed",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                else:
+                    futures.append(executor.submit(save, frame_idx, image))
+            for future in futures:
+                future.result()
+                saved += 1
+        return saved
+
     def perform_scan(
         self, on_frame: Optional[Callable[[int, float], None]] = None
     ) -> ScanResult:
@@ -158,13 +196,13 @@ class Scanner:
         1. Home turntable to 0°
         2. For each frame:
            - Rotate to position
-           - Wait for stabilization (STABILIZATION_WAIT_SECONDS)
-           - Capture image
+           - Trigger the frame, and hold still for its exposure
            - Call progress callback
         3. Return to home position
+        4. Save the frames, all together
 
         Args:
-            on_frame: Optional callback function called after each frame capture.
+            on_frame: Optional callback function called after each frame is taken.
                      Receives (frame_number, position_degrees).
 
         Returns:
@@ -211,45 +249,41 @@ class Scanner:
             self.daq.home()
             write_line("STATUS:Turntable homed to 0°")
 
-            # Capture frames
-            for frame_idx in range(num_frames):
-                # Rotate to next position
-                self.daq.rotate(degrees_per_frame)
+            # Take the frames without stopping to fetch or save them, so the turntable keeps
+            # going as it does in the pilot app. Each frame is held by the camera driver.
+            hold_seconds = (
+                self.settings.camera.exposure_time / MICROSECONDS_PER_SECOND
+                + EXPOSURE_MARGIN_SECONDS
+            )
+            self.camera.start_triggered_capture(num_frames)
+            try:
+                for frame_idx in range(num_frames):
+                    # Rotate to next position
+                    self.daq.rotate(degrees_per_frame)
 
-                # Wait for stabilization
-                time.sleep(STABILIZATION_WAIT_SECONDS)
+                    # Get current position
+                    position = self.daq.get_position()
 
-                # Get current position
-                position = self.daq.get_position()
-
-                # Capture image
-                write_line(
-                    f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°"
-                )
-                image = self.camera.grab_frame()
-
-                if image is not None:
-                    frames_captured += 1
-
-                    # Save image to disk (pilot-compatible naming: 001.png, 002.png, ...)
-                    # Reference: pilot pylon.py:62 uses f'{i + 1:03d}.png'
-                    # Use pathlib with .as_posix() for cross-platform path handling
-                    filepath = output_dir / f"{frame_idx + 1:03d}.png"
-                    iio.imwrite(filepath.as_posix(), image)
+                    # Capture image, holding still for the exposure so it isn't blurred
+                    write_line(
+                        f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°"
+                    )
+                    self.camera.trigger_frame()
+                    time.sleep(hold_seconds)
 
                     # Call progress callback if provided
                     if on_frame is not None:
                         on_frame(frame_idx, position)
-                else:
-                    print(
-                        f"WARNING:Frame {frame_idx + 1} capture failed",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+
+                frames = self.camera.retrieve_triggered_frames(num_frames)
+            finally:
+                self.camera.stop_triggered_capture()
 
             # Return to home
             self.daq.home()
             write_line("STATUS:Turntable returned to home position")
+
+            frames_captured = self._save_frames(frames, output_dir)
 
             # Report results
             success = frames_captured == num_frames
