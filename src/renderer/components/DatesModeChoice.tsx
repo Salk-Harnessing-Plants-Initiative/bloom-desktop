@@ -118,6 +118,7 @@ export function PerPlantDatesNote({
   /** The wave is going from the same dates for all plants to per plant. */
   switching: boolean;
 }) {
+  if (!switching && plants.length === 0) return null;
   return (
     <div className="space-y-1 text-gray-700" data-testid="dates-per-plant">
       {switching && (

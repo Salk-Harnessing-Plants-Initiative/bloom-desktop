@@ -1,7 +1,7 @@
 /**
- * A wave's Edit box on Capture Scan (#407, #428): how its dates are set (the same for
- * all plants, or per plant) and, when they're the same, the dates themselves, filled
- * in with the ones set before. The same rules as the main process:
+ * A wave's Edit box on Capture Scan (#407, #428): how its dates are set (wave-level,
+ * the same for all plants, or plant-level) and, for wave-level, the dates themselves,
+ * filled in with the ones set before. The same rules as the main process:
  * - the wave's dates can only change before its first scan (after it they're final, and
  *   a mistake is corrected with the Bloom team);
  * - going per plant is always allowed: plants already scanned keep their dates;
@@ -254,9 +254,9 @@ export function WaveDatesEditBox({
             data-testid="wave-dates-edit-save"
           >
             {toPerPlant
-              ? 'Set dates per plant'
+              ? 'Switch to plant-level'
               : toSame
-                ? 'Use these dates for all plants'
+                ? 'Switch to wave-level'
                 : warning
                   ? 'Proceed with these dates'
                   : 'Save dates'}

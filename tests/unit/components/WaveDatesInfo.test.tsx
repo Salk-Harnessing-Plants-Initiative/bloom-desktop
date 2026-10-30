@@ -149,7 +149,7 @@ describe('WaveDatesInfo', () => {
     fireEvent.click(screen.getByTestId('wave-dates-edit'));
     fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
     const save = screen.getByTestId('wave-dates-edit-save');
-    expect(save).toHaveTextContent('Set dates per plant');
+    expect(save).toHaveTextContent('Switch to plant-level');
     expect(save).not.toBeDisabled();
     fireEvent.click(save);
     await waitFor(() => expect(onUseDatesPerPlant).toHaveBeenCalled());
@@ -317,6 +317,31 @@ describe('WaveDatesInfo', () => {
       );
     });
 
+    it('shows the dates under Wave-level, in the same card as a new wave', () => {
+      renderEdit({});
+      expect(screen.getByTestId('dates-mode-question')).toHaveTextContent(
+        /^Set wave 2 datesSowing, germination, and transfer-to-cylinder/
+      );
+      const datesBlock = screen.getByTestId('wave-level-dates');
+      expect(datesBlock).toContainElement(
+        screen.getByLabelText('Germination date')
+      );
+      expect(
+        datesBlock.compareDocumentPosition(
+          screen.getByTestId('dates-mode-per-plant')
+        ) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      expect(screen.getByTestId('wave-dates-edit-save')).toHaveTextContent(
+        'Save dates'
+      );
+    });
+
+    it('shows nothing under Plant-level for a per-plant wave with no plants yet', () => {
+      renderEdit(perPlant);
+      expect(screen.getByTestId('dates-mode-per-plant')).toBeChecked();
+      expect(screen.queryByTestId('dates-per-plant')).not.toBeInTheDocument();
+    });
+
     it("opens on the current answer, with the plants' dates set so far", () => {
       renderEdit(perPlant, { plants });
       expect(screen.getByTestId('dates-mode-per-plant')).toBeChecked();
@@ -334,6 +359,9 @@ describe('WaveDatesInfo', () => {
       fireEvent.click(screen.getByTestId('dates-mode-same'));
       expect(screen.getByLabelText('Germination date')).toHaveValue(
         '2026-02-20'
+      );
+      expect(screen.getByTestId('wave-dates-edit-save')).toHaveTextContent(
+        'Switch to wave-level'
       );
       fireEvent.click(screen.getByTestId('wave-dates-edit-save'));
       await waitFor(() =>
@@ -369,8 +397,9 @@ describe('WaveDatesInfo', () => {
       const { onUseDatesPerPlant } = renderEdit({});
       expect(screen.getByTestId('dates-mode-same')).toBeChecked();
       fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
-      expect(screen.getByTestId('dates-per-plant')).toHaveTextContent(
-        'Plants already scanned keep the dates they were scanned with.'
+      const note = screen.getByTestId('dates-per-plant');
+      expect(note).toHaveTextContent(
+        /^Plants already scanned keep the dates they were scanned with\.$/
       );
       fireEvent.click(screen.getByTestId('wave-dates-edit-save'));
       await waitFor(() => expect(onUseDatesPerPlant).toHaveBeenCalled());

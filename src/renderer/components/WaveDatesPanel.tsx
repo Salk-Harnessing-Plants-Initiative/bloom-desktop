@@ -1,7 +1,7 @@
 /**
  * Asks for a wave's dates on Capture Scan, the first time the wave is used (#407,
- * #428): sowing, germination and transfer to cylinder (the germination day unless
- * changed). The plant age is computed from the germination date. A wave number that
+ * #428): wave-level (sowing, germination and transfer to cylinder, the germination
+ * day unless changed, entered once) or plant-level (entered per plant). The plant age is computed from the germination date. A wave number that
  * skips ahead is asked about first, on its own ("Is the wave number correct?"), and
  * goes on only with a note. Then dates in the future, or a sowing date after
  * germination, are refused; and a germination date out of order with another wave's
