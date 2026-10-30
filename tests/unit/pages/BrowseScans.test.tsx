@@ -85,12 +85,32 @@ function renderPage() {
 }
 
 describe('BrowseScans delete flow', () => {
+  it('labels View, Upload and Delete straight away on hover', async () => {
+    renderPage();
+    for (const name of ['View scan', 'Upload to Bloom', 'Delete scan']) {
+      const button = await screen.findByRole('button', { name });
+      const label = button.parentElement?.querySelector('[role="tooltip"]');
+      expect(label).toHaveTextContent(name);
+      expect(label?.className).toContain('group-hover:opacity-100');
+      expect(button).not.toHaveAttribute('title');
+    }
+  });
+
+  it('sets the Delete button apart from View and Upload, behind a divider', async () => {
+    renderPage();
+    const del = await screen.findByRole('button', { name: 'Delete scan' });
+
+    expect(del.className).toContain('ml-4');
+    expect(del.className).toContain('border-l');
+    expect(del.closest('td')?.className).toContain('gap-3');
+  });
+
   it('opens a confirmation modal instead of window.confirm when Delete is clicked', async () => {
     renderPage();
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Delete scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Delete this scan\?/)).toBeInTheDocument();
@@ -102,7 +122,7 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Delete scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
     await screen.findByRole('dialog');
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
@@ -115,7 +135,7 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Delete scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
     await screen.findByRole('dialog');
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
@@ -128,7 +148,7 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Delete scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
     await screen.findByRole('dialog');
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
@@ -147,15 +167,17 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Upload to Bloom'));
+    fireEvent.click(screen.getByRole('button', { name: 'Upload to Bloom' }));
 
     await waitFor(() =>
-      expect(screen.getByTitle('Delete scan')).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Delete scan' })).toBeDisabled()
     );
 
     resolveUpload({ success: true, data: {} });
     await waitFor(() =>
-      expect(screen.getByTitle('Delete scan')).not.toBeDisabled()
+      expect(
+        screen.getByRole('button', { name: 'Delete scan' })
+      ).not.toBeDisabled()
     );
   });
 });
@@ -226,7 +248,7 @@ describe('BrowseScans color palette', () => {
     expect(plantLink.className).toContain('text-lime-700');
     expect(plantLink.className).not.toContain('text-blue-600');
 
-    const viewIcon = screen.getByTitle('View scan');
+    const viewIcon = screen.getByRole('button', { name: 'View scan' });
     expect(viewIcon.className).toContain('text-lime-700');
     expect(viewIcon.className).not.toContain('text-blue-600');
   });

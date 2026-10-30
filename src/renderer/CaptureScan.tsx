@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   MetadataForm,
   ScanMetadata,
@@ -805,12 +805,12 @@ export function CaptureScan() {
                           Camera not configured. Please configure camera
                           settings first.
                         </p>
-                        <a
-                          href="#/camera-settings"
+                        <Link
+                          to="/camera-settings"
                           className="text-lime-700 hover:text-lime-800 font-medium"
                         >
                           Go to Camera Settings →
-                        </a>
+                        </Link>
                       </div>
                     )}
                   </div>
@@ -911,12 +911,12 @@ export function CaptureScan() {
                     <p className="text-sm text-gray-500 mb-4">
                       Configure camera settings to see live preview
                     </p>
-                    <a
-                      href="#/camera-settings"
+                    <Link
+                      to="/camera-settings"
                       className="inline-block px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 font-medium"
                     >
                       Configure Camera
-                    </a>
+                    </Link>
                   </div>
                 </div>
               )}
