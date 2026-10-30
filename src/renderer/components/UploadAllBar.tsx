@@ -3,9 +3,12 @@
  * frames not yet uploaded, and one button to upload them all, oldest first. While it
  * runs it shows "Uploading 12 of 40…" and can be stopped after the scan in progress;
  * at the end it says how many uploaded and how many failed (those can be retried).
+ * The page refreshes its rows after each scan, and keeps its own Upload buttons
+ * disabled while a run is going (and this one while they are), so a scan is never
+ * uploaded twice at once.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   ScanListFilters,
   UploadAllProgress,
@@ -18,6 +21,12 @@ export interface UploadAllBarProps {
   refreshKey: unknown;
   /** Called after a run, so the page reloads its scans. */
   onFinished: () => void;
+  /** Called after each scan of a run, so the page can refresh its rows. */
+  onProgress?: () => void;
+  /** Told when a run starts and ends, so the page can disable its own Upload buttons. */
+  onRunningChange?: (running: boolean) => void;
+  /** Another upload is in progress on the page. */
+  disabled?: boolean;
 }
 
 const scansText = (n: number) => `${n} scan${n === 1 ? '' : 's'}`;
@@ -26,6 +35,9 @@ export function UploadAllBar({
   filters,
   refreshKey,
   onFinished,
+  onProgress,
+  onRunningChange,
+  disabled = false,
 }: UploadAllBarProps) {
   const [count, setCount] = useState<number | null>(null);
   const [running, setRunning] = useState(false);
@@ -34,6 +46,10 @@ export function UploadAllBar({
   const [result, setResult] = useState<UploadAllResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { experimentId, dateFrom, dateTo } = filters;
+  // The page's latest callbacks: a run can outlast the render that started it (for
+  // example when the filters change), and must reload the page as it is now.
+  const callbacks = useRef({ onFinished, onProgress, onRunningChange });
+  callbacks.current = { onFinished, onProgress, onRunningChange };
 
   const loadCount = useCallback(async () => {
     try {
@@ -53,9 +69,17 @@ export function UploadAllBar({
   }, [loadCount, refreshKey, running]);
 
   useEffect(
-    () => window.electron.database.scans.onUploadAllProgress(setProgress),
+    () =>
+      window.electron.database.scans.onUploadAllProgress((next) => {
+        setProgress(next);
+        callbacks.current.onProgress?.();
+      }),
     []
   );
+
+  useEffect(() => {
+    callbacks.current.onRunningChange?.(running);
+  }, [running]);
 
   const uploadAll = async () => {
     if (!count) return;
@@ -77,7 +101,7 @@ export function UploadAllBar({
       setError(thrown instanceof Error ? thrown.message : 'Unknown error');
     } finally {
       setRunning(false);
-      onFinished();
+      callbacks.current.onFinished();
     }
   };
 
@@ -116,7 +140,10 @@ export function UploadAllBar({
           <button
             type="button"
             onClick={uploadAll}
-            disabled={!count}
+            disabled={!count || disabled}
+            title={
+              disabled ? 'Wait for the upload in progress to finish' : undefined
+            }
             className="px-4 py-2 rounded-md bg-lime-700 text-sm font-medium text-white hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="upload-all-button"
           >

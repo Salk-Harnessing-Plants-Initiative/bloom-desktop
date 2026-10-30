@@ -135,6 +135,94 @@ describe('UploadAllBar', () => {
     );
   });
 
+  it('tells the page when a run starts and ends, and after each scan', async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    uploadAll.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const onRunningChange = vi.fn();
+    const onProgress = vi.fn();
+    render(
+      <UploadAllBar
+        filters={filters}
+        refreshKey={1}
+        onFinished={vi.fn()}
+        onProgress={onProgress}
+        onRunningChange={onRunningChange}
+      />
+    );
+    fireEvent.click(await screen.findByText('Upload all (3)'));
+    await waitFor(() => expect(onRunningChange).toHaveBeenLastCalledWith(true));
+
+    act(() =>
+      progressListener?.({
+        done: 1,
+        total: 3,
+        uploadedScans: 1,
+        failedScans: 0,
+      })
+    );
+    expect(onProgress).toHaveBeenCalledTimes(1);
+
+    await act(async () =>
+      finish({
+        success: true,
+        data: {
+          total: 3,
+          uploadedScans: 3,
+          failedScans: 0,
+          stopped: false,
+          errors: [],
+        },
+      })
+    );
+    expect(onRunningChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reloads the page as it is when the run ends, even if its filters changed during it', async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    uploadAll.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    const reloadOld = vi.fn();
+    const reloadNew = vi.fn();
+    const { rerender } = render(
+      <UploadAllBar filters={filters} refreshKey={1} onFinished={reloadOld} />
+    );
+    fireEvent.click(await screen.findByText('Upload all (3)'));
+    rerender(
+      <UploadAllBar
+        filters={{ experimentId: 'exp-2' }}
+        refreshKey={2}
+        onFinished={reloadNew}
+      />
+    );
+
+    await act(async () =>
+      finish({
+        success: true,
+        data: {
+          total: 3,
+          uploadedScans: 3,
+          failedScans: 0,
+          stopped: false,
+          errors: [],
+        },
+      })
+    );
+    expect(reloadNew).toHaveBeenCalled();
+    expect(reloadOld).not.toHaveBeenCalled();
+  });
+
+  it('is greyed out while another upload is in progress on the page', async () => {
+    render(
+      <UploadAllBar
+        filters={filters}
+        refreshKey={1}
+        onFinished={vi.fn()}
+        disabled
+      />
+    );
+    await screen.findByText('3 scans not yet uploaded');
+    expect(screen.getByTestId('upload-all-button')).toBeDisabled();
+  });
+
   it('shows why a run could not start', async () => {
     uploadAll.mockResolvedValue({
       success: false,

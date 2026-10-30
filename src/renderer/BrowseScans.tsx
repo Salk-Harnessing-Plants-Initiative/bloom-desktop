@@ -41,6 +41,8 @@ export function BrowseScans() {
   const [scanPendingDelete, setScanPendingDelete] =
     useState<ScanWithImageSummary | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Upload all is running: single and selected uploads wait, so no scan is sent twice at once.
+  const [uploadAllRunning, setUploadAllRunning] = useState(false);
   const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(
     new Set()
   );
@@ -76,43 +78,48 @@ export function BrowseScans() {
 
   const totalPages = Math.ceil(total / pageSize);
 
-  const fetchScans = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  // `quiet` refreshes the rows in place, without "Loading scans…" (e.g. during Upload all).
+  const fetchScans = useCallback(
+    async (options?: { quiet?: boolean }) => {
+      const quiet = options?.quiet === true;
+      try {
+        if (!quiet) setIsLoading(true);
+        setError(null);
 
-      const filters: PaginatedScanFilters = {
-        page,
-        pageSize,
-      };
+        const filters: PaginatedScanFilters = {
+          page,
+          pageSize,
+        };
 
-      if (experimentId) {
-        filters.experimentId = experimentId;
+        if (experimentId) {
+          filters.experimentId = experimentId;
+        }
+        if (dateFrom) {
+          filters.dateFrom = dateFrom;
+        }
+        if (dateTo) {
+          filters.dateTo = dateTo;
+        }
+
+        const result = await window.electron.database.scans.list(filters);
+
+        if (!result.success) {
+          setError(result.error || 'Failed to load scans');
+          return;
+        }
+
+        const data = result.data as PaginatedScansResponse;
+        setScans(data.scans);
+        setTotal(data.total);
+      } catch (err) {
+        console.error('Error fetching scans:', err);
+        setError('An unexpected error occurred while loading scans');
+      } finally {
+        if (!quiet) setIsLoading(false);
       }
-      if (dateFrom) {
-        filters.dateFrom = dateFrom;
-      }
-      if (dateTo) {
-        filters.dateTo = dateTo;
-      }
-
-      const result = await window.electron.database.scans.list(filters);
-
-      if (!result.success) {
-        setError(result.error || 'Failed to load scans');
-        return;
-      }
-
-      const data = result.data as PaginatedScansResponse;
-      setScans(data.scans);
-      setTotal(data.total);
-    } catch (err) {
-      console.error('Error fetching scans:', err);
-      setError('An unexpected error occurred while loading scans');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [page, pageSize, experimentId, dateFrom, dateTo]);
+    },
+    [page, pageSize, experimentId, dateFrom, dateTo]
+  );
 
   const fetchExperiments = useCallback(async () => {
     try {
@@ -432,7 +439,10 @@ export function BrowseScans() {
       <UploadAllBar
         filters={{ experimentId, dateFrom, dateTo }}
         refreshKey={scans}
-        onFinished={fetchScans}
+        onFinished={() => fetchScans()}
+        onProgress={() => fetchScans({ quiet: true })}
+        onRunningChange={setUploadAllRunning}
+        disabled={batchUploadInProgress || uploadInProgress !== null}
       />
 
       {/* Batch Actions */}
@@ -441,7 +451,7 @@ export function BrowseScans() {
           <button
             type="button"
             onClick={handleBatchUpload}
-            disabled={batchUploadInProgress}
+            disabled={batchUploadInProgress || uploadAllRunning}
             className="px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {batchUploadInProgress
@@ -642,6 +652,7 @@ export function BrowseScans() {
                           onClick={() => handleUpload(scan.id)}
                           disabled={
                             uploadInProgress === scan.id ||
+                            uploadAllRunning ||
                             uploadStatus.text === 'All uploaded' ||
                             uploadStatus.text === 'No images'
                           }
