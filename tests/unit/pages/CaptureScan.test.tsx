@@ -20,7 +20,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import '@testing-library/jest-dom';
 import { CaptureScan } from '../../../src/renderer/CaptureScan';
 
@@ -117,6 +117,12 @@ beforeEach(() => {
     camera: {
       getStatus: mockCameraGetStatus,
       getSettings: mockCameraGetSettings,
+      // The live preview, started once the camera counts as configured.
+      startStream: vi.fn().mockResolvedValue({ success: true }),
+      stopStream: vi.fn().mockResolvedValue({ success: true }),
+      onFrame: vi.fn(() => () => undefined),
+      offFrame: vi.fn(),
+      removeAllListeners: vi.fn(),
     },
     scanner: {
       onProgress: mockScannerOnProgress,
@@ -143,6 +149,10 @@ describe('CaptureScan color palette (camera-not-configured state)', () => {
     });
 
     const configureButton = await screen.findByText('Configure Camera');
+    // No settings to show while the camera isn't configured.
+    expect(
+      screen.queryByTestId('camera-settings-summary')
+    ).not.toBeInTheDocument();
     expect(configureButton.className).toContain('bg-lime-700');
     expect(configureButton.className).toContain('hover:bg-lime-800');
     expect(configureButton.className).not.toMatch(
@@ -165,6 +175,57 @@ describe('CaptureScan color palette (camera-not-configured state)', () => {
     expect(link.className).toContain('text-lime-700');
     expect(link.className).toContain('hover:text-lime-800');
     expect(link.className).not.toMatch(/text-blue-600|hover:text-blue-800/);
+  });
+
+  it('streams with settings saved on the station, without Apply, and without passing on their source', async () => {
+    mockCameraGetSettings.mockResolvedValue({
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+      source: 'saved',
+    });
+    renderCaptureScan();
+
+    await waitFor(() => expect(mockCameraGetSettings).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Camera Not Configured')
+      ).not.toBeInTheDocument()
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const startStream = (window as any).electron.camera.startStream;
+    await waitFor(() => expect(startStream).toHaveBeenCalled());
+    expect(startStream.mock.calls[0][0]).toMatchObject({
+      exposure_time: 12000,
+    });
+    expect(startStream.mock.calls[0][0]).not.toHaveProperty('source');
+    // The carried-over values are shown before Start Scan.
+    expect(screen.getByTestId('camera-settings-summary')).toHaveTextContent(
+      /Exposure 12,000 µs · Gain 120 · Gamma 1\.2/
+    );
+  });
+
+  it.each([
+    ['Configure Camera', false],
+    ['Go to Camera Settings →', true],
+  ])('"%s" opens Camera Settings', async (text, inPanel) => {
+    render(
+      <MemoryRouter initialEntries={['/capture-scan']}>
+        <Routes>
+          <Route path="/capture-scan" element={<CaptureScan />} />
+          <Route
+            path="/camera-settings"
+            element={<p>Camera Settings page</p>}
+          />
+        </Routes>
+      </MemoryRouter>
+    );
+    await waitFor(() => expect(mockCameraGetStatus).toHaveBeenCalled());
+    if (inPanel) fireEvent.click(await screen.findByText(/Camera Settings/));
+
+    fireEvent.click(await screen.findByText(text));
+
+    expect(await screen.findByText('Camera Settings page')).toBeInTheDocument();
   });
 
   it('leaves the amber warning banners and green Start Scan button unchanged (regression guard)', async () => {

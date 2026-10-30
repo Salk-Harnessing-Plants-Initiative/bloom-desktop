@@ -1,7 +1,7 @@
 /**
  * Asks for a wave's dates on Capture Scan, the first time the wave is used (#407,
- * #428): sowing, germination and transfer to cylinder (the germination day unless
- * changed). The plant age is computed from the germination date. A wave number that
+ * #428): wave-level (sowing, germination and transfer to cylinder, the germination
+ * day unless changed, entered once) or plant-level (entered per plant). The plant age is computed from the germination date. A wave number that
  * skips ahead is asked about first, on its own ("Is the wave number correct?"), and
  * goes on only with a note. Then dates in the future, or a sowing date after
  * germination, are refused; and a germination date out of order with another wave's
@@ -165,53 +165,39 @@ export function WaveDatesPanel({
         value={sameForAll === null ? null : sameForAll ? 'same' : 'perPlant'}
         onChange={(mode) => setSameForAll(mode === 'same')}
         disabled={disabled || saving}
-      />
-      {sameForAll === true && (
-        <>
-          <p className="font-medium text-green-800">
-            Please set the dates for wave {waveNumber}. The plant age is
-            computed from the germination date.
-          </p>
-          <WaveDateInputs
-            dates={dates}
-            transferSameDay={transferSameDay}
-            onChange={(next, sameDay) => {
-              setDates(next);
-              setTransferSameDay(sameDay);
-            }}
-            disabled={disabled || saving}
-          />
-          {check?.error && (
-            <p className="text-sm text-red-600">{check.error}</p>
-          )}
-          {check?.dateWarning && (
-            <WaveOrderWarning
-              waveNumber={waveNumber}
-              sowing={entered.sowing}
-              germination={entered.germination}
-              warning={check.dateWarning}
-              otherWaves={waves}
-            >
-              <p>If these are right, add a note to proceed.</p>
-              <textarea
-                aria-label="Note"
-                placeholder="Note (required to proceed)"
-                value={note}
-                maxLength={MAX_REASON_LENGTH / 2}
-                onChange={(e) => setNote(e.target.value)}
-                disabled={disabled || saving}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                data-testid="wave-dates-note"
-              />
-            </WaveOrderWarning>
-          )}
-        </>
-      )}
-      {sameForAll === false && (
-        <p className="text-sm text-gray-700" data-testid="dates-per-plant-note">
-          Each plant&apos;s dates are asked for as it&apos;s first scanned.
-        </p>
-      )}
+      >
+        <WaveDateInputs
+          dates={dates}
+          transferSameDay={transferSameDay}
+          onChange={(next, sameDay) => {
+            setDates(next);
+            setTransferSameDay(sameDay);
+          }}
+          disabled={disabled || saving}
+        />
+        {check?.error && <p className="text-sm text-red-600">{check.error}</p>}
+        {check?.dateWarning && (
+          <WaveOrderWarning
+            waveNumber={waveNumber}
+            sowing={entered.sowing}
+            germination={entered.germination}
+            warning={check.dateWarning}
+            otherWaves={waves}
+          >
+            <p>If these are right, add a note to proceed.</p>
+            <textarea
+              aria-label="Note"
+              placeholder="Note (required to proceed)"
+              value={note}
+              maxLength={MAX_REASON_LENGTH / 2}
+              onChange={(e) => setNote(e.target.value)}
+              disabled={disabled || saving}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+              data-testid="wave-dates-note"
+            />
+          </WaveOrderWarning>
+        )}
+      </DatesModeChoice>
       {!phenotyperChosen && (
         <p
           className="text-sm text-red-600"
@@ -228,8 +214,8 @@ export function WaveDatesPanel({
         className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50"
         data-testid="wave-dates-save"
       >
-        {sameForAll === false
-          ? 'Save'
+        {sameForAll !== true
+          ? 'Continue'
           : check?.dateWarning
             ? 'Proceed with these dates'
             : 'Save dates'}

@@ -1,7 +1,7 @@
 /**
  * A wave's three dates on Capture Scan (#428): sowing, germination and transfer to
  * cylinder. The plant age is computed from the germination date (its ⓘ says how).
- * The transfer date is the germination day unless "Same day as germination" is
+ * The transfer date is the germination day unless "Same as germination date" is
  * unticked.
  */
 
@@ -26,7 +26,7 @@ export function enteredDates(
   return { ...dates, transfer: transferSameDay ? '' : dates.transfer };
 }
 
-/** Unticked "Same day as germination" but no transfer date entered yet. */
+/** Unticked "Same as germination date" but no transfer date entered yet. */
 export function transferMissing(
   dates: WaveDates,
   transferSameDay: boolean
@@ -46,7 +46,7 @@ const STYLES = {
     group: 'space-y-4',
     label: 'block text-sm font-medium text-gray-700 mb-1',
     input:
-      'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
+      'w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500 disabled:bg-gray-100 disabled:cursor-not-allowed',
     required: true,
   },
 };
@@ -101,6 +101,9 @@ export function WaveDateInputs({
           className={style.input}
           data-testid="germination-date-input"
         />
+        <p className="mt-1 text-xs italic text-gray-500">
+          Plant age is counted from this date.
+        </p>
       </div>
       <div>
         <span className={style.label}>
@@ -114,7 +117,7 @@ export function WaveDateInputs({
             disabled={disabled}
             data-testid="transfer-same-day"
           />
-          Same day as germination
+          Same as germination date
         </label>
         {!transferSameDay && (
           <input

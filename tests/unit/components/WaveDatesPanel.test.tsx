@@ -57,11 +57,46 @@ function renderPanel(waveNumber = 2, waves = [wave1]) {
 }
 
 describe('WaveDatesPanel', () => {
-  it("asks whether all the wave's plants share their dates, with nothing chosen yet", () => {
+  it('shows the dates under Wave-level, once, and saves them with "Save dates"', () => {
     const { save } = renderPanel();
-    expect(screen.getByTestId('dates-mode-question')).toHaveTextContent(
-      "How are wave 2's dates (sowing date, germination date and transfer to cylinder date) set?"
+    fireEvent.click(screen.getByTestId('dates-mode-same'));
+
+    const datesBlock = screen.getByTestId('wave-level-dates');
+    // Between the two choices: after Wave-level, before Plant-level.
+    expect(
+      screen
+        .getByTestId('dates-mode-same')
+        .compareDocumentPosition(datesBlock) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      datesBlock.compareDocumentPosition(
+        screen.getByTestId('dates-mode-per-plant')
+      ) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(datesBlock).toHaveTextContent(
+      'Plant age is counted from this date.'
     );
+    expect(datesBlock).toHaveTextContent('Same as germination date');
+    // The question isn't asked again once Wave-level is chosen.
+    expect(screen.getByTestId('wave-dates-panel')).not.toHaveTextContent(
+      /Please set the dates/
+    );
+    expect(save()).toHaveTextContent('Save dates');
+  });
+
+  it('asks "Set wave N dates" with Wave-level and Plant-level, nothing chosen yet', () => {
+    const { save } = renderPanel();
+    const question = screen.getByTestId('dates-mode-question');
+    expect(question).toHaveTextContent(
+      /^Set wave 2 datesSowing, germination, and transfer-to-cylinder/
+    );
+    expect(question).toHaveTextContent(
+      'Wave-levelSame dates for every plant. Enter them once.'
+    );
+    expect(question).toHaveTextContent(
+      'Plant-levelDifferent dates per plant. Enter them when each barcode is first scanned.'
+    );
+    expect(save()).toHaveTextContent('Continue');
     expect(screen.getByTestId('dates-mode-same')).not.toBeChecked();
     expect(screen.getByTestId('dates-mode-per-plant')).not.toBeChecked();
     // No dates are asked for until they answer.
@@ -74,8 +109,10 @@ describe('WaveDatesPanel', () => {
   it('saves a wave whose dates are per plant, with no dates', async () => {
     const { onSave, save } = renderPanel();
     fireEvent.click(screen.getByTestId('dates-mode-per-plant'));
-    expect(screen.getByTestId('dates-per-plant-note')).toHaveTextContent(
-      "Each plant's dates are asked for as it's first scanned"
+    expect(save()).toHaveTextContent('Continue');
+    // Plant-level's own line says when the dates are asked for; it isn't repeated.
+    expect(screen.getByTestId('wave-dates-panel')).not.toHaveTextContent(
+      /asked for as/
     );
     expect(
       screen.queryByTestId('germination-date-input')
@@ -156,9 +193,14 @@ describe('WaveDatesPanel', () => {
       screen.queryByTestId('germination-date-info-text')
     ).not.toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByTestId('germination-date-info'));
-    expect(screen.getByTestId('germination-date-info-text')).toHaveTextContent(
-      'Plant age = days since germination. The germination day is day 0, so a plant that germinated on 1 Oct is 9 days old on 10 Oct.'
-    );
+    const lines = Array.from(
+      screen.getByTestId('germination-date-info-text').children
+    ).map((line) => line.textContent);
+    expect(lines).toEqual([
+      'Plant age = days since germination',
+      'Germination day is day 0.',
+      'e.g. Germinated Oct 1 → 9 days old on Oct 10',
+    ]);
     fireEvent.mouseLeave(screen.getByTestId('germination-date-info'));
     expect(
       screen.queryByTestId('germination-date-info-text')
@@ -268,7 +310,7 @@ describe('WaveDatesPanel', () => {
     expect(screen.getByTestId('dates-mode-question')).toBeInTheDocument();
   });
 
-  it('saves a transfer date on another day when "Same day as germination" is unticked', async () => {
+  it('saves a transfer date on another day when "Same as germination date" is unticked', async () => {
     const { onSave, setDate, setSowing, save } = renderPanel();
     setDate(daysAgo(9));
     setSowing();

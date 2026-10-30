@@ -236,7 +236,7 @@ test.describe('ScanPreview Navigation', () => {
 
     // Click View button in the row
     const row = window.locator('tr').filter({ hasText: 'PLANT-VIEW-BTN' });
-    await row.locator('button[title="View scan"]').click();
+    await row.locator('button[aria-label="View scan"]').click();
 
     // Should navigate to scan preview page (MemoryRouter doesn't change URL, so check content)
     await expect(window.getByText('Back to Scans')).toBeVisible();
@@ -602,7 +602,9 @@ test.describe('ScanPreview Upload', () => {
     const row = window.locator('tr', {
       has: window.locator('text=PLANT-TABLE-UPLOAD'),
     });
-    await expect(row.locator('button[title="Upload to Bloom"]')).toBeVisible();
+    await expect(
+      row.locator('button[aria-label="Upload to Bloom"]')
+    ).toBeVisible();
   });
 
   test('should show upload status in table', async () => {

@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   MetadataForm,
   ScanMetadata,
@@ -23,7 +23,11 @@ import type {
   ScanProgress as ScanProgressData,
   ScanResult,
 } from '../types/scanner';
-import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
+import {
+  DEFAULT_CAMERA_SETTINGS,
+  formatCameraSetting,
+  withoutSource,
+} from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
 import { buildScanPath, toRelativeScanPath } from '../utils/scan-path';
 import { plantAgeDays } from '../utils/wave-dates';
@@ -377,8 +381,9 @@ export function CaptureScan() {
         console.log('[CaptureScan] Got settings:', settings);
 
         if (settings) {
-          // Use settings that were configured on Camera Settings page
-          setCameraSettings(settings);
+          // Settings applied on Camera Settings, or saved on this station (#440).
+          // Where they came from isn't a camera setting, so it isn't passed on.
+          setCameraSettings(withoutSource(settings) as CameraSettings);
           setCameraConfigured(true);
         } else {
           // No settings configured yet, use defaults
@@ -805,12 +810,12 @@ export function CaptureScan() {
                           Camera not configured. Please configure camera
                           settings first.
                         </p>
-                        <a
-                          href="#/camera-settings"
+                        <Link
+                          to="/camera-settings"
                           className="text-lime-700 hover:text-lime-800 font-medium"
                         >
                           Go to Camera Settings →
-                        </a>
+                        </Link>
                       </div>
                     )}
                   </div>
@@ -821,6 +826,19 @@ export function CaptureScan() {
               <div className="mt-4 text-sm text-gray-500">
                 {scanNumFrames ?? 72} frames, ~{scanSecondsPerRot ?? 7.0}s
                 rotation
+                {cameraConfigured && (
+                  <span data-testid="camera-settings-summary">
+                    {' '}
+                    · Exposure{' '}
+                    {formatCameraSetting(
+                      'exposure_time',
+                      cameraSettings.exposure_time
+                    )}{' '}
+                    µs · Gain {formatCameraSetting('gain', cameraSettings.gain)}{' '}
+                    · Gamma{' '}
+                    {formatCameraSetting('gamma', cameraSettings.gamma ?? 1)}
+                  </span>
+                )}
               </div>
 
               {/* Start Scan Button */}
@@ -911,12 +929,12 @@ export function CaptureScan() {
                     <p className="text-sm text-gray-500 mb-4">
                       Configure camera settings to see live preview
                     </p>
-                    <a
-                      href="#/camera-settings"
+                    <Link
+                      to="/camera-settings"
                       className="inline-block px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 font-medium"
                     >
                       Configure Camera
-                    </a>
+                    </Link>
                   </div>
                 </div>
               )}

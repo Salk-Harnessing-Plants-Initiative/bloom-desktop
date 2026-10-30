@@ -2,7 +2,7 @@
  * Unit tests for BrowseScans page — delete flow
  * (add-cylinderscan-delete-upload-integrity, tasks.md 2.3/2.5/2.7).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
@@ -85,12 +85,32 @@ function renderPage() {
 }
 
 describe('BrowseScans delete flow', () => {
+  it('labels View, Upload and Delete straight away on hover', async () => {
+    renderPage();
+    for (const name of ['View scan', 'Upload to Bloom', 'Delete scan']) {
+      const button = await screen.findByRole('button', { name });
+      const label = button.parentElement?.querySelector('[role="tooltip"]');
+      expect(label).toHaveTextContent(name);
+      expect(label?.className).toContain('group-hover:opacity-100');
+      expect(button).not.toHaveAttribute('title');
+    }
+  });
+
+  it('sets the Delete button apart from View and Upload, behind a divider', async () => {
+    renderPage();
+    const del = await screen.findByRole('button', { name: 'Delete scan' });
+
+    expect(del.className).toContain('ml-4');
+    expect(del.className).toContain('border-l');
+    expect(del.closest('td')?.className).toContain('gap-3');
+  });
+
   it('opens a confirmation modal instead of window.confirm when Delete is clicked', async () => {
     renderPage();
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Delete scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Delete this scan\?/)).toBeInTheDocument();
@@ -102,7 +122,7 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Delete scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
     await screen.findByRole('dialog');
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
@@ -115,7 +135,7 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Delete scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
     await screen.findByRole('dialog');
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
@@ -128,7 +148,7 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Delete scan'));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete scan' }));
     await screen.findByRole('dialog');
     fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
@@ -147,15 +167,17 @@ describe('BrowseScans delete flow', () => {
     await waitFor(() => expect(mockList).toHaveBeenCalled());
     await screen.findByText('PLANT-001');
 
-    fireEvent.click(screen.getByTitle('Upload to Bloom'));
+    fireEvent.click(screen.getByRole('button', { name: 'Upload to Bloom' }));
 
     await waitFor(() =>
-      expect(screen.getByTitle('Delete scan')).toBeDisabled()
+      expect(screen.getByRole('button', { name: 'Delete scan' })).toBeDisabled()
     );
 
     resolveUpload({ success: true, data: {} });
     await waitFor(() =>
-      expect(screen.getByTitle('Delete scan')).not.toBeDisabled()
+      expect(
+        screen.getByRole('button', { name: 'Delete scan' })
+      ).not.toBeDisabled()
     );
   });
 });
@@ -226,7 +248,7 @@ describe('BrowseScans color palette', () => {
     expect(plantLink.className).toContain('text-lime-700');
     expect(plantLink.className).not.toContain('text-blue-600');
 
-    const viewIcon = screen.getByTitle('View scan');
+    const viewIcon = screen.getByRole('button', { name: 'View scan' });
     expect(viewIcon.className).toContain('text-lime-700');
     expect(viewIcon.className).not.toContain('text-blue-600');
   });
@@ -259,6 +281,28 @@ describe('BrowseScans color palette', () => {
 });
 
 describe('thumbnail column', () => {
+  // Every row counts as on screen here; LazyThumbnail.test.tsx covers rows that aren't.
+  beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(private callback: IntersectionObserverCallback) {}
+        observe(target: Element) {
+          this.callback(
+            [{ isIntersecting: true, target } as IntersectionObserverEntry],
+            this as unknown as IntersectionObserver
+          );
+        }
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return [];
+        }
+      }
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
   it('renders a lazy-loaded thumbnail sourced from the lowest-frame_number image', async () => {
     mockList.mockResolvedValue(
       makeListResponse([
@@ -444,5 +488,47 @@ describe('camera-settings column', () => {
 
     expect(title).not.toContain('Brightness');
     expect(title).not.toContain('Contrast');
+  });
+});
+
+describe('thumbnail column, rows off screen', () => {
+  // An observer that never reports a row on screen, like rows below the fold.
+  beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe() {}
+        disconnect() {}
+        unobserve() {}
+        takeRecords() {
+          return [];
+        }
+      }
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('shows a placeholder and requests no image until the row comes near the screen', async () => {
+    mockList.mockResolvedValue(
+      makeListResponse([
+        {
+          ...baseScan,
+          images: [
+            {
+              id: 'img-1',
+              status: 'uploaded',
+              path: 'frame_000.jpg',
+              frame_number: 0,
+            },
+          ],
+        },
+      ])
+    );
+
+    renderPage();
+    await screen.findByText('PLANT-001');
+
+    expect(await screen.findByTestId('thumbnail-loading')).toBeInTheDocument();
+    expect(screen.queryByAltText(/thumbnail/i)).not.toBeInTheDocument();
   });
 });

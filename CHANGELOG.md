@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-30
+
+### Added
+
+- Camera settings are kept across restarts: the exposure, gain and gamma last applied on Camera Settings are saved in `~/.bloom/camera-settings.json`, so after the app is reopened the preview and each scan use them without pressing **Apply** again. Capture Scan shows the values that will be used before Start Scan. Exposure, gain and gamma outside the camera's limits can't be typed or applied, with the reason shown. After Apply, Camera Settings says whether the settings were saved for future sessions; if they weren't, it shows a code (`CAM-SAVE-01` to `-04`, `-99`), what it means and what to do, and the page lists every code ([#440](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/440), [#442](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/442)).
+
+### Changed
+
+- Capture Scan's wave dates card is shorter: **Set wave N dates**, with **Wave-level** (the same dates for every plant, entered once, in fields shown right under it) or **Plant-level** (entered when each barcode is first scanned). "Plant age is counted from this date." is shown under the germination date, the transfer checkbox reads "Same as germination date", and the ⓘ gives an example. The wave's Edit box uses the same card, with **Switch to wave-level** / **Switch to plant-level** ([#443](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/443)).
+- The sidebar lists the CylinderScan pages in the pilot app's order (Home, Capture Scan, Browse Scans, Camera Settings, …), which operators already know ([#435](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/435)).
+- Browse Scans: View, Upload and Delete show a label on hover, and Delete is set apart from the other two ([#441](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/441)).
+
+### Fixed
+
+- Browse Scans and Export Scans open faster on stations with many scans: Browse Scans loads a thumbnail only when its row comes near the screen, and Export Scans reads only what it shows, without each scan's image rows, with a loader that counts the scans as they arrive ([#436](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/436), [#437](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/437)).
+- Capture Scan: **Configure Camera** and **Go to Camera Settings →** now open Camera Settings; clicking them did nothing ([#439](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/439), [#441](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/441)).
+
 ## [0.2.2] - 2026-10-29
 
 ### Added

@@ -8,7 +8,16 @@
 import { useState, useEffect } from 'react';
 import { Streamer } from '../components/Streamer';
 import { CameraSettingsForm } from '../components/CameraSettingsForm';
-import type { CameraSettings } from '../types/camera';
+import {
+  CameraSaveErrorCodes,
+  CameraSaveErrorNotice,
+} from '../components/CameraSaveErrorNotice';
+import {
+  type CameraSettings,
+  type CameraSettingsSource,
+  type CameraSettingsWithSource,
+  withoutSource,
+} from '../types/camera';
 
 // How long the "Camera settings applied" confirmation stays on screen.
 const APPLIED_MESSAGE_MS = 4000;
@@ -29,6 +38,13 @@ export function CameraSettings() {
   const [showPreview, setShowPreview] = useState(false);
   const [applied, setApplied] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  // Where the shown settings came from: saved on this station, or applied this session.
+  // 'applied-unsaved': the camera took them, but they couldn't be kept (saveError says why).
+  const [source, setSource] = useState<CameraSettingsSource | null>(null);
+  const [saveError, setSaveError] =
+    useState<CameraSettingsWithSource['saveError']>(undefined);
+  // An Apply is in progress: the button is disabled, so a double-click applies once.
+  const [applying, setApplying] = useState(false);
 
   // Hide the "applied" confirmation after a few seconds.
   useEffect(() => {
@@ -45,8 +61,12 @@ export function CameraSettings() {
       console.log('[CameraSettings] Got settings:', settings);
       if (settings) {
         console.log('[CameraSettings] Updating state with settings');
-        setCurrentSettings(settings);
-        setEditedSettings(settings);
+        const values = withoutSource(settings);
+        setSource(settings.source ?? null);
+        // A failed save is still reported after leaving the page and coming back.
+        setSaveError(settings.saveError);
+        setCurrentSettings(values);
+        setEditedSettings(values);
         setShowPreview(true); // Show preview if settings exist
       } else {
         console.log('[CameraSettings] No settings found, using defaults');
@@ -74,8 +94,10 @@ export function CameraSettings() {
   }, [showPreview]);
 
   const handleApply = async () => {
+    setApplying(true);
     setApplied(false);
     setApplyError(null);
+    setSaveError(undefined);
     try {
       const result = await window.electron.camera.configure(editedSettings);
       if (!result?.success) {
@@ -93,11 +115,19 @@ export function CameraSettings() {
       setStreamKey((prev) => prev + 1);
 
       setIsDirty(false);
+      if (result.saved === false) {
+        setSource('applied-unsaved');
+        setSaveError(result.saveError);
+      } else {
+        setSource('applied');
+      }
       setLastApplied(new Date());
       setApplied(true);
     } catch (error) {
       console.error('Failed to apply settings:', error);
       setApplyError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setApplying(false);
     }
   };
 
@@ -131,6 +161,7 @@ export function CameraSettings() {
               onChange={setEditedSettings}
               onApply={handleApply}
               onReset={handleReset}
+              applying={applying}
               showActions={true}
             />
 
@@ -138,25 +169,47 @@ export function CameraSettings() {
             <div className="mt-6 pt-4 border-t border-gray-200">
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <span
-                  className={`w-2 h-2 rounded-full ${isDirty ? 'bg-yellow-500' : 'bg-green-500'}`}
+                  className={`w-2 h-2 rounded-full ${
+                    isDirty || source === 'applied-unsaved'
+                      ? 'bg-yellow-500'
+                      : source
+                        ? 'bg-green-500'
+                        : 'bg-gray-300'
+                  }`}
                 />
-                {isDirty ? 'Unsaved changes' : 'Settings saved'}
+                <span data-testid="camera-settings-status">
+                  {isDirty
+                    ? 'Changes not applied yet'
+                    : source === 'applied'
+                      ? 'Applied to the camera, and saved for future sessions'
+                      : source === 'applied-unsaved'
+                        ? 'Applied to the camera, but not saved for future sessions'
+                        : source === 'saved'
+                          ? 'Saved for future sessions'
+                          : 'Defaults (not saved yet)'}
+                </span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {lastApplied
-                  ? `Last applied: ${lastApplied.toLocaleString()}`
-                  : 'Not applied yet'}
-              </p>
-              {applied && (
-                <p role="status" className="mt-2 text-sm text-green-700">
-                  ✓ Camera settings applied
+              {/* Saved settings are applied whenever the camera starts, so
+                  "Not applied yet" only fits settings that were never applied. */}
+              {(lastApplied || !source) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {lastApplied
+                    ? `Last applied: ${lastApplied.toLocaleString()}`
+                    : 'Not applied yet'}
                 </p>
               )}
+              {applied && !saveError && (
+                <p role="status" className="mt-2 text-sm text-green-700">
+                  ✓ Camera settings applied and saved for future sessions
+                </p>
+              )}
+              {saveError && <CameraSaveErrorNotice error={saveError} />}
               {applyError && (
                 <p role="alert" className="mt-2 text-sm text-red-700">
                   Couldn't apply the settings: {applyError}
                 </p>
               )}
+              <CameraSaveErrorCodes />
             </div>
           </div>
 

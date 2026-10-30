@@ -170,7 +170,7 @@ describe('waveDatesError', () => {
       "The transfer date can't be in the future."
     );
     expect(waveDatesError({ ...ok, transfer: 'soon' }, today)).toBe(
-      'Enter the transfer date, or tick "Same day as germination".'
+      'Enter the transfer date, or tick "Same as germination date".'
     );
   });
 });
