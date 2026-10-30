@@ -189,9 +189,14 @@ describe('WaveDatesPanel', () => {
       screen.queryByTestId('germination-date-info-text')
     ).not.toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByTestId('germination-date-info'));
-    expect(screen.getByTestId('germination-date-info-text')).toHaveTextContent(
-      'Plant age = days since germination. The germination day is day 0, so a plant that germinated on 1 Oct is 9 days old on 10 Oct.'
-    );
+    const lines = Array.from(
+      screen.getByTestId('germination-date-info-text').children
+    ).map((line) => line.textContent);
+    expect(lines).toEqual([
+      'Plant age = days since germination',
+      'Germination day is day 0.',
+      'e.g. Germinated Oct 1 → 9 days old on Oct 10',
+    ]);
     fireEvent.mouseLeave(screen.getByTestId('germination-date-info'));
     expect(
       screen.queryByTestId('germination-date-info-text')
