@@ -1389,3 +1389,33 @@ describe('CaptureScan: an open date box holds up Start Scan (#407, #428)', () =>
     ).toBeInTheDocument();
   });
 });
+
+describe('CaptureScan and the camera', () => {
+  it('takes the preview down for the scan, and brings it back after', async () => {
+    let finishScan: (result: unknown) => void = () => undefined;
+    mockScannerOnComplete.mockImplementation((cb) => {
+      finishScan = cb;
+      return () => {};
+    });
+
+    await fillFormAndStartScan();
+
+    // A real camera can only be open in one process: the scanner needs it to itself.
+    expect(mockScannerInitialize).toHaveBeenCalled();
+    expect(screen.queryByTestId('stream-canvas')).not.toBeInTheDocument();
+    expect(screen.getByTestId('scan-preparing')).toHaveTextContent(
+      'Preparing the scan…'
+    );
+
+    await act(async () =>
+      finishScan({
+        success: true,
+        frames_captured: 36,
+        output_path: '/tmp/scan',
+      })
+    );
+
+    expect(await screen.findByTestId('stream-canvas')).toBeInTheDocument();
+    expect(screen.queryByTestId('scan-preparing')).not.toBeInTheDocument();
+  });
+});

@@ -53,6 +53,7 @@ import {
   getDatabasePath,
 } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
+import { createCameraHandoff } from './camera-handoff';
 import { registerScanUploadAllHandlers } from './scan-upload-all-handlers';
 import { ImageUploader } from './image-uploader';
 import { createSpeciesStore, SAVED_SPECIES_FILE } from './species-list';
@@ -804,6 +805,11 @@ ipcMain.handle('daq:get-status', async () => {
 /**
  * Initialize Scanner subprocess if not already initialized
  */
+const cameraHandoff = createCameraHandoff({
+  getPreview: () => cameraProcess,
+  getScanner: () => scannerProcess,
+});
+
 async function ensureScannerProcess(): Promise<ScannerProcess> {
   if (!scannerProcess) {
     // Scanner uses the same Python process as other hardware
@@ -826,14 +832,17 @@ async function ensureScannerProcess(): Promise<ScannerProcess> {
       }
     });
 
-    scannerProcess.on('complete', (result) => {
+    scannerProcess.on('complete', async (result) => {
+      // Before the page hears of it, as it then starts the preview again.
+      await cameraHandoff.releaseFromScanner();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('scanner:complete', result);
       }
     });
 
-    scannerProcess.on('error', (error: string) => {
+    scannerProcess.on('error', async (error: string) => {
       console.error('Scanner error:', error);
+      await cameraHandoff.releaseFromScanner();
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('scanner:error', error);
       }
@@ -852,6 +861,7 @@ ipcMain.handle(
     try {
       if (idleTimer) idleTimer.resetTimer();
       const scanner = await ensureScannerProcess();
+      await cameraHandoff.releaseFromPreview();
       const response = await scanner.initialize(
         applyScannerCameraIp(settings, getConfiguredCameraIp())
       );
@@ -907,6 +917,7 @@ ipcMain.handle('scanner:scan', async () => {
       error: error.message,
     };
   } finally {
+    await cameraHandoff.releaseFromScanner();
     if (idleTimer) idleTimer.resumeAfterScan();
   }
 });
