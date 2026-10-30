@@ -2,7 +2,7 @@
  * Asks for a wave's dates on Capture Scan, the first time the wave is used (#407,
  * #428): wave-level (sowing, germination and transfer to cylinder, the germination
  * day unless changed, entered once) or plant-level (entered per plant). The plant age is computed from the germination date. A wave number that
- * skips ahead is asked about first, on its own ("Is the wave number correct?"), and
+ * skips ahead is asked about first, on its own ("Wave 2 was skipped"), and
  * goes on only with a note. Then dates in the future, or a sowing date after
  * germination, are refused; and a germination date out of order with another wave's
  * asks "Are you sure…?" and proceeds only with a note. The main process checks the
@@ -121,10 +121,13 @@ export function WaveDatesPanel({
         data-testid="wave-number-check"
       >
         <WaveWarnings warnings={[waveWarning]}>
-          <p>Add a note to continue, or change the wave number above.</p>
+          <p>
+            To scan wave {waveNumber} anyway, add a note explaining why, or
+            change the wave number above.
+          </p>
           <textarea
             aria-label="Why this wave number"
-            placeholder="Note (required to continue)"
+            placeholder={`Why are you skipping ${waveWarning.skipped}?`}
             value={waveNote}
             maxLength={MAX_REASON_LENGTH / 2}
             onChange={(e) => setWaveNote(e.target.value)}
@@ -140,7 +143,7 @@ export function WaveDatesPanel({
           className="px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50"
           data-testid="wave-number-confirm"
         >
-          Yes, wave {waveNumber} is correct
+          Scan wave {waveNumber}
         </button>
       </div>
     );

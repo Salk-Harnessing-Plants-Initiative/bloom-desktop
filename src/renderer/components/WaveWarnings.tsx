@@ -1,6 +1,6 @@
 /**
- * The "Is the wave number correct?" box on Capture Scan, when a new wave's number
- * skips ahead (#428). The phenotyper can still proceed, with a note, which the caller
+ * The "Wave 2 was skipped" box on Capture Scan, when a new wave's number skips
+ * ahead (#428). The phenotyper can still proceed, with a note, which the caller
  * puts inside. (A wave's dates out of order with another's use WaveOrderWarning.)
  */
 

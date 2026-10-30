@@ -281,7 +281,7 @@ describe('createWave', () => {
 
   it('needs a note to proceed with a wave number that skips ahead', async () => {
     expect((await create({ waveNumber: 5 })).error).toMatch(
-      /^Is the wave number correct\? Previous wave: wave 1\. Are you sure you want to scan wave 5\? Add a note to proceed\.$/
+      /^Waves 2–4 were skipped\. The latest wave in this experiment is wave 1\. Add a note to proceed\.$/
     );
     const withNote = await create({
       waveNumber: 5,
@@ -742,7 +742,7 @@ describe('waves whose dates are per plant, and plants following the wave', () =>
       phenotyperId: 'ph-1',
     };
     expect((await createWave(deps, input)).error).toMatch(
-      /^Is the wave number correct\? .+ Add a note to proceed\.$/
+      /^Waves? .+ (was|were) skipped\. .+ Add a note to proceed\.$/
     );
     expect(
       (await createWave(deps, { ...input, note: 'Waves 2 and 3 elsewhere' }))

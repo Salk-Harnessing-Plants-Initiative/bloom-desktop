@@ -254,19 +254,22 @@ describe('checkNewWave', () => {
     ).toBeNull();
   });
 
-  it('asks "Is the wave number correct?" and needs a note for a wave number that skips ahead', () => {
+  it('says which waves were skipped, and needs a note, for a wave number that skips ahead', () => {
     const check = checkNewWave(5, dates('2026-02-20'), [wave1], today);
     expect(check.waveWarning).toEqual({
-      question: 'Is the wave number correct?',
-      detail: 'Previous wave: wave 1.',
-      confirm: 'Are you sure you want to scan wave 5?',
+      question: 'Waves 2–4 were skipped',
+      detail: 'The latest wave in this experiment is wave 1.',
+      skipped: 'waves 2–4',
     });
+    expect(
+      checkNewWave(3, dates('2026-02-20'), [wave1], today).waveWarning
+    ).toMatchObject({ question: 'Wave 2 was skipped', skipped: 'wave 2' });
     expect(check.noteNeeded).toMatch(/Add a note to proceed\.$/);
     expect(checkNewWave(3, dates('2026-02-20'), [], today).waveWarning).toEqual(
       {
-        question: 'Is the wave number correct?',
-        detail: "This is the experiment's first wave.",
-        confirm: 'Are you sure you want to scan wave 3?',
+        question: 'Waves 1–2 were skipped',
+        detail: 'This experiment has no waves yet.',
+        skipped: 'waves 1–2',
       }
     );
     for (const first of [0, 1]) {
