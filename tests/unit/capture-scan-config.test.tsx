@@ -1449,6 +1449,48 @@ describe('CaptureScan and the camera', () => {
     expect(screen.getByRole('button', { name: /start scan/i })).toBeEnabled();
   });
 
+  it("starts the next scan without the failed scan's frame", async () => {
+    let sendProgress: (progress: unknown) => void = () => undefined;
+    mockScannerOnProgress.mockImplementation((cb) => {
+      sendProgress = cb;
+      return () => {};
+    });
+    let finishScan: (result: unknown) => void = () => undefined;
+    mockScannerScan.mockReturnValueOnce(
+      new Promise((resolve) => (finishScan = resolve))
+    );
+
+    await fillFormAndStartScan();
+    await act(async () =>
+      sendProgress({ frame_number: 29, total_frames: 36, position: 150 })
+    );
+    expect(screen.getByText(/Frame 30 of 36/)).toBeInTheDocument();
+
+    await act(async () =>
+      finishScan({ success: false, frames_captured: 0, output_path: '' })
+    );
+    expect(await screen.findByTestId('stream-canvas')).toBeInTheDocument();
+
+    mockScannerScan.mockReturnValueOnce(new Promise(() => undefined));
+    const startButton = screen.getByRole('button', { name: /start scan/i });
+    await waitFor(() => expect(startButton).toBeEnabled());
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
+
+    expect(screen.getByTestId('scan-preparing')).toBeInTheDocument();
+    expect(screen.queryByText(/Frame 30 of 36/)).not.toBeInTheDocument();
+  });
+
+  it('asks the scanner for a full turn of the turntable', async () => {
+    await fillFormAndStartScan();
+
+    // What stations actually use: 20,000 microsteps per motor turn, 60/42 gears.
+    expect(
+      mockScannerInitialize.mock.calls[0][0].daq.steps_per_revolution
+    ).toBe(28571);
+  });
+
   it('shows "Frame 12 of 36" as the scan runs', async () => {
     let sendProgress: (progress: unknown) => void = () => undefined;
     mockScannerOnProgress.mockImplementation((cb) => {

@@ -283,8 +283,13 @@ class Scanner:
             try:
                 if self.daq is not None:
                     self.daq.home()
-            except Exception:
-                pass
+            except Exception as home_error:
+                # The next scan would start from wherever the turntable stopped.
+                write_line(f"STATUS:Couldn't return home: {home_error}")
+                error_msg += (
+                    " The turntable didn't return to its start position. "
+                    "Check it before the next scan."
+                )
 
             return ScanResult(
                 success=False,

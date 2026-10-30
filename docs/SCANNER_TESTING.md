@@ -53,7 +53,7 @@ DATA:{"success": true, "initialized": false, "camera_status": "unknown", "daq_st
 ### 2. Initialize Scanner
 
 ```bash
-echo '{"command":"scanner","action":"initialize","settings":{"camera":{"exposure_time":10000,"gain":100,"camera_ip_address":"mock","gamma":1.0},"daq":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":7.0},"num_frames":72,"output_path":"./scans"}}' | ./dist/bloom-hardware --ipc
+echo '{"command":"scanner","action":"initialize","settings":{"camera":{"exposure_time":10000,"gain":100,"camera_ip_address":"mock","gamma":1.0},"daq":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":28571,"num_frames":72,"seconds_per_rot":7.0},"num_frames":72,"output_path":"./scans"}}' | ./dist/bloom-hardware --ipc
 ```
 
 Expected output:
@@ -80,7 +80,7 @@ DATA:{"success": true, "initialized": true}
 ./dist/bloom-hardware --ipc
 
 # Then type these commands (one per line):
-{"command":"scanner","action":"initialize","settings":{"camera":{"exposure_time":10000,"gain":100,"camera_ip_address":"mock","gamma":1.0},"daq":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":6400,"num_frames":72,"seconds_per_rot":7.0},"num_frames":72,"output_path":"./scans"}}
+{"command":"scanner","action":"initialize","settings":{"camera":{"exposure_time":10000,"gain":100,"camera_ip_address":"mock","gamma":1.0},"daq":{"device_name":"cDAQ1Mod1","sampling_rate":40000,"step_pin":0,"dir_pin":1,"steps_per_revolution":28571,"num_frames":72,"seconds_per_rot":7.0},"num_frames":72,"output_path":"./scans"}}
 {"command":"scanner","action":"scan"}
 {"command":"scanner","action":"status"}
 {"command":"scanner","action":"cleanup"}
@@ -114,7 +114,7 @@ Once the Electron app is running, you can test the Scanner from the renderer pro
       sampling_rate: 40000,
       step_pin: 0,
       dir_pin: 1,
-      steps_per_revolution: 6400,
+      steps_per_revolution: 28571,
       num_frames: 72,
       seconds_per_rot: 7.0,
     },
@@ -198,7 +198,7 @@ This is the real, current `CameraSettings` shape (`src/types/camera.ts`) — not
 | `sampling_rate`        | number | `40000`       | DAQ sampling rate in Hz        |
 | `step_pin`             | number | `0`           | Digital output for step signal |
 | `dir_pin`              | number | `1`           | Digital output for direction   |
-| `steps_per_revolution` | number | `6400`        | Steps for full 360° rotation   |
+| `steps_per_revolution` | number | `28571`       | Steps for full 360° rotation   |
 | `num_frames`           | number | `72`          | Number of frames to capture    |
 | `seconds_per_rot`      | number | `7.0`         | Time for complete rotation     |
 
@@ -383,7 +383,7 @@ The scanner maintains accurate position throughout:
 - **Initial**: 0° (home position)
 - **During scan**: Accumulates rotation (wraps at 360°)
 - **After scan**: Returns to 0° (home position)
-- **Precision**: Based on DAQ step count (default: 6400 steps/360°)
+- **Precision**: Based on DAQ step count (default: 28571 steps/360°)
 
 ## Troubleshooting
 

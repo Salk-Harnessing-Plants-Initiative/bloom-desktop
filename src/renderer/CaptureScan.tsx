@@ -539,6 +539,7 @@ export function CaptureScan() {
 
     try {
       setIsScanning(true);
+      setScanProgress(null);
       setErrorMessage(null);
       setUnsavedScan(null);
       setShowIdleResetBanner(false);
@@ -608,6 +609,7 @@ export function CaptureScan() {
         error instanceof Error ? error.message : 'Failed to start scan'
       );
       setIsScanning(false);
+      setScanProgress(null);
       setTimeout(() => setErrorMessage(null), 5000);
     }
   };
