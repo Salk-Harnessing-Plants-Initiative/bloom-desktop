@@ -28,3 +28,11 @@ stations:
     environment: station-pc1
     runner_label: station-pc1
     active: true
+  - name: pc2
+    type: cylinderscan
+    os: windows
+    location: CQuesta
+    bloom_scanner_name: SlowScanner
+    environment: station-pc2
+    runner_label: station-pc2
+    active: true
