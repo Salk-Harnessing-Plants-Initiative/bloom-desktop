@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-30
+
+### Added
+
+- Browse Scans has an **Upload all (N)** button for every scan, within the current filters, with frames not yet uploaded. It asks first, then uploads the scans oldest first with one Bloom login, showing "Uploading 12 of 40…" and a **Stop** button that stops after the scan in progress. The table refreshes after each scan, and the row **Upload** and **Upload Selected** buttons are disabled during a run. The run continues if you leave the page: coming back shows its progress and Stop, or how it ended, including failures by plant ID ([#449](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/449), [#451](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/451)).
+
+### Changed
+
+- Capture Scan's warning for a wave number that skips ahead now names what was skipped: "Wave 2 was skipped", with "Scan wave 3" to continue after adding a note ([#450](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/450)).
+
 ## [0.2.3] - 2026-10-30
 
 ### Added
