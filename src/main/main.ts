@@ -21,7 +21,7 @@ import { createScanProtocolHandler } from './scan-protocol';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './cylinderscan/camera-process';
 import type { CameraSettings } from './cylinderscan/camera-process';
-import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
+import { DEFAULT_CAMERA_SETTINGS, withoutSource } from '../types/camera';
 import { DAQProcess } from './cylinderscan/daq-process';
 import type { DAQSettings } from '../types/daq';
 import { ScannerProcess } from './cylinderscan/scanner-process';
@@ -171,8 +171,7 @@ let scannerProcess: ScannerProcess | null = null;
 const cameraSettings = createCameraSettingsSession({
   file: path.join(BLOOM_DIR, CAMERA_SETTINGS_FILE),
   defaults: DEFAULT_CAMERA_SETTINGS,
-  withCameraIp: (settings) =>
-    applyCameraIp(settings, getConfiguredCameraIp()) as CameraSettings,
+  withCameraIp: (settings) => applyCameraIp(settings, getConfiguredCameraIp()),
 });
 
 // Idle timer — resets session after inactivity to prevent scan misattribution
@@ -185,7 +184,6 @@ let idleTimer: IdleTimer | null = null;
  * and synced when config is saved. Provides fast in-memory access
  * for UI components without file I/O.
  *
- * Runtime state, like the camera settings session.
  * Pilot reference: bloom-desktop-pilot/app/src/main/main.ts:148
  */
 const scannerIdentity: { name: string } = { name: '' };
@@ -479,7 +477,11 @@ ipcMain.handle(
   'camera:configure',
   async (_event, requested: Partial<CameraSettings>) => {
     try {
-      const settings = applyCameraIp(requested, getConfiguredCameraIp());
+      // Where the settings came from is not a camera setting.
+      const settings = applyCameraIp(
+        withoutSource(requested),
+        getConfiguredCameraIp()
+      );
       console.log('[camera:configure] Configuring with settings:', settings);
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);

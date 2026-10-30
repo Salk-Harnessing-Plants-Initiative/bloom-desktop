@@ -12,6 +12,8 @@ import {
   CAMERA_SETTINGS_SAVE_ERRORS,
   type CameraConfigureResult,
   type CameraSettings,
+  type CameraSettingsSource,
+  withoutSource,
 } from '../types/camera';
 
 // How long the "Camera settings applied" confirmation stays on screen.
@@ -36,7 +38,7 @@ export function CameraSettings() {
   // Where the shown settings came from: saved on this station, or applied this session.
   // 'applied-unsaved': the camera took them, but they couldn't be kept (saveError says why).
   const [source, setSource] = useState<
-    'saved' | 'applied' | 'applied-unsaved' | null
+    CameraSettingsSource | 'applied-unsaved' | null
   >(null);
   const [saveError, setSaveError] =
     useState<CameraConfigureResult['saveError']>(undefined);
@@ -56,8 +58,8 @@ export function CameraSettings() {
       console.log('[CameraSettings] Got settings:', settings);
       if (settings) {
         console.log('[CameraSettings] Updating state with settings');
-        const { source: from, ...values } = settings;
-        setSource(from ?? null);
+        const values = withoutSource(settings);
+        setSource(settings.source ?? null);
         setCurrentSettings(values);
         setEditedSettings(values);
         setShowPreview(true); // Show preview if settings exist

@@ -190,3 +190,20 @@ export interface CameraConfigureResult {
   saved?: boolean;
   saveError?: { code: CameraSettingsSaveErrorCode; message: string };
 }
+
+/** Where the current camera settings came from: saved on the station, or applied this session. */
+export type CameraSettingsSource = 'saved' | 'applied';
+
+/** What camera:get-settings returns: the settings, and where they came from. */
+export type CameraSettingsWithSource = CameraSettings & {
+  source: CameraSettingsSource | null;
+};
+
+/** The settings to send to the camera: without where they came from. */
+export function withoutSource(
+  settings: Partial<CameraSettings> & { source?: unknown }
+): Partial<CameraSettings> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { source, ...values } = settings;
+  return values;
+}

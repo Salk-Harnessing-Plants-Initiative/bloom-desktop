@@ -10,7 +10,7 @@ import {
   saveCameraSettings,
   saveErrorCode,
 } from '../../src/main/camera-settings-store';
-import { DEFAULT_CAMERA_SETTINGS } from '../../src/types/camera';
+import { DEFAULT_CAMERA_SETTINGS, withoutSource } from '../../src/types/camera';
 
 let dir: string;
 let file: string;
@@ -242,5 +242,18 @@ describe('save error codes', () => {
     expect(
       saveErrorCode(Object.assign(new Error(errno), { code: errno }))
     ).toBe(code);
+  });
+});
+
+describe('withoutSource', () => {
+  it('drops where the settings came from and keeps the camera values', () => {
+    expect(
+      withoutSource({
+        exposure_time: 12000,
+        gain: 120,
+        gamma: 1.2,
+        source: 'saved',
+      })
+    ).toEqual({ exposure_time: 12000, gain: 120, gamma: 1.2 });
   });
 });

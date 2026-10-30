@@ -195,6 +195,10 @@ describe('CaptureScan color palette (camera-not-configured state)', () => {
       exposure_time: 12000,
     });
     expect(startStream.mock.calls[0][0]).not.toHaveProperty('source');
+    // The carried-over values are shown before Start Scan.
+    expect(screen.getByTestId('camera-settings-summary')).toHaveTextContent(
+      /Exposure 12,000 µs · Gain 120 · Gamma 1\.2/
+    );
   });
 
   it.each([

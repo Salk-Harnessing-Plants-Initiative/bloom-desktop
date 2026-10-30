@@ -11,6 +11,8 @@ import {
   CAMERA_SETTINGS_SAVE_ERRORS,
   type CameraSettings,
   type CameraSettingsSaveErrorCode,
+  type CameraSettingsSource,
+  type CameraSettingsWithSource,
 } from '../types/camera';
 
 /** The file's name, in the station's ~/.bloom folder. */
@@ -136,8 +138,6 @@ export async function saveCameraSettings(
   }
 }
 
-export type CameraSettingsSource = 'saved' | 'applied';
-
 export interface CameraSettingsSessionDeps {
   /** ~/.bloom/camera-settings.json */
   file: string;
@@ -162,9 +162,7 @@ export function createCameraSettingsSession(deps: CameraSettingsSessionDeps) {
 
   return {
     /** The current settings and where they came from, or null when there are none. */
-    async get(): Promise<
-      (CameraSettings & { source: CameraSettingsSource | null }) | null
-    > {
+    async get(): Promise<CameraSettingsWithSource | null> {
       if (!checked) {
         // Callers that arrive during the first load wait for it.
         loading ??= loadSavedCameraSettings(deps.file, log).then((saved) => {
