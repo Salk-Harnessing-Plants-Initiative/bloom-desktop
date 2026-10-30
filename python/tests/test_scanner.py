@@ -7,6 +7,7 @@ cylinder scanning workflows. Uses mock hardware with real test fixtures.
 
 import glob
 import os
+from unittest.mock import Mock
 
 import pytest
 
@@ -279,6 +280,23 @@ class TestScannerScan:
         assert result.output_path == "test-scans"
         assert result.error is None
 
+        scanner.cleanup()
+
+    def test_failed_scan_says_when_the_turntable_could_not_return(
+        self, small_scan_settings
+    ):
+        """A turntable left off its start must not pass silently."""
+        scanner = MockScanner(ScannerSettings(**small_scan_settings))
+        scanner.initialize()
+        scanner.daq.rotate = Mock(side_effect=RuntimeError("Motor fault"))
+        # Homing works at the start of the scan, then fails on the way back.
+        scanner.daq.home = Mock(side_effect=[None, RuntimeError("Still faulty")])
+
+        result = scanner.perform_scan()
+
+        assert result.success is False
+        assert "Motor fault" in result.error
+        assert "didn't return to its start position" in result.error
         scanner.cleanup()
 
     def test_perform_scan_returns_to_home(self, small_scan_settings):
