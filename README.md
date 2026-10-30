@@ -15,6 +15,7 @@ Releases are installed on the scanning stations with **Actions → Deploy** (see
 | Station | Location         | Scanner     | Last deploy                                                                                                             | History                                                                                               |
 | ------- | ---------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | pc1     | WIF room 104/105 | FastScanner | ![pc1](https://img.shields.io/github/deployments/Salk-Harnessing-Plants-Initiative/bloom-desktop/station-pc1?label=pc1) | [deploys](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/deployments/station-pc1) |
+| pc2     | CQuesta          | SlowScanner | ![pc2](https://img.shields.io/github/deployments/Salk-Harnessing-Plants-Initiative/bloom-desktop/station-pc2?label=pc2) | [deploys](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/deployments/station-pc2) |
 
 The badge shows whether the station's last deploy succeeded; the history lists every version deployed, when, and who approved it. Installs done by hand aren't recorded.
 
