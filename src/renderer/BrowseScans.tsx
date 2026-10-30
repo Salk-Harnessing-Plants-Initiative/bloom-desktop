@@ -1,5 +1,5 @@
 import { UploadAllBar } from './components/UploadAllBar';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type {
   ScanWithImageSummary,
@@ -78,10 +78,15 @@ export function BrowseScans() {
 
   const totalPages = Math.ceil(total / pageSize);
 
+  // Only the newest reload counts: a slower one, e.g. from before the filters changed
+  // during Upload all, must not replace the table.
+  const latestFetch = useRef(0);
+
   // `quiet` refreshes the rows in place, without "Loading scans…" (e.g. during Upload all).
   const fetchScans = useCallback(
     async (options?: { quiet?: boolean }) => {
       const quiet = options?.quiet === true;
+      const thisFetch = ++latestFetch.current;
       try {
         if (!quiet) setIsLoading(true);
         setError(null);
@@ -102,6 +107,7 @@ export function BrowseScans() {
         }
 
         const result = await window.electron.database.scans.list(filters);
+        if (thisFetch !== latestFetch.current) return;
 
         if (!result.success) {
           setError(result.error || 'Failed to load scans');
@@ -113,9 +119,11 @@ export function BrowseScans() {
         setTotal(data.total);
       } catch (err) {
         console.error('Error fetching scans:', err);
-        setError('An unexpected error occurred while loading scans');
+        if (thisFetch === latestFetch.current) {
+          setError('An unexpected error occurred while loading scans');
+        }
       } finally {
-        if (!quiet) setIsLoading(false);
+        if (thisFetch === latestFetch.current) setIsLoading(false);
       }
     },
     [page, pageSize, experimentId, dateFrom, dateTo]

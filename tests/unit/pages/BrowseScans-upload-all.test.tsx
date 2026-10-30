@@ -143,6 +143,45 @@ describe('Browse Scans while Upload all runs', () => {
     expect(await screen.findByText('All uploaded')).toBeInTheDocument();
   });
 
+  it('ignores a slower reload from before the filters changed', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).electron.database.experiments.list = vi
+      .fn()
+      .mockResolvedValue({
+        success: true,
+        data: [{ id: 'exp-2', name: 'Exp 2', species: 'Arabidopsis' }],
+      });
+    await startUploadAll();
+    await screen.findByRole('option', { name: /Exp 2/ });
+    let answerOldReload: (value: unknown) => void = () => undefined;
+    list.mockReturnValueOnce(
+      new Promise((resolve) => (answerOldReload = resolve))
+    );
+    act(() =>
+      sendProgress({ done: 1, total: 2, uploadedScans: 1, failedScans: 0 })
+    );
+
+    list.mockResolvedValue({
+      success: true,
+      data: {
+        scans: [{ ...scan, id: 'scan-2', plant_id: 'NEW-FILTER' }],
+        total: 1,
+        page: 1,
+        pageSize: 25,
+      },
+    });
+    fireEvent.change(screen.getAllByRole('combobox')[0], {
+      target: { value: 'exp-2' },
+    });
+    expect(await screen.findByText('NEW-FILTER')).toBeInTheDocument();
+
+    await act(async () => answerOldReload(listResponse()));
+
+    expect(screen.getByText('NEW-FILTER')).toBeInTheDocument();
+    expect(screen.queryByText('PLANT-001')).not.toBeInTheDocument();
+    expect(screen.queryByText('Loading scans...')).not.toBeInTheDocument();
+  });
+
   it('greys out Upload all while a single scan is uploading', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).electron.database.scans.upload = vi.fn(
