@@ -5,7 +5,12 @@
  * using contextBridge.exposeInMainWorld().
  */
 
-import { CameraSettings, CapturedImage, DetectedCamera } from './camera';
+import {
+  CameraSettings,
+  CameraConfigureResult,
+  CapturedImage,
+  DetectedCamera,
+} from './camera';
 import { MachineConfig, ValidationResult, Scanner } from '../main/config-store';
 import {
   DAQSettings,
@@ -232,7 +237,7 @@ export interface CameraAPI {
    */
   configure: (
     settings: Partial<CameraSettings>
-  ) => Promise<{ success: boolean; error?: string }>;
+  ) => Promise<CameraConfigureResult>;
 
   /**
    * Capture a single frame

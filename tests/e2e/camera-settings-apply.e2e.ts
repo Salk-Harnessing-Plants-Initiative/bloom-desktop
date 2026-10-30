@@ -85,7 +85,7 @@ test.describe('Camera Settings Apply', () => {
 
     // Exposure, gain, gamma: the third number box is gamma.
     await window.getByRole('spinbutton').nth(2).fill('1.2');
-    await expect(window.getByText('Unsaved changes')).toBeVisible();
+    await expect(window.getByText('Changes not applied yet')).toBeVisible();
 
     await window.getByRole('button', { name: 'Apply Settings' }).click();
 

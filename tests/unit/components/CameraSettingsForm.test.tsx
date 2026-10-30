@@ -89,3 +89,53 @@ describe('CameraSettingsForm — Basler acA2000-50gm corrections', () => {
     expect(sliders).toHaveLength(3);
   });
 });
+
+describe('CameraSettingsForm limits', () => {
+  function renderWith(settings: Record<string, number>, onApply = vi.fn()) {
+    render(
+      <CameraSettingsForm
+        settings={settings}
+        onChange={vi.fn()}
+        onApply={onApply}
+        onReset={vi.fn()}
+      />
+    );
+    return onApply;
+  }
+
+  it.each([
+    [
+      { exposure_time: 60000, gain: 100, gamma: 1 },
+      'Exposure must be between 100 and 50,000 µs.',
+    ],
+    [
+      { exposure_time: 10000, gain: 600, gamma: 1 },
+      'Gain must be a whole number between 36 and 512.',
+    ],
+    [
+      { exposure_time: 10000, gain: 100.5, gamma: 1 },
+      'Gain must be a whole number between 36 and 512.',
+    ],
+    [
+      { exposure_time: 10000, gain: 100, gamma: 2.5 },
+      'Gamma must be between 0.5 and 2.',
+    ],
+  ])('marks %o and says why, and Apply is disabled', (settings, message) => {
+    const onApply = renderWith(settings);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(message);
+    const apply = screen.getByRole('button', { name: /Apply Settings/i });
+    expect(apply).toBeDisabled();
+    fireEvent.click(apply);
+    expect(onApply).not.toHaveBeenCalled();
+  });
+
+  it('allows Apply when every value is within the limits', () => {
+    renderWith({ exposure_time: 10000, gain: 100, gamma: 1 });
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /Apply Settings/i })
+    ).toBeEnabled();
+  });
+});

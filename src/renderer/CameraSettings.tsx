@@ -8,7 +8,11 @@
 import { useState, useEffect } from 'react';
 import { Streamer } from '../components/Streamer';
 import { CameraSettingsForm } from '../components/CameraSettingsForm';
-import type { CameraSettings } from '../types/camera';
+import {
+  CAMERA_SETTINGS_SAVE_ERRORS,
+  type CameraConfigureResult,
+  type CameraSettings,
+} from '../types/camera';
 
 // How long the "Camera settings applied" confirmation stays on screen.
 const APPLIED_MESSAGE_MS = 4000;
@@ -30,7 +34,12 @@ export function CameraSettings() {
   const [applied, setApplied] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   // Where the shown settings came from: saved on this station, or applied this session.
-  const [source, setSource] = useState<'saved' | 'applied' | null>(null);
+  // 'applied-unsaved': the camera took them, but they couldn't be kept (saveError says why).
+  const [source, setSource] = useState<
+    'saved' | 'applied' | 'applied-unsaved' | null
+  >(null);
+  const [saveError, setSaveError] =
+    useState<CameraConfigureResult['saveError']>(undefined);
 
   // Hide the "applied" confirmation after a few seconds.
   useEffect(() => {
@@ -80,6 +89,7 @@ export function CameraSettings() {
   const handleApply = async () => {
     setApplied(false);
     setApplyError(null);
+    setSaveError(undefined);
     try {
       const result = await window.electron.camera.configure(editedSettings);
       if (!result?.success) {
@@ -97,7 +107,12 @@ export function CameraSettings() {
       setStreamKey((prev) => prev + 1);
 
       setIsDirty(false);
-      setSource('applied');
+      if (result.saved === false) {
+        setSource('applied-unsaved');
+        setSaveError(result.saveError);
+      } else {
+        setSource('applied');
+      }
       setLastApplied(new Date());
       setApplied(true);
     } catch (error) {
@@ -144,7 +159,7 @@ export function CameraSettings() {
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <span
                   className={`w-2 h-2 rounded-full ${
-                    isDirty
+                    isDirty || source === 'applied-unsaved'
                       ? 'bg-yellow-500'
                       : source
                         ? 'bg-green-500'
@@ -153,29 +168,75 @@ export function CameraSettings() {
                 />
                 <span data-testid="camera-settings-status">
                   {isDirty
-                    ? 'Unsaved changes'
+                    ? 'Changes not applied yet'
                     : source === 'applied'
                       ? 'Applied to the camera, and saved for future sessions'
-                      : source === 'saved'
-                        ? 'Saved for future sessions'
-                        : 'Defaults (not saved yet)'}
+                      : source === 'applied-unsaved'
+                        ? 'Applied to the camera, but not saved for future sessions'
+                        : source === 'saved'
+                          ? 'Saved for future sessions'
+                          : 'Defaults (not saved yet)'}
                 </span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                {lastApplied
-                  ? `Last applied: ${lastApplied.toLocaleString()}`
-                  : 'Not applied yet'}
-              </p>
-              {applied && (
-                <p role="status" className="mt-2 text-sm text-green-700">
-                  ✓ Camera settings applied
+              {/* Saved settings are applied whenever the camera starts, so
+                  "Not applied yet" only fits settings that were never applied. */}
+              {(lastApplied || !source) && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {lastApplied
+                    ? `Last applied: ${lastApplied.toLocaleString()}`
+                    : 'Not applied yet'}
                 </p>
+              )}
+              {applied && !saveError && (
+                <p role="status" className="mt-2 text-sm text-green-700">
+                  ✓ Camera settings applied and saved for future sessions
+                </p>
+              )}
+              {saveError && (
+                <div
+                  role="alert"
+                  className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+                >
+                  <p className="font-medium">
+                    Applied to the camera, but not saved for future sessions.
+                  </p>
+                  <p className="mt-1">
+                    <span className="font-mono font-semibold">
+                      {saveError.code}
+                    </span>
+                    : {CAMERA_SETTINGS_SAVE_ERRORS[saveError.code].title}.{' '}
+                    {CAMERA_SETTINGS_SAVE_ERRORS[saveError.code].help}
+                  </p>
+                  <p className="mt-1 text-xs text-amber-800">
+                    Details: {saveError.message}
+                  </p>
+                </div>
               )}
               {applyError && (
                 <p role="alert" className="mt-2 text-sm text-red-700">
                   Couldn't apply the settings: {applyError}
                 </p>
               )}
+              <details className="mt-3 text-xs text-gray-600">
+                <summary className="cursor-pointer">
+                  What do the save error codes mean?
+                </summary>
+                <dl className="mt-2 space-y-1">
+                  {Object.entries(CAMERA_SETTINGS_SAVE_ERRORS).map(
+                    ([code, { title, help }]) => (
+                      <div key={code}>
+                        <dt className="inline font-mono font-semibold">
+                          {code}
+                        </dt>
+                        <dd className="inline">
+                          {' '}
+                          {title}. {help}
+                        </dd>
+                      </div>
+                    )
+                  )}
+                </dl>
+              </details>
             </div>
           </div>
 

@@ -484,10 +484,15 @@ ipcMain.handle(
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);
 
-      // Store settings in memory if successfully configured
+      // Record and save the settings if the camera accepted them
       if (success) {
-        const stored = await cameraSettings.applied(settings);
-        console.log('[camera:configure] Stored settings:', stored);
+        const kept = await cameraSettings.applied(settings);
+        console.log('[camera:configure] Stored settings:', kept.settings);
+        return {
+          success,
+          saved: kept.saved,
+          ...(kept.saveError ? { saveError: kept.saveError } : {}),
+        };
       } else {
         console.log('[camera:configure] Failed to configure, not storing');
       }

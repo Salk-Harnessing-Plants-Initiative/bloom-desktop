@@ -109,3 +109,84 @@ export const DEFAULT_CAMERA_SETTINGS: CameraSettings = {
   camera_ip_address: 'mock',
   gamma: 1.0,
 };
+
+/**
+ * The limits the Camera Settings form allows, shared by the form (sliders, number
+ * boxes, Apply) and by the file that keeps the settings across restarts (#440).
+ */
+export const CAMERA_SETTING_LIMITS = {
+  exposure_time: { label: 'Exposure', min: 100, max: 50000, unit: ' µs' },
+  gain: { label: 'Gain', min: 36, max: 512, unit: '', wholeNumber: true },
+  gamma: { label: 'Gamma', min: 0.5, max: 2.0, unit: '' },
+} as const;
+
+export type LimitedCameraSetting = keyof typeof CAMERA_SETTING_LIMITS;
+
+/** Why a setting can't be used, in words for the operator, or null when it's fine. */
+export function cameraSettingError(
+  field: LimitedCameraSetting,
+  value: unknown
+): string | null {
+  const limit = CAMERA_SETTING_LIMITS[field];
+  const whole = 'wholeNumber' in limit && limit.wholeNumber;
+  const ok =
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= limit.min &&
+    value <= limit.max &&
+    (!whole || Number.isInteger(value));
+  if (ok) return null;
+  return `${limit.label} must be ${whole ? 'a whole number ' : ''}between ${limit.min.toLocaleString(
+    'en-US'
+  )} and ${limit.max.toLocaleString('en-US')}${limit.unit}.`;
+}
+
+/** Every setting that can't be used, with the reason. Empty when all are fine. */
+export function cameraSettingsErrors(
+  settings: Partial<CameraSettings>
+): Partial<Record<LimitedCameraSetting, string>> {
+  const errors: Partial<Record<LimitedCameraSetting, string>> = {};
+  for (const field of Object.keys(
+    CAMERA_SETTING_LIMITS
+  ) as LimitedCameraSetting[]) {
+    const error = cameraSettingError(field, settings[field]);
+    if (error) errors[field] = error;
+  }
+  return errors;
+}
+
+/** Why the settings couldn't be kept for future sessions (shown with the code on Camera Settings). */
+export const CAMERA_SETTINGS_SAVE_ERRORS = {
+  'CAM-SAVE-01': {
+    title: 'Settings out of range',
+    help: 'A value is outside the limits shown on this page. Fix it and apply again.',
+  },
+  'CAM-SAVE-02': {
+    title: 'No permission to write the settings file',
+    help: "Windows refused to write .bloom\\camera-settings.json in this account's folder. Check the folder isn't read-only, then apply again.",
+  },
+  'CAM-SAVE-03': {
+    title: 'Disk full',
+    help: 'The C: drive has no space for the settings file. Free some space, then apply again.',
+  },
+  'CAM-SAVE-04': {
+    title: 'Settings file in use',
+    help: 'Another program (often antivirus or backup) had the file open. Apply again in a moment.',
+  },
+  'CAM-SAVE-99': {
+    title: "Couldn't save the settings",
+    help: 'An unexpected error. Apply again; if it keeps happening, send the message below to the Bloom team.',
+  },
+} as const;
+
+export type CameraSettingsSaveErrorCode =
+  keyof typeof CAMERA_SETTINGS_SAVE_ERRORS;
+
+/** The result of Apply: whether the camera took the settings, and whether they were kept. */
+export interface CameraConfigureResult {
+  success: boolean;
+  error?: string;
+  /** Kept for future sessions in ~/.bloom/camera-settings.json. */
+  saved?: boolean;
+  saveError?: { code: CameraSettingsSaveErrorCode; message: string };
+}

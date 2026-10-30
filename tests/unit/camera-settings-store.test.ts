@@ -8,6 +8,7 @@ import {
   loadSavedCameraSettings,
   parseSavedCameraSettings,
   saveCameraSettings,
+  saveErrorCode,
 } from '../../src/main/camera-settings-store';
 import { DEFAULT_CAMERA_SETTINGS } from '../../src/types/camera';
 
@@ -78,7 +79,7 @@ describe('camera settings store', () => {
   it('refuses to save values outside the camera ranges', async () => {
     await expect(
       saveCameraSettings(file, { exposure_time: 10000, gain: 9999, gamma: 1 })
-    ).rejects.toThrow('missing or out of range');
+    ).rejects.toMatchObject({ code: 'CAM-SAVE-01' });
     expect(fs.existsSync(file)).toBe(false);
   });
 
@@ -130,23 +131,116 @@ describe('camera settings session', () => {
     });
   });
 
-  it('still records applied settings when saving fails, and logs it', async () => {
+  it('still records applied settings when saving fails, and says why with a code', async () => {
     const log = vi.fn();
+    // A file where the folder should be: the folder can't be created.
+    const blocker = path.join(dir, 'not-a-folder');
+    fs.writeFileSync(blocker, '');
     const s = createCameraSettingsSession({
-      file: path.join(dir, 'missing-folder', CAMERA_SETTINGS_FILE),
+      file: path.join(blocker, CAMERA_SETTINGS_FILE),
       defaults: DEFAULT_CAMERA_SETTINGS,
       withCameraIp: (x) => x,
       log,
     });
 
-    await s.applied({ exposure_time: 12000, gain: 120, gamma: 1.2 });
+    const result = await s.applied({
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+    });
 
+    expect(result.saved).toBe(false);
+    expect(result.saveError?.code).toMatch(/^CAM-SAVE-/);
     expect(await s.get()).toMatchObject({
       exposure_time: 12000,
       source: 'applied',
     });
     expect(log).toHaveBeenCalledWith(
-      expect.stringContaining("[Camera] Couldn't save")
+      expect.stringContaining(
+        "[Camera] Couldn't save the camera settings (CAM-SAVE-"
+      )
     );
+  });
+
+  it('reports values the camera took but the file refuses as CAM-SAVE-01', async () => {
+    const result = await session().applied({
+      exposure_time: 60000,
+      gain: 100,
+      gamma: 1,
+    });
+
+    expect(result).toMatchObject({
+      saved: false,
+      saveError: { code: 'CAM-SAVE-01' },
+    });
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
+  it('reports a successful save', async () => {
+    const result = await session().applied({
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+    });
+    expect(result.saved).toBe(true);
+    expect(result.saveError).toBeUndefined();
+  });
+
+  it('creates the .bloom folder if it is missing', async () => {
+    const nested = path.join(dir, 'new-home', '.bloom', CAMERA_SETTINGS_FILE);
+    await saveCameraSettings(nested, {
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+    });
+    expect(await loadSavedCameraSettings(nested)).toMatchObject({ gain: 120 });
+  });
+
+  it('replaces an existing file when saving again', async () => {
+    await saveCameraSettings(file, {
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+    });
+    await saveCameraSettings(file, {
+      exposure_time: 15000,
+      gain: 150,
+      gamma: 1.4,
+    });
+    expect(await loadSavedCameraSettings(file)).toEqual({
+      exposure_time: 15000,
+      gain: 150,
+      gamma: 1.4,
+    });
+    expect(fs.readdirSync(dir)).toEqual([CAMERA_SETTINGS_FILE]);
+  });
+
+  it('gives callers that arrive during the first load the saved settings too', async () => {
+    await saveCameraSettings(file, {
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+    });
+    const s = session();
+
+    const [first, second] = await Promise.all([s.get(), s.get()]);
+
+    expect(first).toMatchObject({ exposure_time: 12000, source: 'saved' });
+    expect(second).toMatchObject({ exposure_time: 12000, source: 'saved' });
+  });
+});
+
+describe('save error codes', () => {
+  it.each([
+    ['EACCES', 'CAM-SAVE-02'],
+    ['EPERM', 'CAM-SAVE-02'],
+    ['EROFS', 'CAM-SAVE-02'],
+    ['ENOSPC', 'CAM-SAVE-03'],
+    ['EBUSY', 'CAM-SAVE-04'],
+    ['EIO', 'CAM-SAVE-99'],
+  ])('maps %s to %s', (errno, code) => {
+    expect(
+      saveErrorCode(Object.assign(new Error(errno), { code: errno }))
+    ).toBe(code);
   });
 });

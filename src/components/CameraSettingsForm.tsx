@@ -6,7 +6,11 @@
  */
 
 import React from 'react';
-import type { CameraSettings } from '../types/camera';
+import {
+  cameraSettingsErrors,
+  type CameraSettings,
+  type LimitedCameraSetting,
+} from '../types/camera';
 
 export interface CameraSettingsFormProps {
   /** Current settings */
@@ -48,6 +52,20 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
     }
   };
 
+  // Values the camera or the saved-settings file would refuse; Apply waits until they're fixed.
+  const errors = cameraSettingsErrors(settings);
+  const hasErrors = Object.keys(errors).length > 0;
+  const numberBoxClass = (field: LimitedCameraSetting) =>
+    `w-24 px-2 py-1 border rounded ${
+      errors[field] ? 'border-red-500 bg-red-50' : 'border-gray-300'
+    }`;
+  const fieldError = (field: LimitedCameraSetting) =>
+    errors[field] && !readOnly ? (
+      <p role="alert" className="text-xs font-medium text-red-600">
+        {errors[field]}
+      </p>
+    ) : null;
+
   return (
     <div className="space-y-6">
       {/* Exposure Time */}
@@ -73,9 +91,11 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
             value={settings.exposure_time || 10000}
             onChange={(e) => handleInputChange('exposure_time', e.target.value)}
             disabled={readOnly}
-            className="w-24 px-2 py-1 border border-gray-300 rounded"
+            aria-invalid={errors.exposure_time ? true : undefined}
+            className={numberBoxClass('exposure_time')}
           />
         </div>
+        {fieldError('exposure_time')}
         <p className="text-xs text-gray-500">
           Lower = darker image, faster capture. Higher = brighter, slower.
         </p>
@@ -102,10 +122,12 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
             value={settings.gain || 100}
             onChange={(e) => handleInputChange('gain', e.target.value)}
             disabled={readOnly}
-            className="w-24 px-2 py-1 border border-gray-300 rounded"
+            aria-invalid={errors.gain ? true : undefined}
+            className={numberBoxClass('gain')}
             step="1"
           />
         </div>
+        {fieldError('gain')}
         <p className="text-xs text-gray-500">
           GainRaw (36–512). Amplifies image brightness. Higher = more noise.
         </p>
@@ -132,10 +154,12 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
             value={settings.gamma || 1.0}
             onChange={(e) => handleInputChange('gamma', e.target.value)}
             disabled={readOnly}
-            className="w-24 px-2 py-1 border border-gray-300 rounded"
+            aria-invalid={errors.gamma ? true : undefined}
+            className={numberBoxClass('gamma')}
             step="0.1"
           />
         </div>
+        {fieldError('gamma')}
         <p className="text-xs text-gray-500">
           Adjusts tone curve. 1.0 = linear. {'<'}1.0 = darker shadows, {'>'}1.0
           = brighter shadows.
@@ -148,7 +172,9 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
           <button
             type="button"
             onClick={onApply}
-            className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-lg shadow-md hover:shadow-lg transition-all"
+            disabled={hasErrors}
+            title={hasErrors ? 'Fix the values marked in red first' : undefined}
+            className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-lg shadow-md hover:shadow-lg transition-all disabled:cursor-not-allowed disabled:opacity-50"
             style={{ color: 'white', backgroundColor: '#16a34a' }}
           >
             Apply Settings

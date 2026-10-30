@@ -5,28 +5,20 @@
  */
 
 import { promises as fs } from 'fs';
-import type { CameraSettings } from '../types/camera';
+import * as path from 'path';
+import {
+  cameraSettingsErrors,
+  CAMERA_SETTINGS_SAVE_ERRORS,
+  type CameraSettings,
+  type CameraSettingsSaveErrorCode,
+} from '../types/camera';
 
 /** The file's name, in the station's ~/.bloom folder. */
 export const CAMERA_SETTINGS_FILE = 'camera-settings.json';
 
-/** The same limits the Camera Settings form allows (CameraSettingsForm.tsx). */
-export const EXPOSURE_TIME_RANGE_US = { min: 100, max: 50000 } as const;
-export const GAIN_RANGE = { min: 36, max: 512 } as const;
-export const GAMMA_RANGE = { min: 0.5, max: 2.0 } as const;
-
 export type SavedCameraSettings = Required<
   Pick<CameraSettings, 'exposure_time' | 'gain' | 'gamma'>
 >;
-
-function inRange(value: unknown, range: { min: number; max: number }) {
-  return (
-    typeof value === 'number' &&
-    Number.isFinite(value) &&
-    value >= range.min &&
-    value <= range.max
-  );
-}
 
 /** The saved settings in `raw`, or null when anything is missing or out of range. */
 export function parseSavedCameraSettings(
@@ -34,13 +26,13 @@ export function parseSavedCameraSettings(
 ): SavedCameraSettings | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const { exposure_time, gain, gamma } = raw as Record<string, unknown>;
-  if (
-    !inRange(exposure_time, EXPOSURE_TIME_RANGE_US) ||
-    !inRange(gain, GAIN_RANGE) ||
-    !inRange(gamma, GAMMA_RANGE)
-  ) {
-    return null;
-  }
+  // The same limits as the form (CAMERA_SETTING_LIMITS); gain must be whole.
+  const errors = cameraSettingsErrors({
+    exposure_time: exposure_time as number,
+    gain: gain as number,
+    gamma: gamma as number,
+  });
+  if (Object.keys(errors).length > 0) return null;
   return {
     exposure_time: exposure_time as number,
     gain: gain as number,
@@ -87,18 +79,61 @@ export async function loadSavedCameraSettings(
   }
 }
 
-/** Save exposure, gain and gamma (temp file + rename, so a crash never leaves half a file). */
+/** A failed save, with the code shown on Camera Settings (CAMERA_SETTINGS_SAVE_ERRORS). */
+export class CameraSettingsSaveError extends Error {
+  constructor(
+    readonly code: CameraSettingsSaveErrorCode,
+    detail?: string
+  ) {
+    super(
+      detail
+        ? `${CAMERA_SETTINGS_SAVE_ERRORS[code].title}: ${detail}`
+        : CAMERA_SETTINGS_SAVE_ERRORS[code].title
+    );
+  }
+}
+
+/** The code for a file-system error while saving. */
+export function saveErrorCode(error: unknown): CameraSettingsSaveErrorCode {
+  switch ((error as NodeJS.ErrnoException)?.code) {
+    case 'EACCES':
+    case 'EPERM':
+    case 'EROFS':
+      return 'CAM-SAVE-02';
+    case 'ENOSPC':
+      return 'CAM-SAVE-03';
+    case 'EBUSY':
+      return 'CAM-SAVE-04';
+    default:
+      return 'CAM-SAVE-99';
+  }
+}
+
+let tmpCounter = 0;
+
+/**
+ * Save exposure, gain and gamma: into the folder (created if missing) through a temp
+ * file of its own and a rename, so a crash or a second Apply never leaves half a file.
+ * Throws a CameraSettingsSaveError.
+ */
 export async function saveCameraSettings(
   file: string,
   settings: Partial<CameraSettings>
 ): Promise<void> {
   const saved = parseSavedCameraSettings(settings);
-  if (!saved) {
-    throw new Error('Camera settings are missing or out of range');
+  if (!saved) throw new CameraSettingsSaveError('CAM-SAVE-01');
+  const tmp = `${file}.${process.pid}-${++tmpCounter}.tmp`;
+  try {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(tmp, JSON.stringify(saved, null, 2) + '\n', 'utf8');
+    await fs.rename(tmp, file);
+  } catch (error) {
+    await fs.rm(tmp, { force: true }).catch((): undefined => undefined);
+    throw new CameraSettingsSaveError(
+      saveErrorCode(error),
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
-  const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(saved, null, 2) + '\n', 'utf8');
-  await fs.rename(tmp, file);
 }
 
 export type CameraSettingsSource = 'saved' | 'applied';
@@ -123,6 +158,7 @@ export function createCameraSettingsSession(deps: CameraSettingsSessionDeps) {
   let current: CameraSettings | null = null;
   let source: CameraSettingsSource | null = null;
   let checked = false;
+  let loading: Promise<void> | null = null;
 
   return {
     /** The current settings and where they came from, or null when there are none. */
@@ -130,18 +166,28 @@ export function createCameraSettingsSession(deps: CameraSettingsSessionDeps) {
       (CameraSettings & { source: CameraSettingsSource | null }) | null
     > {
       if (!checked) {
-        checked = true;
-        const saved = await loadSavedCameraSettings(deps.file, log);
-        if (saved && !current) {
-          current = deps.withCameraIp({ ...deps.defaults, ...saved });
-          source = 'saved';
-        }
+        // Callers that arrive during the first load wait for it.
+        loading ??= loadSavedCameraSettings(deps.file, log).then((saved) => {
+          checked = true;
+          if (saved && !current) {
+            current = deps.withCameraIp({ ...deps.defaults, ...saved });
+            source = 'saved';
+          }
+        });
+        await loading;
       }
       return current ? { ...current, source } : null;
     },
 
-    /** Record settings the camera accepted, and save them for the next run. */
-    async applied(settings: Partial<CameraSettings>): Promise<CameraSettings> {
+    /**
+     * Record settings the camera accepted, and save them for the next run. Says whether
+     * they were saved, and why not (with its code) if they weren't.
+     */
+    async applied(settings: Partial<CameraSettings>): Promise<{
+      settings: CameraSettings;
+      saved: boolean;
+      saveError?: { code: CameraSettingsSaveErrorCode; message: string };
+    }> {
       current = {
         ...(current ?? deps.defaults),
         ...settings,
@@ -151,14 +197,19 @@ export function createCameraSettingsSession(deps: CameraSettingsSessionDeps) {
       checked = true;
       try {
         await saveCameraSettings(deps.file, current);
+        return { settings: current, saved: true };
       } catch (error) {
-        log(
-          `[Camera] Couldn't save the camera settings: ${
-            error instanceof Error ? error.message : 'Unknown error'
-          }`
-        );
+        const code =
+          error instanceof CameraSettingsSaveError ? error.code : 'CAM-SAVE-99';
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
+        log(`[Camera] Couldn't save the camera settings (${code}): ${message}`);
+        return {
+          settings: current,
+          saved: false,
+          saveError: { code, message },
+        };
       }
-      return current;
     },
   };
 }
