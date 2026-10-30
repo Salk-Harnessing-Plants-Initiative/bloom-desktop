@@ -104,7 +104,7 @@ describe('UploadAllBar', () => {
     pendingUploads.mockResolvedValue({ success: true, data: { count: 0 } });
     renderBar();
     expect(
-      await screen.findByText('All scans are uploaded.')
+      await screen.findByText('Nothing waiting to upload.')
     ).toBeInTheDocument();
     expect(screen.getByTestId('upload-all-button')).toHaveTextContent(
       'Nothing to upload'

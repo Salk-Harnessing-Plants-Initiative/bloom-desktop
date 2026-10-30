@@ -188,7 +188,7 @@ export function UploadAllBar({
       : count === null
         ? 'Checking for scans to upload…'
         : count === 0
-          ? 'All scans are uploaded.'
+          ? 'Nothing waiting to upload.'
           : `${scansText(count)} not yet uploaded`;
 
   return (
