@@ -4,6 +4,7 @@ NI-DAQmx implementation for turntable control.
 Controls stepper motor via NI-DAQ digital output for 360° plant scanning.
 """
 
+import time
 from typing import Optional
 import numpy as np
 
@@ -27,10 +28,9 @@ except ImportError:
     DAQ_AVAILABLE = False
     write_line("STATUS:NI-DAQmx not available, DAQ control disabled")
 
-# DAQ timeout configuration
-DAQ_RETRY_MAX_ATTEMPTS = 1000  # Maximum retry attempts for DAQ wait_until_done
-DAQ_RETRY_TIMEOUT_MS = 5  # Milliseconds per retry attempt
-# Total timeout: 1000 * 5ms = 5 seconds
+# Waiting for a move to finish
+DAQ_WAIT_POLL_S = 0.005  # How long each wait_until_done waits
+DAQ_WAIT_MARGIN_S = 5.0  # Allowed on top of how long the move should take
 
 
 class DAQ:
@@ -288,22 +288,20 @@ class DAQ:
 
             # Wait for completion, retrying on any error as the pilot app does: "not done
             # yet" arrives as an error, so a move longer than one wait always sees one.
-            retry_count = 0
-            done = False
-            last_error: Optional[Exception] = None
-            while not done and retry_count < DAQ_RETRY_MAX_ATTEMPTS:
+            # How long a move takes depends on its size and speed, so the limit does too.
+            limit_s = data.shape[1] / self.settings.sampling_rate + DAQ_WAIT_MARGIN_S
+            deadline = time.monotonic() + limit_s
+            while True:
                 try:
-                    self.task.wait_until_done(timeout=DAQ_RETRY_TIMEOUT_MS / 1000)
-                    done = True
+                    self.task.wait_until_done(timeout=DAQ_WAIT_POLL_S)
+                    break
                 except Exception as e:
-                    last_error = e
-                    retry_count += 1
-
-            if not done:
-                raise TimeoutError(
-                    f"DAQ task did not complete after {DAQ_RETRY_MAX_ATTEMPTS} retries "
-                    f"(5s timeout): {last_error}"
-                )
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError(
+                            f"DAQ task did not complete within {limit_s:.1f}s: {e}"
+                        ) from e
+                    # An error can return at once, so don't spin on it.
+                    time.sleep(DAQ_WAIT_POLL_S)
 
             # Stop task
             self.task.stop()
