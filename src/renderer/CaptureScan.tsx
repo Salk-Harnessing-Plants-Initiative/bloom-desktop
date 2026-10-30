@@ -377,8 +377,11 @@ export function CaptureScan() {
         console.log('[CaptureScan] Got settings:', settings);
 
         if (settings) {
-          // Use settings that were configured on Camera Settings page
-          setCameraSettings(settings);
+          // Settings applied on Camera Settings, or saved on this station (#440).
+          // Where they came from isn't a camera setting, so it isn't passed on.
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { source, ...values } = settings;
+          setCameraSettings(values);
           setCameraConfigured(true);
         } else {
           // No settings configured yet, use defaults

@@ -24,8 +24,12 @@ import * as os from 'os';
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
 const ENV_PATH = path.join(BLOOM_DIR, '.env');
 
+// Camera settings kept across restarts (#440); set aside so each test starts unsaved.
+const CAMERA_SETTINGS_PATH = path.join(BLOOM_DIR, 'camera-settings.json');
+
 // Backup path for original .env if it exists
 let originalEnvContent: string | null = null;
+let originalCameraSettings: string | null = null;
 
 /**
  * Create a minimal ~/.bloom/.env file for E2E testing.
@@ -44,6 +48,12 @@ export function createTestBloomConfig(testScansDir?: string): void {
   // Backup existing .env if present
   if (fs.existsSync(ENV_PATH)) {
     originalEnvContent = fs.readFileSync(ENV_PATH, 'utf-8');
+  }
+
+  // Set saved camera settings aside, so no test inherits another's (or the developer's)
+  if (fs.existsSync(CAMERA_SETTINGS_PATH)) {
+    originalCameraSettings = fs.readFileSync(CAMERA_SETTINGS_PATH, 'utf-8');
+    fs.unlinkSync(CAMERA_SETTINGS_PATH);
   }
 
   // Default test scans directory
@@ -86,6 +96,14 @@ export function cleanupTestBloomConfig(): void {
   } else if (fs.existsSync(ENV_PATH)) {
     // Remove test .env
     fs.unlinkSync(ENV_PATH);
+  }
+
+  // Put back the camera settings that were there before, or remove the test's
+  if (originalCameraSettings !== null) {
+    fs.writeFileSync(CAMERA_SETTINGS_PATH, originalCameraSettings, 'utf-8');
+    originalCameraSettings = null;
+  } else if (fs.existsSync(CAMERA_SETTINGS_PATH)) {
+    fs.unlinkSync(CAMERA_SETTINGS_PATH);
   }
 }
 

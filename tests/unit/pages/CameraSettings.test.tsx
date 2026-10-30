@@ -110,7 +110,38 @@ describe('CameraSettings Apply feedback', () => {
     );
     const expected = new Date().toLocaleDateString();
     expect(screen.getByText(/Last applied:/)).toHaveTextContent(expected);
-    expect(screen.getByText('Settings saved')).toBeInTheDocument();
+    expect(screen.getByTestId('camera-settings-status')).toHaveTextContent(
+      'Applied to the camera, and saved for future sessions'
+    );
+  });
+
+  it('says the settings are saved when they were loaded from the station', async () => {
+    mockGetSettings.mockResolvedValue({
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+      source: 'saved',
+    });
+    render(<CameraSettings />);
+
+    expect(
+      await screen.findByText('Saved for future sessions')
+    ).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue('12000').length).toBeGreaterThan(0);
+    // The source is not part of the settings sent to the camera.
+    mockConfigure.mockResolvedValue({ success: true });
+    fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
+    await screen.findByRole('status');
+    expect(mockConfigure.mock.calls[0][0]).not.toHaveProperty('source');
+  });
+
+  it('says the defaults are not saved yet when nothing was ever applied', async () => {
+    mockGetSettings.mockResolvedValue(null);
+    render(<CameraSettings />);
+
+    expect(
+      await screen.findByText('Defaults (not saved yet)')
+    ).toBeInTheDocument();
   });
 
   it('shows the error and keeps "Unsaved changes" when the camera rejects the settings', async () => {

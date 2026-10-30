@@ -255,7 +255,13 @@ export interface CameraAPI {
    * Get current camera settings
    * @returns Promise resolving to current camera settings (or null if not configured)
    */
-  getSettings: () => Promise<CameraSettings | null>;
+  getSettings: () => Promise<
+    | (CameraSettings & {
+        /** Where they came from: the station's saved file, or Apply this session. */
+        source?: 'saved' | 'applied' | null;
+      })
+    | null
+  >;
 
   /**
    * Register callback for camera trigger events

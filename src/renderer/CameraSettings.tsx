@@ -29,6 +29,8 @@ export function CameraSettings() {
   const [showPreview, setShowPreview] = useState(false);
   const [applied, setApplied] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
+  // Where the shown settings came from: saved on this station, or applied this session.
+  const [source, setSource] = useState<'saved' | 'applied' | null>(null);
 
   // Hide the "applied" confirmation after a few seconds.
   useEffect(() => {
@@ -45,8 +47,10 @@ export function CameraSettings() {
       console.log('[CameraSettings] Got settings:', settings);
       if (settings) {
         console.log('[CameraSettings] Updating state with settings');
-        setCurrentSettings(settings);
-        setEditedSettings(settings);
+        const { source: from, ...values } = settings;
+        setSource(from ?? null);
+        setCurrentSettings(values);
+        setEditedSettings(values);
         setShowPreview(true); // Show preview if settings exist
       } else {
         console.log('[CameraSettings] No settings found, using defaults');
@@ -93,6 +97,7 @@ export function CameraSettings() {
       setStreamKey((prev) => prev + 1);
 
       setIsDirty(false);
+      setSource('applied');
       setLastApplied(new Date());
       setApplied(true);
     } catch (error) {
@@ -138,9 +143,23 @@ export function CameraSettings() {
             <div className="mt-6 pt-4 border-t border-gray-200">
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <span
-                  className={`w-2 h-2 rounded-full ${isDirty ? 'bg-yellow-500' : 'bg-green-500'}`}
+                  className={`w-2 h-2 rounded-full ${
+                    isDirty
+                      ? 'bg-yellow-500'
+                      : source
+                        ? 'bg-green-500'
+                        : 'bg-gray-300'
+                  }`}
                 />
-                {isDirty ? 'Unsaved changes' : 'Settings saved'}
+                <span data-testid="camera-settings-status">
+                  {isDirty
+                    ? 'Unsaved changes'
+                    : source === 'applied'
+                      ? 'Applied to the camera, and saved for future sessions'
+                      : source === 'saved'
+                        ? 'Saved for future sessions'
+                        : 'Defaults (not saved yet)'}
+                </span>
               </div>
               <p className="text-xs text-gray-500 mt-1">
                 {lastApplied

@@ -93,7 +93,9 @@ test.describe('Camera Settings Apply', () => {
       /Camera settings applied/,
       { timeout: APPLY_TIMEOUT_MS }
     );
-    await expect(window.getByText('Settings saved')).toBeVisible();
+    await expect(window.getByTestId('camera-settings-status')).toHaveText(
+      'Applied to the camera, and saved for future sessions'
+    );
     const today = await window.evaluate(() => new Date().toLocaleDateString());
     await expect(window.getByText(/Last applied:/)).toContainText(today);
   });

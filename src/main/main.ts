@@ -80,6 +80,10 @@ import {
   shouldQuitAsSecondInstance,
   focusExistingWindow,
 } from './single-instance';
+import {
+  CAMERA_SETTINGS_FILE,
+  createCameraSettingsSession,
+} from './camera-settings-store';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -162,8 +166,14 @@ let cameraProcess: CameraProcess | null = null;
 let daqProcess: DAQProcess | null = null;
 let scannerProcess: ScannerProcess | null = null;
 
-// Track current camera settings (in-memory, lost on app restart)
-let currentCameraSettings: CameraSettings | null = null;
+// Current camera settings. The last applied ones are also kept in
+// ~/.bloom/camera-settings.json and loaded the first time they're needed (#440).
+const cameraSettings = createCameraSettingsSession({
+  file: path.join(BLOOM_DIR, CAMERA_SETTINGS_FILE),
+  defaults: DEFAULT_CAMERA_SETTINGS,
+  withCameraIp: (settings) =>
+    applyCameraIp(settings, getConfiguredCameraIp()) as CameraSettings,
+});
 
 // Idle timer — resets session after inactivity to prevent scan misattribution
 let idleTimer: IdleTimer | null = null;
@@ -175,7 +185,7 @@ let idleTimer: IdleTimer | null = null;
  * and synced when config is saved. Provides fast in-memory access
  * for UI components without file I/O.
  *
- * Pattern matches currentCameraSettings (ephemeral runtime state).
+ * Runtime state, like the camera settings session.
  * Pilot reference: bloom-desktop-pilot/app/src/main/main.ts:148
  */
 const scannerIdentity: { name: string } = { name: '' };
@@ -476,14 +486,8 @@ ipcMain.handle(
 
       // Store settings in memory if successfully configured
       if (success) {
-        currentCameraSettings = {
-          ...(currentCameraSettings || DEFAULT_CAMERA_SETTINGS),
-          ...settings,
-        } as CameraSettings;
-        console.log(
-          '[camera:configure] Stored settings:',
-          currentCameraSettings
-        );
+        const stored = await cameraSettings.applied(settings);
+        console.log('[camera:configure] Stored settings:', stored);
       } else {
         console.log('[camera:configure] Failed to configure, not storing');
       }
@@ -545,14 +549,13 @@ ipcMain.handle('camera:get-status', async () => {
 });
 
 /**
- * Handle camera:get-settings - Get current camera settings
+ * Handle camera:get-settings - Get current camera settings, with where they came from
+ * (saved on the station, or applied this session)
  */
 ipcMain.handle('camera:get-settings', async () => {
-  console.log(
-    '[camera:get-settings] Returning settings:',
-    currentCameraSettings
-  );
-  return currentCameraSettings;
+  const settings = await cameraSettings.get();
+  console.log('[camera:get-settings] Returning settings:', settings);
+  return settings;
 });
 
 /**
