@@ -52,6 +52,43 @@ describe('camera handoff', () => {
     await expect(none.releaseFromScanner()).resolves.toBeUndefined();
   });
 
+  it('still closes the camera if stopping the preview fails', async () => {
+    const { handoff, preview, log } = setup();
+    preview.stopStream.mockRejectedValue(new Error('Stray error line'));
+
+    await handoff.releaseFromPreview();
+
+    expect(preview.disconnect).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(
+      "[Camera] Couldn't release the camera from the preview: Stray error line"
+    );
+  });
+
+  it('logs when the preview refuses to stop or close', async () => {
+    const { handoff, preview, log } = setup();
+    preview.stopStream.mockResolvedValue(false);
+    preview.disconnect.mockResolvedValue(false);
+
+    await handoff.releaseFromPreview();
+
+    expect(preview.disconnect).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls).toEqual([
+      [
+        "[Camera] Couldn't release the camera from the preview: stopping the stream was refused",
+      ],
+      [
+        "[Camera] Couldn't release the camera from the preview: closing the camera was refused",
+      ],
+    ]);
+  });
+
+  it('logs nothing when all goes well', async () => {
+    const { handoff, log } = setup();
+    await handoff.releaseFromPreview();
+    await handoff.releaseFromScanner();
+    expect(log).not.toHaveBeenCalled();
+  });
+
   it('closes the scanner camera', async () => {
     const { handoff, scanner } = setup();
     await handoff.releaseFromScanner();

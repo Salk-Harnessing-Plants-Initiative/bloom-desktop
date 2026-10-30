@@ -151,13 +151,47 @@ class MockCamera:
         Returns:
             True if successful
         """
+        if self.is_open:
+            return True
+        self._take_exclusive_lock()
         self.is_open = True
         write_line("STATUS:Mock camera opened")
         return True
 
+    def _take_exclusive_lock(self) -> None:
+        """Behave like a real camera, which only one process can open at a time.
+
+        Only when BLOOM_MOCK_CAMERA_LOCK names a lock file. An OS lock, so a process
+        that crashes doesn't leave the camera looking held.
+        """
+        lock_path = os.environ.get("BLOOM_MOCK_CAMERA_LOCK")
+        if not lock_path:
+            return
+        lock_file = open(lock_path, "a+")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as e:
+            lock_file.close()
+            raise RuntimeError(
+                "Failed to open camera: device is controlled by another application"
+            ) from e
+        self._lock_file = lock_file
+
     def close(self) -> None:
         """Close the mock camera connection."""
         self.is_open = False
+        lock_file = getattr(self, "_lock_file", None)
+        if lock_file is not None:
+            lock_file.close()  # Closing the file releases the lock
+            self._lock_file = None
         write_line("STATUS:Mock camera closed")
 
     def grab_frame(self) -> np.ndarray:

@@ -37,9 +37,18 @@ export function createCameraHandoff(deps: CameraHandoffDeps) {
     async releaseFromPreview(): Promise<void> {
       const preview = deps.getPreview();
       if (!preview?.isRunning()) return;
+      // Separately: the close is what frees the camera, whatever the stop does.
       try {
-        await preview.stopStream();
-        await preview.disconnect();
+        if (!(await preview.stopStream())) {
+          failure('preview', new Error('stopping the stream was refused'));
+        }
+      } catch (error) {
+        failure('preview', error);
+      }
+      try {
+        if (!(await preview.disconnect())) {
+          failure('preview', new Error('closing the camera was refused'));
+        }
       } catch (error) {
         failure('preview', error);
       }
