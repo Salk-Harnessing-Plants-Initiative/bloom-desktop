@@ -85,7 +85,7 @@ test.describe('Camera Settings Apply', () => {
 
     // Exposure, gain, gamma: the third number box is gamma.
     await window.getByRole('spinbutton').nth(2).fill('1.2');
-    await expect(window.getByText('Unsaved changes')).toBeVisible();
+    await expect(window.getByText('Changes not applied yet')).toBeVisible();
 
     await window.getByRole('button', { name: 'Apply Settings' }).click();
 
@@ -93,7 +93,9 @@ test.describe('Camera Settings Apply', () => {
       /Camera settings applied/,
       { timeout: APPLY_TIMEOUT_MS }
     );
-    await expect(window.getByText('Settings saved')).toBeVisible();
+    await expect(window.getByTestId('camera-settings-status')).toHaveText(
+      'Applied to the camera, and saved for future sessions'
+    );
     const today = await window.evaluate(() => new Date().toLocaleDateString());
     await expect(window.getByText(/Last applied:/)).toContainText(today);
   });

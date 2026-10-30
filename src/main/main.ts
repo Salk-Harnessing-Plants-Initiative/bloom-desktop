@@ -21,7 +21,11 @@ import { createScanProtocolHandler } from './scan-protocol';
 import { PythonProcess } from './python-process';
 import { CameraProcess } from './cylinderscan/camera-process';
 import type { CameraSettings } from './cylinderscan/camera-process';
-import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
+import {
+  cameraSettingsErrors,
+  DEFAULT_CAMERA_SETTINGS,
+  withoutSource,
+} from '../types/camera';
 import { DAQProcess } from './cylinderscan/daq-process';
 import type { DAQSettings } from '../types/daq';
 import { ScannerProcess } from './cylinderscan/scanner-process';
@@ -80,6 +84,10 @@ import {
   shouldQuitAsSecondInstance,
   focusExistingWindow,
 } from './single-instance';
+import {
+  CAMERA_SETTINGS_FILE,
+  createCameraSettingsSession,
+} from './camera-settings-store';
 
 // Config file paths
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
@@ -162,8 +170,13 @@ let cameraProcess: CameraProcess | null = null;
 let daqProcess: DAQProcess | null = null;
 let scannerProcess: ScannerProcess | null = null;
 
-// Track current camera settings (in-memory, lost on app restart)
-let currentCameraSettings: CameraSettings | null = null;
+// Current camera settings. The last applied ones are also kept in
+// ~/.bloom/camera-settings.json and loaded the first time they're needed (#440).
+const cameraSettings = createCameraSettingsSession({
+  file: path.join(BLOOM_DIR, CAMERA_SETTINGS_FILE),
+  defaults: DEFAULT_CAMERA_SETTINGS,
+  withCameraIp: (settings) => applyCameraIp(settings, getConfiguredCameraIp()),
+});
 
 // Idle timer — resets session after inactivity to prevent scan misattribution
 let idleTimer: IdleTimer | null = null;
@@ -175,7 +188,6 @@ let idleTimer: IdleTimer | null = null;
  * and synced when config is saved. Provides fast in-memory access
  * for UI components without file I/O.
  *
- * Pattern matches currentCameraSettings (ephemeral runtime state).
  * Pilot reference: bloom-desktop-pilot/app/src/main/main.ts:148
  */
 const scannerIdentity: { name: string } = { name: '' };
@@ -469,21 +481,29 @@ ipcMain.handle(
   'camera:configure',
   async (_event, requested: Partial<CameraSettings>) => {
     try {
-      const settings = applyCameraIp(requested, getConfiguredCameraIp());
+      // Refuse values the form's limits don't allow, whoever sends them.
+      const outOfRange = Object.values(cameraSettingsErrors(requested));
+      if (outOfRange.length > 0) {
+        return { success: false, error: outOfRange.join(' ') };
+      }
+      // Where the settings came from is not a camera setting.
+      const settings = applyCameraIp(
+        withoutSource(requested),
+        getConfiguredCameraIp()
+      );
       console.log('[camera:configure] Configuring with settings:', settings);
       const camera = await ensureCameraProcess();
       const success = await camera.configure(settings);
 
-      // Store settings in memory if successfully configured
+      // Record and save the settings if the camera accepted them
       if (success) {
-        currentCameraSettings = {
-          ...(currentCameraSettings || DEFAULT_CAMERA_SETTINGS),
-          ...settings,
-        } as CameraSettings;
-        console.log(
-          '[camera:configure] Stored settings:',
-          currentCameraSettings
-        );
+        const kept = await cameraSettings.applied(settings);
+        console.log('[camera:configure] Stored settings:', kept.settings);
+        return {
+          success,
+          saved: kept.saved,
+          ...(kept.saveError ? { saveError: kept.saveError } : {}),
+        };
       } else {
         console.log('[camera:configure] Failed to configure, not storing');
       }
@@ -545,14 +565,13 @@ ipcMain.handle('camera:get-status', async () => {
 });
 
 /**
- * Handle camera:get-settings - Get current camera settings
+ * Handle camera:get-settings - Get current camera settings, with where they came from
+ * (saved on the station, or applied this session)
  */
 ipcMain.handle('camera:get-settings', async () => {
-  console.log(
-    '[camera:get-settings] Returning settings:',
-    currentCameraSettings
-  );
-  return currentCameraSettings;
+  const settings = await cameraSettings.get();
+  console.log('[camera:get-settings] Returning settings:', settings);
+  return settings;
 });
 
 /**

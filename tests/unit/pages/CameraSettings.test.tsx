@@ -110,10 +110,134 @@ describe('CameraSettings Apply feedback', () => {
     );
     const expected = new Date().toLocaleDateString();
     expect(screen.getByText(/Last applied:/)).toHaveTextContent(expected);
-    expect(screen.getByText('Settings saved')).toBeInTheDocument();
+    expect(screen.getByTestId('camera-settings-status')).toHaveTextContent(
+      'Applied to the camera, and saved for future sessions'
+    );
+    expect(screen.queryByText('Not applied yet')).not.toBeInTheDocument();
   });
 
-  it('shows the error and keeps "Unsaved changes" when the camera rejects the settings', async () => {
+  it('says the settings are saved when they were loaded from the station', async () => {
+    mockGetSettings.mockResolvedValue({
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+      source: 'saved',
+    });
+    render(<CameraSettings />);
+
+    expect(
+      await screen.findByText('Saved for future sessions')
+    ).toBeInTheDocument();
+    expect(screen.getAllByDisplayValue('12000').length).toBeGreaterThan(0);
+    // The source is not part of the settings sent to the camera.
+    mockConfigure.mockResolvedValue({ success: true });
+    fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
+    await screen.findByRole('status');
+    expect(mockConfigure.mock.calls[0][0]).not.toHaveProperty('source');
+  });
+
+  it('says when the camera took the settings but they could not be saved, with the code', async () => {
+    mockConfigure.mockResolvedValue({
+      success: true,
+      saved: false,
+      saveError: {
+        code: 'CAM-SAVE-02',
+        message: 'No permission to write the settings file: EPERM',
+      },
+    });
+    render(<CameraSettings />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
+
+    const alert = await screen.findByText(
+      'Applied to the camera, but not saved for future sessions.'
+    );
+    expect(alert.closest('[role="alert"]')).toHaveTextContent('CAM-SAVE-02');
+    expect(alert.closest('[role="alert"]')).toHaveTextContent(
+      'No permission to write the settings file'
+    );
+    expect(screen.getByTestId('camera-settings-status')).toHaveTextContent(
+      'Applied to the camera, but not saved for future sessions'
+    );
+    expect(screen.queryByText(/applied and saved/)).not.toBeInTheDocument();
+  });
+
+  it('still says the settings were not saved after leaving the page and coming back', async () => {
+    mockGetSettings.mockResolvedValue({
+      exposure_time: 60000,
+      gain: 100,
+      gamma: 1,
+      source: 'applied-unsaved',
+      saveError: { code: 'CAM-SAVE-01', message: 'Settings out of range' },
+    });
+    render(<CameraSettings />);
+
+    const notice = await screen.findByText(
+      'Applied to the camera, but not saved for future sessions.'
+    );
+    expect(notice.closest('[role="alert"]')).toHaveTextContent('CAM-SAVE-01');
+    expect(screen.getByTestId('camera-settings-status')).toHaveTextContent(
+      'Applied to the camera, but not saved for future sessions'
+    );
+    // The form marks the value that couldn't be kept as well.
+    expect(
+      screen.getByText('Exposure must be between 100 and 50,000 µs.')
+    ).toBeInTheDocument();
+  });
+
+  it('disables Apply until the camera answers', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    mockConfigure.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    render(<CameraSettings />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
+    const applying = await screen.findByRole('button', { name: 'Applying…' });
+    expect(applying).toBeDisabled();
+    fireEvent.click(applying);
+    expect(mockConfigure).toHaveBeenCalledTimes(1);
+
+    answer({ success: true, saved: true });
+    expect(
+      await screen.findByRole('button', { name: /Apply Settings/i })
+    ).toBeEnabled();
+  });
+
+  it('lists every save error code on the page', () => {
+    render(<CameraSettings />);
+    for (const code of [
+      'CAM-SAVE-01',
+      'CAM-SAVE-02',
+      'CAM-SAVE-03',
+      'CAM-SAVE-04',
+      'CAM-SAVE-99',
+    ]) {
+      expect(screen.getByText(code)).toBeInTheDocument();
+    }
+  });
+
+  it('does not say "Not applied yet" for settings saved on the station', async () => {
+    mockGetSettings.mockResolvedValue({
+      exposure_time: 12000,
+      gain: 120,
+      gamma: 1.2,
+      source: 'saved',
+    });
+    render(<CameraSettings />);
+
+    await screen.findByText('Saved for future sessions');
+    expect(screen.queryByText('Not applied yet')).not.toBeInTheDocument();
+  });
+
+  it('says the defaults are not saved yet when nothing was ever applied', async () => {
+    mockGetSettings.mockResolvedValue(null);
+    render(<CameraSettings />);
+
+    expect(
+      await screen.findByText('Defaults (not saved yet)')
+    ).toBeInTheDocument();
+  });
+
+  it('shows the error and keeps "Changes not applied yet" when the camera rejects the settings', async () => {
     mockConfigure.mockResolvedValue({
       success: false,
       error: 'Camera not connected',
@@ -130,7 +254,7 @@ describe('CameraSettings Apply feedback', () => {
       'Camera not connected'
     );
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
-    expect(screen.getByText(/Not applied yet/i)).toBeInTheDocument();
+    expect(screen.getByText('Changes not applied yet')).toBeInTheDocument();
+    expect(screen.getByText('Not applied yet')).toBeInTheDocument();
   });
 });

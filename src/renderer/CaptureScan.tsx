@@ -23,7 +23,11 @@ import type {
   ScanProgress as ScanProgressData,
   ScanResult,
 } from '../types/scanner';
-import { DEFAULT_CAMERA_SETTINGS } from '../types/camera';
+import {
+  DEFAULT_CAMERA_SETTINGS,
+  formatCameraSetting,
+  withoutSource,
+} from '../types/camera';
 import { DEFAULT_DAQ_SETTINGS } from '../types/daq';
 import { buildScanPath, toRelativeScanPath } from '../utils/scan-path';
 import { plantAgeDays } from '../utils/wave-dates';
@@ -377,8 +381,9 @@ export function CaptureScan() {
         console.log('[CaptureScan] Got settings:', settings);
 
         if (settings) {
-          // Use settings that were configured on Camera Settings page
-          setCameraSettings(settings);
+          // Settings applied on Camera Settings, or saved on this station (#440).
+          // Where they came from isn't a camera setting, so it isn't passed on.
+          setCameraSettings(withoutSource(settings) as CameraSettings);
           setCameraConfigured(true);
         } else {
           // No settings configured yet, use defaults
@@ -821,6 +826,19 @@ export function CaptureScan() {
               <div className="mt-4 text-sm text-gray-500">
                 {scanNumFrames ?? 72} frames, ~{scanSecondsPerRot ?? 7.0}s
                 rotation
+                {cameraConfigured && (
+                  <span data-testid="camera-settings-summary">
+                    {' '}
+                    · Exposure{' '}
+                    {formatCameraSetting(
+                      'exposure_time',
+                      cameraSettings.exposure_time
+                    )}{' '}
+                    µs · Gain {formatCameraSetting('gain', cameraSettings.gain)}{' '}
+                    · Gamma{' '}
+                    {formatCameraSetting('gamma', cameraSettings.gamma ?? 1)}
+                  </span>
+                )}
               </div>
 
               {/* Start Scan Button */}

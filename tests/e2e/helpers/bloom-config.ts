@@ -24,8 +24,16 @@ import * as os from 'os';
 const BLOOM_DIR = path.join(os.homedir(), '.bloom');
 const ENV_PATH = path.join(BLOOM_DIR, '.env');
 
+// Camera settings kept across restarts (#440); set aside so each test starts unsaved.
+// They're moved to a backup file on disk, so a crashed run can't lose them.
+const CAMERA_SETTINGS_PATH = path.join(BLOOM_DIR, 'camera-settings.json');
+const CAMERA_SETTINGS_BACKUP = `${CAMERA_SETTINGS_PATH}.e2e-backup`;
+
 // Backup path for original .env if it exists
 let originalEnvContent: string | null = null;
+
+// Whether this run set the camera settings aside, so cleanup only restores its own backup.
+let cameraSettingsSetAside = false;
 
 /**
  * Create a minimal ~/.bloom/.env file for E2E testing.
@@ -44,6 +52,22 @@ export function createTestBloomConfig(testScansDir?: string): void {
   // Backup existing .env if present
   if (fs.existsSync(ENV_PATH)) {
     originalEnvContent = fs.readFileSync(ENV_PATH, 'utf-8');
+  }
+
+  // Set saved camera settings aside, so no test inherits another's (or the developer's).
+  // A backup left by a crashed run is the developer's and stays the backup; the file
+  // next to it is kept as .e2e-stale-<time> rather than deleted, in case it's newer.
+  if (fs.existsSync(CAMERA_SETTINGS_BACKUP)) {
+    if (fs.existsSync(CAMERA_SETTINGS_PATH)) {
+      fs.renameSync(
+        CAMERA_SETTINGS_PATH,
+        `${CAMERA_SETTINGS_PATH}.e2e-stale-${Date.now()}`
+      );
+    }
+    cameraSettingsSetAside = true;
+  } else if (fs.existsSync(CAMERA_SETTINGS_PATH)) {
+    fs.renameSync(CAMERA_SETTINGS_PATH, CAMERA_SETTINGS_BACKUP);
+    cameraSettingsSetAside = true;
   }
 
   // Default test scans directory
@@ -87,6 +111,13 @@ export function cleanupTestBloomConfig(): void {
     // Remove test .env
     fs.unlinkSync(ENV_PATH);
   }
+
+  // Put back the camera settings that were there before, or remove the test's
+  fs.rmSync(CAMERA_SETTINGS_PATH, { force: true });
+  if (cameraSettingsSetAside && fs.existsSync(CAMERA_SETTINGS_BACKUP)) {
+    fs.renameSync(CAMERA_SETTINGS_BACKUP, CAMERA_SETTINGS_PATH);
+  }
+  cameraSettingsSetAside = false;
 }
 
 /**
