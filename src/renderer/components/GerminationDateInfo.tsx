@@ -5,8 +5,12 @@
 
 import { InfoTip } from './InfoTip';
 
-export const GERMINATION_DATE_HELP =
-  'Plant age = days since germination. The germination day is day 0, so a plant that germinated on 1 Oct is 9 days old on 10 Oct.';
+/** The tooltip's lines, shown one under another. */
+export const GERMINATION_DATE_HELP = [
+  'Plant age = days since germination',
+  'Germination day is day 0.',
+  'e.g. Germinated Oct 1 → 9 days old on Oct 10',
+] as const;
 
 export function GerminationDateInfo() {
   return (
@@ -14,7 +18,11 @@ export function GerminationDateInfo() {
       label="How is the plant age computed?"
       testId="germination-date-info"
     >
-      {GERMINATION_DATE_HELP}
+      {GERMINATION_DATE_HELP.map((line) => (
+        <span key={line} className="block">
+          {line}
+        </span>
+      ))}
     </InfoTip>
   );
 }

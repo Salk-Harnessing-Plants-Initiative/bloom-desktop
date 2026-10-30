@@ -1,7 +1,7 @@
 /**
- * A wave's Edit box on Capture Scan (#407, #428): how its dates are set (the same for
- * all plants, or per plant) and, when they're the same, the dates themselves, filled
- * in with the ones set before. The same rules as the main process:
+ * A wave's Edit box on Capture Scan (#407, #428): how its dates are set (wave-level,
+ * the same for all plants, or plant-level) and, for wave-level, the dates themselves,
+ * filled in with the ones set before. The same rules as the main process:
  * - the wave's dates can only change before its first scan (after it they're final, and
  *   a mistake is corrected with the Bloom team);
  * - going per plant is always allowed: plants already scanned keep their dates;
@@ -184,59 +184,55 @@ export function WaveDatesEditBox({
             : null
         }
         disabled={saving || disabled}
-      />
-
-      {mode === 'same' && (
-        <>
-          {sameLocked && (
-            <p className="text-gray-700" data-testid="same-dates-locked">
-              This wave has scans, so it can only use the dates its plants were
-              scanned with.
-            </p>
-          )}
-          <WaveDateInputs
-            dates={dates}
-            transferSameDay={transferSameDay}
-            onChange={(next, sameDay) => {
-              setDates(next);
-              setTransferSameDay(sameDay);
-            }}
-            disabled={sameLocked || datesLocked || saving || disabled}
+      >
+        {sameLocked && (
+          <p className="text-gray-700" data-testid="same-dates-locked">
+            This wave has scans, so it can only use the dates its plants were
+            scanned with.
+          </p>
+        )}
+        <WaveDateInputs
+          dates={dates}
+          transferSameDay={transferSameDay}
+          onChange={(next, sameDay) => {
+            setDates(next);
+            setTransferSameDay(sameDay);
+          }}
+          disabled={sameLocked || datesLocked || saving || disabled}
+        />
+        {datesLocked && (
+          <p
+            className="text-amber-800"
+            data-testid="wave-dates-edit-scans-warning"
+          >
+            {scannedWaveError(wave.wave_number)} If they&apos;re wrong, contact
+            the Bloom team.
+          </p>
+        )}
+        {error && <p className="text-red-600">{error}</p>}
+        {warning && (
+          <WaveOrderWarning
+            waveNumber={wave.wave_number}
+            sowing={entered.sowing}
+            germination={entered.germination}
+            warning={warning}
+            otherWaves={otherWaves}
+          >
+            <p>If these are right, give a reason to proceed.</p>
+          </WaveOrderWarning>
+        )}
+        {reasonNeeded && (
+          <textarea
+            aria-label="Reason"
+            placeholder="Reason for the change (required)"
+            value={reason}
+            maxLength={MAX_REASON_LENGTH}
+            onChange={(e) => setReason(e.target.value)}
+            disabled={saving || disabled}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md"
           />
-          {datesLocked && (
-            <p
-              className="text-amber-800"
-              data-testid="wave-dates-edit-scans-warning"
-            >
-              {scannedWaveError(wave.wave_number)} If they&apos;re wrong,
-              contact the Bloom team.
-            </p>
-          )}
-          {error && <p className="text-red-600">{error}</p>}
-          {warning && (
-            <WaveOrderWarning
-              waveNumber={wave.wave_number}
-              sowing={entered.sowing}
-              germination={entered.germination}
-              warning={warning}
-              otherWaves={otherWaves}
-            >
-              <p>If these are right, give a reason to proceed.</p>
-            </WaveOrderWarning>
-          )}
-          {reasonNeeded && (
-            <textarea
-              aria-label="Reason"
-              placeholder="Reason for the change (required)"
-              value={reason}
-              maxLength={MAX_REASON_LENGTH}
-              onChange={(e) => setReason(e.target.value)}
-              disabled={saving || disabled}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            />
-          )}
-        </>
-      )}
+        )}
+      </DatesModeChoice>
 
       {mode === 'perPlant' && (
         <PerPlantDatesNote plants={plants} switching={toPerPlant} />
@@ -258,9 +254,9 @@ export function WaveDatesEditBox({
             data-testid="wave-dates-edit-save"
           >
             {toPerPlant
-              ? 'Set dates per plant'
+              ? 'Switch to plant-level'
               : toSame
-                ? 'Use these dates for all plants'
+                ? 'Switch to wave-level'
                 : warning
                   ? 'Proceed with these dates'
                   : 'Save dates'}

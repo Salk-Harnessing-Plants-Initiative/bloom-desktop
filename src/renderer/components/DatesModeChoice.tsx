@@ -1,9 +1,11 @@
 /**
- * "How are wave N's dates set?" on Capture Scan (#428): the same for all plants
- * (entered once), or different for each plant (asked for as each plant is first
- * scanned). Asked for a new wave, and in a wave's Edit box.
+ * "Set wave N dates" on Capture Scan (#428): wave-level (the same dates for every
+ * plant, entered once, in the fields shown under that choice) or plant-level (each
+ * plant's dates entered as its barcode is first scanned). Asked for a new wave, and in
+ * a wave's Edit box.
  */
 
+import type { ReactNode } from 'react';
 import { formatWaveDate } from '../../utils/wave-dates';
 import type { CylinderPlantInfo } from '../../types/cylinder-wave';
 import type { PlantDates } from '../hooks/useWaveDates';
@@ -15,8 +17,10 @@ export interface DatesModeChoiceProps {
   /** Null until they choose. */
   value: DatesMode | null;
   onChange: (mode: DatesMode) => void;
-  /** Why "Same for all plants" can't be chosen, when it can't. */
+  /** Why "Wave-level" can't be chosen, when it can't. */
   sameUnavailable?: string | null;
+  /** The wave's dates, shown under "Wave-level" while it's chosen. */
+  children?: ReactNode;
   disabled?: boolean;
 }
 
@@ -25,19 +29,24 @@ export function DatesModeChoice({
   value,
   onChange,
   sameUnavailable = null,
+  children,
   disabled = false,
 }: DatesModeChoiceProps) {
   const name = `dates-mode-${waveNumber}`;
   return (
     <fieldset
-      className="text-sm text-gray-700"
+      className="space-y-3 text-sm text-gray-700"
       data-testid="dates-mode-question"
     >
-      <legend className="font-medium text-green-800">
-        How are wave {waveNumber}&apos;s dates (sowing date, germination date
-        and transfer to cylinder date) set?
+      <legend className="mb-3">
+        <span className="block text-base font-semibold text-green-800">
+          Set wave {waveNumber} dates
+        </span>
+        <span className="block text-gray-600">
+          Sowing, germination, and transfer-to-cylinder
+        </span>
       </legend>
-      <label className="mt-1 flex items-start gap-2">
+      <label className="flex items-start gap-2">
         <input
           type="radio"
           name={name}
@@ -48,10 +57,10 @@ export function DatesModeChoice({
           data-testid="dates-mode-same"
         />
         <span>
-          <span className="font-bold text-green-800">
-            Same for all plants in this wave
+          <span className="block font-semibold text-green-800">Wave-level</span>
+          <span className="block">
+            Same dates for every plant. Enter them once.
           </span>
-          : enter them once
           {sameUnavailable && (
             <span className="block text-xs text-gray-500">
               {sameUnavailable}
@@ -59,6 +68,11 @@ export function DatesModeChoice({
           )}
         </span>
       </label>
+      {value === 'same' && children && (
+        <div className="ml-6 space-y-2" data-testid="wave-level-dates">
+          {children}
+        </div>
+      )}
       <label className="flex items-start gap-2">
         <input
           type="radio"
@@ -70,10 +84,13 @@ export function DatesModeChoice({
           data-testid="dates-mode-per-plant"
         />
         <span>
-          <span className="font-bold text-green-800">
-            Different for each plant
+          <span className="block font-semibold text-green-800">
+            Plant-level
           </span>
-          : asked for as each plant (barcode) is first scanned
+          <span className="block">
+            Different dates per plant. Enter them when each barcode is first
+            scanned.
+          </span>
         </span>
       </label>
     </fieldset>
@@ -92,7 +109,7 @@ function plantDatesText(p: PlantDates): string {
     .join(' · ');
 }
 
-/** "Different for each plant": what that means, and the plants' dates set so far. */
+/** Plant-level: what happens to plants already scanned, and the plants' dates set so far. */
 export function PerPlantDatesNote({
   plants,
   switching,
@@ -101,13 +118,12 @@ export function PerPlantDatesNote({
   /** The wave is going from the same dates for all plants to per plant. */
   switching: boolean;
 }) {
+  if (!switching && plants.length === 0) return null;
   return (
     <div className="space-y-1 text-gray-700" data-testid="dates-per-plant">
-      <p>
-        Each plant&apos;s dates are asked for as it&apos;s first scanned.
-        {switching &&
-          ' Plants already scanned keep the dates they were scanned with.'}
-      </p>
+      {switching && (
+        <p>Plants already scanned keep the dates they were scanned with.</p>
+      )}
       {plants.length > 0 && (
         <>
           <p className="font-medium">Dates set so far:</p>
