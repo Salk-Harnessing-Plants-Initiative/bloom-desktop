@@ -14,7 +14,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, TextIO
 
 import imageio.v2 as iio
 import numpy as np
@@ -71,6 +71,7 @@ class MockCamera:
     """Mock camera that simulates Basler camera behavior using test images."""
 
     def __init__(self, settings: CameraSettings):
+        self._lock_file: Optional[TextIO] = None
         """Initialize the mock camera.
 
         Args:
@@ -169,7 +170,7 @@ class MockCamera:
             return
         lock_file = open(lock_path, "a+")
         try:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 import msvcrt
 
                 lock_file.seek(0)
@@ -188,9 +189,8 @@ class MockCamera:
     def close(self) -> None:
         """Close the mock camera connection."""
         self.is_open = False
-        lock_file = getattr(self, "_lock_file", None)
-        if lock_file is not None:
-            lock_file.close()  # Closing the file releases the lock
+        if self._lock_file is not None:
+            self._lock_file.close()  # Closing the file releases the lock
             self._lock_file = None
         write_line("STATUS:Mock camera closed")
 
