@@ -41,6 +41,7 @@ describe('ScannerProcess metadata.json integration', () => {
 
     // Create a mock PythonProcess that records when sendCommand is called
     const mockPythonProcess = {
+      on: vi.fn(),
       sendCommand: vi.fn().mockImplementation(async (cmd: unknown) => {
         const command = cmd as { action: string };
         if (command.action === 'scan') {
@@ -111,6 +112,7 @@ describe('ScannerProcess metadata.json integration', () => {
     const outputDir = path.join(testDir, 'fail-write');
 
     const mockPythonProcess = {
+      on: vi.fn(),
       sendCommand: vi.fn().mockResolvedValue({
         success: true,
         frames_captured: 72,

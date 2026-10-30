@@ -1418,4 +1418,20 @@ describe('CaptureScan and the camera', () => {
     expect(await screen.findByTestId('stream-canvas')).toBeInTheDocument();
     expect(screen.queryByTestId('scan-preparing')).not.toBeInTheDocument();
   });
+
+  it('shows "Frame 12 of 36" as the scan runs', async () => {
+    let sendProgress: (progress: unknown) => void = () => undefined;
+    mockScannerOnProgress.mockImplementation((cb) => {
+      sendProgress = cb;
+      return () => {};
+    });
+
+    await fillFormAndStartScan();
+    await act(async () =>
+      sendProgress({ frame_number: 11, total_frames: 36, position: 120 })
+    );
+
+    expect(screen.getByText(/Frame 12 of 36/)).toBeInTheDocument();
+    expect(screen.queryByTestId('scan-preparing')).not.toBeInTheDocument();
+  });
 });

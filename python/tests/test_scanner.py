@@ -741,3 +741,50 @@ class TestScannerImagePersistence:
             assert (
                 image.shape[0] > 0 and image.shape[1] > 0
             ), f"Invalid image dimensions: {filepath}"
+
+
+class TestScanProgress:
+    """The scan command reports each frame as it's saved."""
+
+    def test_scan_sends_a_progress_line_per_frame(self, monkeypatch):
+        import json
+
+        from python import ipc_handler
+
+        class FakeScanner:
+            is_initialized = True
+            is_scanning = False
+
+            class settings:
+                num_frames = 2
+
+            def perform_scan(self, on_frame=None):
+                on_frame(0, 180.0)
+                on_frame(1, 0.0)
+
+                class Result:
+                    success = True
+                    frames_captured = 2
+                    output_path = "/scans/x"
+                    error = None
+
+                return Result()
+
+        lines = []
+        monkeypatch.setattr(ipc_handler, "write_line", lines.append)
+        monkeypatch.setattr(ipc_handler, "_scanner_instance", FakeScanner())
+        monkeypatch.setattr(ipc_handler, "SCANNER_AVAILABLE", True)
+
+        ipc_handler.handle_scanner_command({"action": "scan"})
+
+        progress = [
+            json.loads(line[len("PROGRESS:") :])
+            for line in lines
+            if line.startswith("PROGRESS:")
+        ]
+        assert progress == [
+            {"frame_number": 0, "total_frames": 2, "position": 180.0},
+            {"frame_number": 1, "total_frames": 2, "position": 0.0},
+        ]
+        # The scan's response comes after, and progress isn't mistaken for it.
+        assert lines[-1].startswith("DATA:")

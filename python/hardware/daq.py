@@ -49,6 +49,9 @@ class DAQ:
         self.task: Optional[nidaqmx.Task] = None
         self.is_initialized = False
         self.current_position = 0.0  # Current angle in degrees (0-360)
+        # Degrees moved since home, unwrapped: steps are worked out from this total,
+        # so rounding doesn't add up and a full set of frames is exactly one turn.
+        self._moved_degrees = 0.0
 
     def initialize(self) -> bool:
         """Initialize the DAQ connection and create task.
@@ -87,6 +90,7 @@ class DAQ:
 
             self.is_initialized = True
             self.current_position = 0.0
+            self._moved_degrees = 0.0
 
             write_line("STATUS:DAQ initialized successfully")
             return True
@@ -113,7 +117,11 @@ class DAQ:
             raise RuntimeError("DAQ not initialized. Call initialize() first.")
 
         # Calculate rotation parameters
-        steps_needed = int(abs(degrees) * self.settings.steps_per_revolution / 360.0)
+        steps_per_rev = self.settings.steps_per_revolution
+        steps_before = round(self._moved_degrees * steps_per_rev / 360.0)
+        self._moved_degrees += degrees
+        steps_after = round(self._moved_degrees * steps_per_rev / 360.0)
+        steps_needed = abs(steps_after - steps_before)
         direction = 1 if degrees >= 0 else -1
 
         write_line(f"STATUS:DAQ rotating {degrees:.2f}° ({steps_needed} steps)")
@@ -189,6 +197,7 @@ class DAQ:
             self.rotate(degrees_to_home)
 
         self.current_position = 0.0
+        self._moved_degrees = 0.0
         write_line("STATUS:DAQ homing complete")
         return True
 
@@ -228,11 +237,12 @@ class DAQ:
         Returns:
             2D array of digital output values [step_channel, dir_channel]
         """
-        # Calculate timing
-        # Use a fixed pulse frequency for consistent stepping
-        pulse_frequency = 1000  # Hz (pulses per second)
+        # Calculate timing: fast enough for one full turn in seconds_per_rot.
+        pulse_frequency = (
+            self.settings.steps_per_revolution / self.settings.seconds_per_rot
+        )
         samples_per_step = int(self.settings.sampling_rate / pulse_frequency)
-        half_samples = samples_per_step // 2
+        half_samples = max(samples_per_step // 2, 1)
 
         # Generate step pulse pattern (square wave)
         samples = []
