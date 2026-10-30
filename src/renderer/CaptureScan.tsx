@@ -881,7 +881,18 @@ export function CaptureScan() {
           {/* Right Panel: Preview / Progress */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm p-6">
-              {isScanning && scanProgress ? (
+              {isScanning && !scanProgress ? (
+                // The preview is gone: the scanner needs the camera to itself.
+                <div
+                  className="flex items-center justify-center bg-gray-100 rounded-lg"
+                  style={{ width: 800, height: 600 }}
+                  data-testid="scan-preparing"
+                >
+                  <p className="text-lg font-medium text-gray-700">
+                    Preparing the scan…
+                  </p>
+                </div>
+              ) : isScanning && scanProgress ? (
                 <ScanProgress
                   currentFrame={scanProgress.frame_number}
                   totalFrames={scanProgress.total_frames}

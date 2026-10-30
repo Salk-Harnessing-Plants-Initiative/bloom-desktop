@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Capture Scan's warning for a wave number that skips ahead now names what was skipped: "Wave 2 was skipped", with "Scan wave 3" to continue after adding a note ([#450](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/pull/450)).
 
+### Fixed
+
+- Capture Scan: **Start Scan** no longer fails with "device is controlled by another application" on a real camera. The live preview and the scanner run in separate processes, and the preview held the camera open. The preview now closes the camera and leaves the screen before the scanner opens it, and the scanner closes it before the preview returns.
+
 ## [0.2.3] - 2026-10-30
 
 ### Added
