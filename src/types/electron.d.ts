@@ -49,6 +49,11 @@ import {
   ScansExportProgress,
 } from './database';
 import { UploadResult } from '../main/image-uploader';
+import type {
+  ScanListFilters,
+  UploadAllProgress,
+  UploadAllResult,
+} from './upload-all';
 import {
   ResetUsbResult,
   ScannerStatusRow,
@@ -502,6 +507,20 @@ export interface DatabaseAPI {
     uploadBatch: (
       scanIds: string[]
     ) => Promise<DatabaseResponse<UploadResult[]>>;
+    /** How many scans, within these filters, have frames waiting to upload (#449). */
+    pendingUploads: (
+      filters?: ScanListFilters
+    ) => Promise<DatabaseResponse<{ count: number }>>;
+    /** Upload every scan with frames waiting, within these filters, oldest first (#449). */
+    uploadAll: (
+      filters?: ScanListFilters
+    ) => Promise<DatabaseResponse<UploadAllResult>>;
+    /** Stop Upload all after the scan in progress. */
+    stopUploadAll: () => Promise<DatabaseResponse>;
+    /** Progress after each scan of Upload all. Returns a function that stops listening. */
+    onUploadAllProgress: (
+      callback: (progress: UploadAllProgress) => void
+    ) => () => void;
     /**
      * Export selected scans' files to a destination directory, preserving
      * each scan's relative path under the destination. Non-destructive:

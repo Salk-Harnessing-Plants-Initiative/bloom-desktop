@@ -1,3 +1,4 @@
+import { UploadAllBar } from './components/UploadAllBar';
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type {
@@ -427,6 +428,12 @@ export function BrowseScans() {
           <p className="text-sm text-green-700">{successMessage}</p>
         </div>
       )}
+
+      <UploadAllBar
+        filters={{ experimentId, dateFrom, dateTo }}
+        refreshKey={scans}
+        onFinished={fetchScans}
+      />
 
       {/* Batch Actions */}
       {selectedScanIds.size > 0 && (

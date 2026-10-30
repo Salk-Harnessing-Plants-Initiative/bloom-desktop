@@ -5,6 +5,7 @@
  * for all models to the renderer process.
  */
 
+import { scanListWhere } from './scan-filters';
 import { ipcMain, BrowserWindow } from 'electron';
 import { getDatabase } from './database';
 import type { Prisma, PrismaClient } from '@prisma/client';
@@ -2236,51 +2237,12 @@ export function registerDatabaseHandlers(deps: {
           );
           const skip = (page - 1) * pageSize;
 
-          // Build where clause - always exclude soft-deleted scans
-          const where: {
-            deleted: boolean;
-            experiment_id?: string;
-            capture_date?: { gte?: Date; lte?: Date };
-          } = {
-            deleted: false,
-          };
-
-          // Experiment filter
-          if (filters.experimentId) {
-            where.experiment_id = filters.experimentId;
+          // Always excludes soft-deleted scans.
+          const query = scanListWhere(filters);
+          if ('error' in query) {
+            return { success: false, error: query.error };
           }
-
-          // Date range filter
-          // Note: Append 'T00:00:00' to parse as local time, not UTC
-          // (plain date strings like "2025-02-17" are parsed as UTC midnight)
-          if (filters.dateFrom || filters.dateTo) {
-            // Validate date format (YYYY-MM-DD)
-            const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-            if (filters.dateFrom && !datePattern.test(filters.dateFrom)) {
-              return {
-                success: false,
-                error: `Invalid dateFrom format: "${filters.dateFrom}". Expected YYYY-MM-DD.`,
-              };
-            }
-            if (filters.dateTo && !datePattern.test(filters.dateTo)) {
-              return {
-                success: false,
-                error: `Invalid dateTo format: "${filters.dateTo}". Expected YYYY-MM-DD.`,
-              };
-            }
-
-            where.capture_date = {};
-            if (filters.dateFrom) {
-              // Start of day in local time
-              where.capture_date.gte = new Date(filters.dateFrom + 'T00:00:00');
-            }
-            if (filters.dateTo) {
-              // End of day in local time (inclusive)
-              where.capture_date.lte = new Date(
-                filters.dateTo + 'T23:59:59.999'
-              );
-            }
-          }
+          const { where } = query;
 
           if (summary) {
             const data = await listScanSummaries(db, where, page, pageSize);
