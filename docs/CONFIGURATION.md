@@ -38,13 +38,13 @@ This document describes all configurable constants and default values in the Blo
 
 ### Hardware Configuration
 
-| Constant               | Type     | Default       | Description                                                                  | Location                                       | Admin Configurable                        |
-| ---------------------- | -------- | ------------- | ---------------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------- |
-| `device_name`          | `string` | `'cDAQ1Mod1'` | NI-DAQ device identifier for turntable control                               | [src/types/daq.ts:55](../src/types/daq.ts#L55) | ⚠️ Maybe - Hardware-specific              |
-| `sampling_rate`        | `number` | `40000`       | DAQ sampling rate in Hz for step signal generation                           | [src/types/daq.ts:56](../src/types/daq.ts#L56) | ❌ No - Hardware-specific                 |
-| `step_pin`             | `number` | `0`           | Digital output line for stepper motor step signal                            | [src/types/daq.ts:57](../src/types/daq.ts#L57) | ❌ No - Hardware-specific                 |
-| `dir_pin`              | `number` | `1`           | Digital output line for stepper motor direction signal                       | [src/types/daq.ts:58](../src/types/daq.ts#L58) | ❌ No - Hardware-specific                 |
-| `steps_per_revolution` | `number` | `6400`        | Number of stepper motor steps for full 360° rotation (microstepping setting) | [src/types/daq.ts:59](../src/types/daq.ts#L59) | ⚠️ Maybe - Depends on motor configuration |
+| Constant               | Type     | Default       | Description                                                                              | Location                                       | Admin Configurable                        |
+| ---------------------- | -------- | ------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------- |
+| `device_name`          | `string` | `'cDAQ1Mod1'` | NI-DAQ device identifier for turntable control                                           | [src/types/daq.ts:55](../src/types/daq.ts#L55) | ⚠️ Maybe - Hardware-specific              |
+| `sampling_rate`        | `number` | `40000`       | DAQ sampling rate in Hz for step signal generation                                       | [src/types/daq.ts:56](../src/types/daq.ts#L56) | ❌ No - Hardware-specific                 |
+| `step_pin`             | `number` | `0`           | Digital output line for stepper motor step signal                                        | [src/types/daq.ts:57](../src/types/daq.ts#L57) | ❌ No - Hardware-specific                 |
+| `dir_pin`              | `number` | `1`           | Digital output line for stepper motor direction signal                                   | [src/types/daq.ts:58](../src/types/daq.ts#L58) | ❌ No - Hardware-specific                 |
+| `steps_per_revolution` | `number` | `28571`       | Steps for one full turn of the turntable (20,000 microsteps per motor turn, 60/42 gears) | [src/types/daq.ts:59](../src/types/daq.ts#L59) | ⚠️ Maybe - Depends on motor configuration |
 
 ## Camera Settings
 

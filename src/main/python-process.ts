@@ -10,6 +10,7 @@
  *     - STATUS:<message> - Status updates
  *     - ERROR:<message> - Error messages
  *     - DATA:<json> - JSON data responses
+ *     - PROGRESS:<json> - A scan's progress after each frame
  *     - IMAGE:data:image/jpeg;base64,<base64> - Base64-encoded images (future use)
  */
 
@@ -356,6 +357,13 @@ export class PythonProcess extends EventEmitter {
         // Not JSON — use the raw text as-is, with no id.
       }
       this.emit('error', message, id);
+    } else if (line.startsWith('PROGRESS:')) {
+      // Not an 'error' if unreadable: that would cancel the scan in progress.
+      try {
+        this.emit('progress', JSON.parse(line.substring(9)));
+      } catch {
+        console.warn(`[Python] Ignoring an unreadable progress line: ${line}`);
+      }
     } else if (line.startsWith('DATA:')) {
       const jsonStr = line.substring(5);
       try {

@@ -29,12 +29,10 @@ import {
 import { DAQProcess } from './cylinderscan/daq-process';
 import type { DAQSettings } from '../types/daq';
 import { ScannerProcess } from './cylinderscan/scanner-process';
-import type { ScannerSettings } from '../types/scanner';
 import { markMetadataDeleted } from './cylinderscan/scan-metadata-json';
 import {
   readConfiguredCameraIp,
   applyCameraIp,
-  applyScannerCameraIp,
 } from './cylinderscan/camera-ip';
 import {
   CREDENTIALS_REQUIRED_MESSAGE,
@@ -53,7 +51,7 @@ import {
   getDatabasePath,
 } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
-import { createCameraHandoff } from './camera-handoff';
+import { registerScannerHandlers } from './scanner-handlers';
 import { registerScanUploadAllHandlers } from './scan-upload-all-handlers';
 import { ImageUploader } from './image-uploader';
 import { createSpeciesStore, SAVED_SPECIES_FILE } from './species-list';
@@ -171,7 +169,6 @@ let mainWindow: BrowserWindow | null = null;
 let pythonProcess: PythonProcess | null = null;
 let cameraProcess: CameraProcess | null = null;
 let daqProcess: DAQProcess | null = null;
-let scannerProcess: ScannerProcess | null = null;
 
 // Current camera settings. The last applied ones are also kept in
 // ~/.bloom/camera-settings.json and loaded the first time they're needed (#440).
@@ -802,156 +799,14 @@ ipcMain.handle('daq:get-status', async () => {
 // IPC Handlers for Scanner Communication
 // =============================================================================
 
-/**
- * Initialize Scanner subprocess if not already initialized
- */
-const cameraHandoff = createCameraHandoff({
+registerScannerHandlers({
+  ipcMain,
+  getPythonProcess: () => pythonProcess,
+  createScanner: (python) => new ScannerProcess(python),
   getPreview: () => cameraProcess,
-  getScanner: () => scannerProcess,
-});
-
-async function ensureScannerProcess(): Promise<ScannerProcess> {
-  if (!scannerProcess) {
-    // Scanner uses the same Python process as other hardware
-    if (!pythonProcess) {
-      throw new Error('Python process not initialized');
-    }
-
-    scannerProcess = new ScannerProcess(pythonProcess);
-
-    // Forward scanner events to renderer
-    scannerProcess.on('initialized', () => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scanner:initialized');
-      }
-    });
-
-    scannerProcess.on('progress', (progress) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scanner:progress', progress);
-      }
-    });
-
-    scannerProcess.on('complete', async (result) => {
-      // Before the page hears of it, as it then starts the preview again.
-      await cameraHandoff.releaseFromScanner();
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scanner:complete', result);
-      }
-    });
-
-    scannerProcess.on('error', async (error: string) => {
-      console.error('Scanner error:', error);
-      await cameraHandoff.releaseFromScanner();
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('scanner:error', error);
-      }
-    });
-  }
-
-  return scannerProcess;
-}
-
-/**
- * Handle scanner:initialize - Initialize scanner with camera and DAQ settings
- */
-ipcMain.handle(
-  'scanner:initialize',
-  async (_event, settings: ScannerSettings) => {
-    try {
-      if (idleTimer) idleTimer.resetTimer();
-      const scanner = await ensureScannerProcess();
-      await cameraHandoff.releaseFromPreview();
-      const response = await scanner.initialize(
-        applyScannerCameraIp(settings, getConfiguredCameraIp())
-      );
-      return response;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      console.error('scanner:initialize error:', error);
-      return { success: false, initialized: false, error: error.message };
-    }
-  }
-);
-
-/**
- * Handle scanner:cleanup - Clean up scanner resources
- */
-ipcMain.handle('scanner:cleanup', async () => {
-  try {
-    if (!scannerProcess) {
-      return { success: true, initialized: false }; // Already cleaned up
-    }
-    const response = await scannerProcess.cleanup();
-    return response;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    console.error('scanner:cleanup error:', error);
-    return { success: false, initialized: false, error: error.message };
-  }
-});
-
-/**
- * Handle scanner:scan - Perform a complete scan
- */
-ipcMain.handle('scanner:scan', async () => {
-  try {
-    // Check precondition before any side effects: if scannerProcess is null,
-    // calling pauseForScan() would trigger a spurious resumeAfterScan() in
-    // the finally block, silently resetting the 10-minute idle clock on a
-    // failed scan attempt and allowing a previous operator's session to
-    // persist longer in a shared lab environment.
-    if (!scannerProcess) {
-      throw new Error('Scanner not initialized. Call initialize() first.');
-    }
-    if (idleTimer) idleTimer.pauseForScan();
-    const response = await scannerProcess.scan();
-    return response;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    console.error('scanner:scan error:', error);
-    return {
-      success: false,
-      frames_captured: 0,
-      output_path: '',
-      error: error.message,
-    };
-  } finally {
-    await cameraHandoff.releaseFromScanner();
-    if (idleTimer) idleTimer.resumeAfterScan();
-  }
-});
-
-/**
- * Handle scanner:get-status - Get scanner status
- */
-ipcMain.handle('scanner:get-status', async () => {
-  try {
-    if (!scannerProcess) {
-      return {
-        success: true,
-        initialized: false,
-        camera_status: 'unknown',
-        daq_status: 'unknown',
-        position: 0,
-        mock: true,
-      };
-    }
-    const status = await scannerProcess.getStatus();
-    return status;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    console.error('scanner:get-status error:', error);
-    return {
-      success: false,
-      initialized: false,
-      camera_status: 'unknown',
-      daq_status: 'unknown',
-      position: 0,
-      mock: true,
-      error: error.message,
-    };
-  }
+  getMainWindow: () => mainWindow,
+  getIdleTimer: () => idleTimer,
+  getConfiguredCameraIp,
 });
 
 /**

@@ -590,7 +590,12 @@ export function CaptureScan() {
       }
 
       // Start scan
-      await window.electron.scanner.scan();
+      const result = await window.electron.scanner.scan();
+      // A scan that failed without an event ('complete' or 'error') would otherwise
+      // leave the page waiting for one.
+      if (result?.success === false && isScanningRef.current) {
+        throw new Error(result.error || 'Scan failed');
+      }
     } catch (error) {
       // Reset ref synchronously before setIsScanning(false) schedules a React update,
       // mirroring the synchronous-set discipline applied at scan start (isScanningRef = true).

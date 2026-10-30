@@ -1418,4 +1418,50 @@ describe('CaptureScan and the camera', () => {
     expect(await screen.findByTestId('stream-canvas')).toBeInTheDocument();
     expect(screen.queryByTestId('scan-preparing')).not.toBeInTheDocument();
   });
+
+  it('brings the preview back and shows the error when the scan reports an error', async () => {
+    let sendError: (message: string) => void = () => undefined;
+    mockScannerOnError.mockImplementation((cb) => {
+      sendError = cb;
+      return () => {};
+    });
+
+    await fillFormAndStartScan();
+    await act(async () => sendError('Camera disconnected'));
+
+    expect(await screen.findByTestId('stream-canvas')).toBeInTheDocument();
+    expect(screen.getByText(/Camera disconnected/)).toBeInTheDocument();
+  });
+
+  it('brings the preview back and shows the error when a scan fails with no event', async () => {
+    mockScannerScan.mockResolvedValue({
+      success: false,
+      frames_captured: 0,
+      output_path: '',
+      error: 'Scan cancelled',
+    });
+
+    await fillFormAndStartScan();
+
+    expect(await screen.findByTestId('stream-canvas')).toBeInTheDocument();
+    expect(screen.queryByTestId('scan-preparing')).not.toBeInTheDocument();
+    expect(screen.getByText(/Scan cancelled/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /start scan/i })).toBeEnabled();
+  });
+
+  it('shows "Frame 12 of 36" as the scan runs', async () => {
+    let sendProgress: (progress: unknown) => void = () => undefined;
+    mockScannerOnProgress.mockImplementation((cb) => {
+      sendProgress = cb;
+      return () => {};
+    });
+
+    await fillFormAndStartScan();
+    await act(async () =>
+      sendProgress({ frame_number: 11, total_frames: 36, position: 120 })
+    );
+
+    expect(screen.getByText(/Frame 12 of 36/)).toBeInTheDocument();
+    expect(screen.queryByTestId('scan-preparing')).not.toBeInTheDocument();
+  });
 });
