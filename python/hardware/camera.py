@@ -222,9 +222,11 @@ class Camera:
         """Stop triggered capture, and leave the camera free-running for the preview."""
         if not self.camera:
             return
-        if self.camera.IsGrabbing():
-            self.camera.StopGrabbing()
-        self.camera.TriggerMode.Value = "Off"
+        try:
+            if self.camera.IsGrabbing():
+                self.camera.StopGrabbing()
+        finally:
+            self.camera.TriggerMode.Value = "Off"
 
     def grab_frames(self, num_frames: Optional[int] = None) -> List[np.ndarray]:
         """Grab multiple frames from the camera.
