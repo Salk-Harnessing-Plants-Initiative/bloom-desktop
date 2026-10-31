@@ -84,7 +84,8 @@ def test_reports_progress_for_every_frame_in_order(scan):
 
 
 def test_a_failed_frame_keeps_the_others_in_their_places(scan, tmp_path, monkeypatch):
-    scan.camera.retrieve_triggered_frames = lambda n: [IMAGE, None, IMAGE, IMAGE]
+    results = iter([IMAGE, None, IMAGE, IMAGE])
+    scan.camera.retrieve_next_frame = lambda: next(results)
 
     result = scan.perform_scan()
 
@@ -171,28 +172,27 @@ class TestRealCamera:
         with pytest.raises(RuntimeError, match="not started"):
             camera.trigger_frame()
 
-    def test_retrieve_marks_a_failed_frame_and_keeps_order(self):
+    def test_collects_a_frame_and_releases_the_driver_buffer(self):
         camera = make_real_camera()
-        results = [grab_result(), grab_result(False), grab_result()]
-        camera.camera.RetrieveResult.side_effect = results
+        result = grab_result()
+        camera.camera.RetrieveResult.return_value = result
 
-        frames = camera.retrieve_triggered_frames(3)
+        assert camera.retrieve_next_frame() is not None
+        result.Release.assert_called_once()
 
-        assert frames[0] is not None
-        assert frames[1] is None
-        assert frames[2] is not None
-        for result in results:
-            result.Release.assert_called_once()
-
-    def test_retrieve_counts_frames_that_never_arrive_as_failed(self):
+    def test_a_failed_frame_is_none_and_still_releases_its_buffer(self):
         camera = make_real_camera()
-        camera.camera.RetrieveResult.side_effect = [grab_result(), TimeoutError("No")]
+        result = grab_result(False)
+        camera.camera.RetrieveResult.return_value = result
 
-        frames = camera.retrieve_triggered_frames(3)
+        assert camera.retrieve_next_frame() is None
+        result.Release.assert_called_once()
 
-        assert frames[0] is not None
-        assert frames[1:] == [None, None]
-        assert camera.camera.RetrieveResult.call_count == 2
+    def test_a_frame_that_never_arrives_is_none(self):
+        camera = make_real_camera()
+        camera.camera.RetrieveResult.side_effect = TimeoutError("No frame")
+
+        assert camera.retrieve_next_frame() is None
 
     def test_stop_leaves_the_camera_free_running_for_the_preview(self):
         camera = make_real_camera()

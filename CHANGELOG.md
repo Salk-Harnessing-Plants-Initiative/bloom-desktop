@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - CylinderScan: the turntable no longer stops and starts at each frame. As in the pilot app, a scan takes each frame on a software trigger with no settling wait and saves all the frames together at the end, instead of saving between moves ([#464](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/464)).
 
+### Added
+
+- Capture Scan shows each frame as the scan takes it, in place of the live preview, which can't run during a scan.
+
 ## [0.2.4] - 2026-10-30
 
 ### Added

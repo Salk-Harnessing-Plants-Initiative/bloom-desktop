@@ -6,18 +6,21 @@ Coordinates camera and DAQ for automated cylinder scanning workflow.
 
 import os
 import sys
+import queue
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import imageio.v2 as iio
+import numpy as np
 
 from .camera import Camera
 from .camera_mock import MockCamera
 from .daq import DAQ
 from .daq_mock import MockDAQ
+from .scan_preview import frame_preview_data_uri
 from .scanner_types import ScannerSettings, ScanResult
 
 try:
@@ -151,6 +154,34 @@ class Scanner:
         self.is_initialized = False
         write_line("STATUS:Scanner cleanup complete")
 
+    def _collect_frames(
+        self,
+        triggered: "queue.Queue[Optional[int]]",
+        frames: List[Optional[np.ndarray]],
+        on_preview: Optional[Callable[[str], None]],
+    ) -> None:
+        """Collect each triggered frame, and send its picture to the page.
+
+        Runs on a background thread, until it's told there are no more frames.
+
+        Args:
+            triggered: The frame numbers as they're triggered, then None
+            frames: Where each collected frame goes
+            on_preview: Optional callback receiving each frame's picture
+        """
+        assert self.camera is not None
+        while (frame_idx := triggered.get()) is not None:
+            image = self.camera.retrieve_next_frame()
+            frames[frame_idx] = image
+            if image is None or on_preview is None:
+                continue
+            try:
+                on_preview(frame_preview_data_uri(image))
+            except Exception as e:
+                # Only a picture on the page, so it must never fail the scan.
+                reason = " ".join(str(e).split())
+                write_line(f"STATUS:Couldn't send a scan preview: {reason}")
+
     def _save_frames(self, frames: list, output_dir: Path) -> int:
         """Save the scan's frames in parallel, named by their position in the scan.
 
@@ -188,7 +219,9 @@ class Scanner:
         return saved
 
     def perform_scan(
-        self, on_frame: Optional[Callable[[int, float], None]] = None
+        self,
+        on_frame: Optional[Callable[[int, float], None]] = None,
+        on_preview: Optional[Callable[[str], None]] = None,
     ) -> ScanResult:
         """Perform a complete scan of the cylinder.
 
@@ -198,12 +231,15 @@ class Scanner:
            - Rotate to position
            - Trigger the frame, and hold still for its exposure
            - Call progress callback
+           - In the background, collect the frame and send its picture
         3. Return to home position
         4. Save the frames, all together
 
         Args:
             on_frame: Optional callback function called after each frame is taken.
                      Receives (frame_number, position_degrees).
+            on_preview: Optional callback function called from a background thread
+                     with a small picture of each frame, as a data URI.
 
         Returns:
             ScanResult with success status, frames captured, and output path
@@ -249,13 +285,22 @@ class Scanner:
             self.daq.home()
             write_line("STATUS:Turntable homed to 0°")
 
-            # Take the frames without stopping to fetch or save them, so the turntable keeps
-            # going as it does in the pilot app. Each frame is held by the camera driver.
+            # Take the frames without stopping to save them, so the turntable keeps going
+            # as it does in the pilot app. A background thread collects each frame, and
+            # sends its picture to the page, so that doesn't hold up the moves either.
             hold_seconds = (
                 self.settings.camera.exposure_time / MICROSECONDS_PER_SECOND
                 + EXPOSURE_MARGIN_SECONDS
             )
+            frames: List[Optional[np.ndarray]] = [None] * num_frames
+            triggered: "queue.Queue[Optional[int]]" = queue.Queue()
+            collector = threading.Thread(
+                target=self._collect_frames,
+                args=(triggered, frames, on_preview),
+                daemon=True,
+            )
             self.camera.start_triggered_capture(num_frames)
+            collector.start()
             try:
                 for frame_idx in range(num_frames):
                     # Rotate to next position
@@ -269,14 +314,15 @@ class Scanner:
                         f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°"
                     )
                     self.camera.trigger_frame()
+                    triggered.put(frame_idx)
                     time.sleep(hold_seconds)
 
                     # Call progress callback if provided
                     if on_frame is not None:
                         on_frame(frame_idx, position)
-
-                frames = self.camera.retrieve_triggered_frames(num_frames)
             finally:
+                triggered.put(None)
+                collector.join()
                 self.camera.stop_triggered_capture()
 
             # Return to home

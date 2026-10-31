@@ -43,6 +43,7 @@ const mockCameraGetSettings = vi.fn();
 const mockScannerInitialize = vi.fn();
 const mockScannerScan = vi.fn();
 const mockScannerOnProgress = vi.fn().mockReturnValue(() => {});
+const mockScannerOnFrame = vi.fn().mockReturnValue(() => {});
 const mockScannerOnComplete = vi.fn().mockReturnValue(() => {});
 const mockScannerOnError = vi.fn().mockReturnValue(() => {});
 const mockSessionGet = vi.fn();
@@ -132,6 +133,7 @@ beforeEach(() => {
       initialize: mockScannerInitialize,
       scan: mockScannerScan,
       onProgress: mockScannerOnProgress,
+      onFrame: mockScannerOnFrame,
       onComplete: mockScannerOnComplete,
       onError: mockScannerOnError,
     },
@@ -1489,6 +1491,57 @@ describe('CaptureScan and the camera', () => {
     expect(
       mockScannerInitialize.mock.calls[0][0].daq.steps_per_revolution
     ).toBe(28571);
+  });
+
+  it('shows each frame as the scan takes it, and starts the next scan without it', async () => {
+    let sendProgress: (progress: unknown) => void = () => undefined;
+    mockScannerOnProgress.mockImplementation((cb) => {
+      sendProgress = cb;
+      return () => {};
+    });
+    let sendFrame: (dataUri: string) => void = () => undefined;
+    mockScannerOnFrame.mockImplementation((cb) => {
+      sendFrame = cb;
+      return () => {};
+    });
+    let finishScan: (result: unknown) => void = () => undefined;
+    mockScannerScan.mockReturnValueOnce(
+      new Promise((resolve) => (finishScan = resolve))
+    );
+
+    await fillFormAndStartScan();
+    await act(async () => {
+      sendProgress({ frame_number: 0, total_frames: 36, position: 10 });
+      sendFrame('data:image/jpeg;base64,FIRST');
+    });
+    expect(screen.getByTestId('scan-live-frame')).toHaveAttribute(
+      'src',
+      'data:image/jpeg;base64,FIRST'
+    );
+
+    await act(async () => sendFrame('data:image/jpeg;base64,SECOND'));
+    expect(screen.getByTestId('scan-live-frame')).toHaveAttribute(
+      'src',
+      'data:image/jpeg;base64,SECOND'
+    );
+    expect(screen.getByText(/Frame 1 of 36/)).toBeInTheDocument();
+
+    await act(async () =>
+      finishScan({ success: false, frames_captured: 0, output_path: '' })
+    );
+    const startButton = await screen.findByRole('button', {
+      name: /start scan/i,
+    });
+    await waitFor(() => expect(startButton).toBeEnabled());
+    mockScannerScan.mockReturnValueOnce(new Promise(() => undefined));
+    await act(async () => {
+      fireEvent.click(startButton);
+    });
+    await act(async () =>
+      sendProgress({ frame_number: 0, total_frames: 36, position: 10 })
+    );
+
+    expect(screen.queryByTestId('scan-live-frame')).not.toBeInTheDocument();
   });
 
   it('shows "Frame 12 of 36" as the scan runs', async () => {

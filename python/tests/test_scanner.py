@@ -776,7 +776,7 @@ class TestScanProgress:
             class settings:
                 num_frames = 2
 
-            def perform_scan(self, on_frame=None):
+            def perform_scan(self, on_frame=None, on_preview=None):
                 on_frame(0, 180.0)
                 on_frame(1, 0.0)
 

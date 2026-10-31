@@ -862,7 +862,9 @@ def handle_scanner_command(cmd: Dict[str, Any]) -> None:
                 }
                 write_line(f"PROGRESS:{json.dumps(progress)}")
 
-            result = _scanner_instance.perform_scan(on_frame=report_progress)
+            result = _scanner_instance.perform_scan(
+                on_frame=report_progress, on_preview=send_frame
+            )
 
             send_data(
                 {

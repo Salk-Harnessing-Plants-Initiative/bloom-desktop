@@ -43,6 +43,11 @@ export class ScannerProcess extends EventEmitter {
       this.emit('progress', progress);
     });
 
+    // A picture of each frame, for the page to show during the scan.
+    this.pythonProcess.on('frame', (dataUri: string) => {
+      this.emit('frame', dataUri);
+    });
+
     // Listen to our own progress events to collect them for database
     this.on('progress', (progress: ScanProgress) => {
       this.progressEvents.push(progress);

@@ -228,22 +228,16 @@ class MockCamera:
         self._triggered_frames: List[Optional[np.ndarray]] = []
 
     def trigger_frame(self) -> None:
-        """Take a frame now. It's collected later by retrieve_triggered_frames."""
+        """Take a frame now. It's collected by retrieve_next_frame."""
         self._triggered_frames.append(self.grab_frame())
 
-    def retrieve_triggered_frames(self, num_frames: int) -> List[Optional[np.ndarray]]:
-        """Collect the triggered frames, in the order they were triggered.
-
-        Args:
-            num_frames: How many frames were triggered
+    def retrieve_next_frame(self) -> Optional[np.ndarray]:
+        """Collect the oldest triggered frame not yet collected.
 
         Returns:
-            One entry per frame: its image, or None if that frame failed
+            Its image, or None if the frame failed or didn't arrive
         """
-        frames = self._triggered_frames[:num_frames]
-        frames.extend([None] * (num_frames - len(frames)))
-        self._triggered_frames = []
-        return frames
+        return self._triggered_frames.pop(0) if self._triggered_frames else None
 
     def stop_triggered_capture(self) -> None:
         """Stop triggered capture."""
