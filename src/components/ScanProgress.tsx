@@ -11,6 +11,8 @@ export interface ScanProgressProps {
   currentFrame: number;
   /** Total number of frames to capture */
   totalFrames: number;
+  /** Every frame is taken, and the images are being saved */
+  saving?: boolean;
   /** Optional callback to cancel the scan */
   onCancel?: () => void;
 }
@@ -18,6 +20,7 @@ export interface ScanProgressProps {
 export function ScanProgress({
   currentFrame,
   totalFrames,
+  saving = false,
   onCancel,
 }: ScanProgressProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -55,7 +58,9 @@ export function ScanProgress({
   return (
     <div className="bg-white border-2 border-blue-500 rounded-lg p-6 space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900">Scanning...</h3>
+        <h3 className="text-lg font-semibold text-gray-900">
+          {saving ? 'Saving...' : 'Scanning...'}
+        </h3>
         <div className="flex items-center space-x-2">
           {/* Spinner */}
           <svg
@@ -100,8 +105,14 @@ export function ScanProgress({
         </div>
       </div>
 
+      {saving && (
+        <p className="text-sm font-medium text-gray-900">
+          Saving the images. Leave the plant in place until this finishes.
+        </p>
+      )}
+
       {/* ETA */}
-      {currentFrame > 0 && (
+      {currentFrame > 0 && !saving && (
         <div className="text-sm text-gray-600">
           <p>Estimated time remaining: {formatTime(estimatedRemainingTime)}</p>
         </div>

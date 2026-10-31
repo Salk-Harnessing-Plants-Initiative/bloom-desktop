@@ -266,8 +266,8 @@ class Scanner:
            - Trigger the frame, and hold still for its exposure
            - Call progress callback
            - In the background, collect the frame and send its picture
-        3. Return to home position
-        4. Save the frames, all together
+        3. Save the frames, all together
+        4. Return to home position
 
         Args:
             on_frame: Optional callback function called after each frame is taken.
@@ -361,13 +361,21 @@ class Scanner:
                 finally:
                     triggered.put(None)
                     collector.join()
-                    self.camera.stop_triggered_capture()
+                    # Saving doesn't need the camera, and an error here mustn't replace
+                    # the reason a scan failed.
+                    try:
+                        self.camera.stop_triggered_capture()
+                    except Exception as e:
+                        write_line(
+                            f"STATUS:Couldn't stop triggered capture: {_one_line(e)}"
+                        )
+
+            # Save first, so a failed return home can't cost the frames
+            frames_captured = self._save_frames(frames, output_dir)
 
             # Return to home
             self.daq.home()
             write_line("STATUS:Turntable returned to home position")
-
-            frames_captured = self._save_frames(frames, output_dir)
 
             # Report results
             success = frames_captured == num_frames

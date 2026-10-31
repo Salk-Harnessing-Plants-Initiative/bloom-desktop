@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- CylinderScan: the turntable no longer stops and starts at each frame. As in the pilot app, a scan takes each frame on a software trigger with no settling wait and saves all the frames together at the end, instead of saving between moves ([#464](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/464)).
+- CylinderScan: the turntable no longer stops and starts at each frame. As in the pilot app, a scan takes each frame on a software trigger with no settling wait and saves all the frames together at the end, instead of saving between moves ([#464](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/464)). The page shows "Saving..." after the last frame, the sidebar stays locked until the scan has finished, and a failed scan's error stays on screen until it's dismissed or the next scan starts. Closing the app during a scan now asks first, as the scan's images would be lost.
 
 ### Added
 

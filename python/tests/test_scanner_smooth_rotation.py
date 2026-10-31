@@ -70,13 +70,45 @@ def saved_frames(folder):
     }
 
 
-def test_turns_then_returns_home_then_saves(scan):
+def test_turns_then_saves_then_returns_home(scan):
     result = scan.perform_scan()
 
     assert result.success is True
     hold = ("sleep", 0.015)  # 10 ms exposure plus the margin, and no settling wait
     moves = ["rotate", "trigger", hold] * NUM_FRAMES
-    assert scan.calls == ["home"] + moves + ["home"] + ["save"] * NUM_FRAMES
+    # Saved first, so a failed return home can't cost the frames.
+    assert scan.calls == ["home"] + moves + ["save"] * NUM_FRAMES + ["home"]
+
+
+def test_a_failed_return_home_keeps_the_saved_frames(scan, tmp_path):
+    scan.daq.home = MagicMock(side_effect=[True, RuntimeError("Motor fault")])
+
+    result = scan.perform_scan()
+
+    assert result.success is False
+    assert "Motor fault" in result.error
+    assert result.frames_captured == NUM_FRAMES
+    assert len(list(Path(tmp_path).glob("*.png"))) == NUM_FRAMES
+
+
+def test_a_failed_stop_still_saves_the_frames(scan, tmp_path):
+    scan.camera.stop_triggered_capture = MagicMock(side_effect=RuntimeError("Lost"))
+
+    result = scan.perform_scan()
+
+    assert result.success is True
+    assert len(list(Path(tmp_path).glob("*.png"))) == NUM_FRAMES
+
+
+def test_a_failed_stop_does_not_hide_why_the_scan_failed(scan):
+    scan.camera.stop_triggered_capture = MagicMock(side_effect=RuntimeError("Lost"))
+    scan.daq.rotate = MagicMock(side_effect=RuntimeError("Motor fault"))
+
+    result = scan.perform_scan()
+
+    assert result.success is False
+    assert "Motor fault" in result.error
+    assert "Lost" not in result.error
 
 
 def test_each_frame_is_saved_under_its_own_number(scan, tmp_path):
@@ -288,4 +320,14 @@ class TestRealCamera:
         camera.stop_triggered_capture()
 
         camera.camera.StopGrabbing.assert_called_once()
+        assert camera.camera.TriggerMode.Value == "Off"
+
+    def test_stop_leaves_trigger_mode_off_even_if_stopping_fails(self):
+        camera = make_real_camera()
+        camera.camera.IsGrabbing.return_value = True
+        camera.camera.StopGrabbing.side_effect = RuntimeError("Lost")
+
+        with pytest.raises(RuntimeError, match="Lost"):
+            camera.stop_triggered_capture()
+
         assert camera.camera.TriggerMode.Value == "Off"
