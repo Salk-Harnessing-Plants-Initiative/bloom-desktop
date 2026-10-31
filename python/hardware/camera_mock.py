@@ -238,12 +238,12 @@ class MockCamera:
             num_frames: How many frames were triggered
 
         Returns:
-            One entry per frame: its image, or None if that frame failed
+            One entry per frame: its image, or None if that frame failed. If fewer
+            frames arrive than were triggered, every entry is None, as on the real camera.
         """
         frames = self._triggered_frames[:num_frames]
-        frames.extend([None] * (num_frames - len(frames)))
         self._triggered_frames = []
-        return frames
+        return frames if len(frames) == num_frames else [None] * num_frames
 
     def stop_triggered_capture(self) -> None:
         """Stop triggered capture."""

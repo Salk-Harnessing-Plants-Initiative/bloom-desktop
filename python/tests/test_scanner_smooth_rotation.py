@@ -108,6 +108,22 @@ def test_a_failed_frame_writes_nothing_to_stderr(scan, capsys):
     assert "STATUS:Scan completed with errors: 3/4 frames" in captured.out
 
 
+def test_a_frame_that_never_arrives_saves_nothing(scan, tmp_path):
+    real_retrieve = scan.camera.retrieve_triggered_frames
+
+    def lose_a_frame(num_frames):
+        del scan.camera._triggered_frames[1]
+        return real_retrieve(num_frames)
+
+    scan.camera.retrieve_triggered_frames = lose_a_frame
+
+    result = scan.perform_scan()
+
+    assert result.success is False
+    assert result.error == "Only 0/4 frames captured"
+    assert list(Path(tmp_path).glob("*.png")) == []
+
+
 def test_a_failed_move_stops_capture_and_saves_nothing(scan, tmp_path):
     scan.camera.stop_triggered_capture = MagicMock()
     scan.daq.rotate = MagicMock(side_effect=[True, RuntimeError("Motor fault")])
@@ -197,14 +213,13 @@ class TestRealCamera:
         for result in results:
             result.Release.assert_called_once()
 
-    def test_retrieve_counts_frames_that_never_arrive_as_failed(self):
+    def test_retrieve_trusts_no_frame_when_one_never_arrives(self):
         camera = make_real_camera()
         camera.camera.RetrieveResult.side_effect = [grab_result(), TimeoutError("No")]
 
         frames = camera.retrieve_triggered_frames(3)
 
-        assert frames[0] is not None
-        assert frames[1:] == [None, None]
+        assert frames == [None, None, None]
         assert camera.camera.RetrieveResult.call_count == 2
 
     def test_stop_leaves_the_camera_free_running_for_the_preview(self):

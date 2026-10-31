@@ -190,7 +190,10 @@ class Camera:
             num_frames: How many frames were triggered
 
         Returns:
-            One entry per frame: its image, or None if that frame failed
+            One entry per frame: its image, or None if that frame failed. If fewer
+            frames arrive than were triggered, every entry is None: frames are placed by
+            arrival order, so nothing shows which one is missing or which angle the
+            others belong to.
         """
         if not self.camera:
             raise RuntimeError("Camera is not open")
@@ -201,16 +204,18 @@ class Camera:
                 grab_result = self.camera.RetrieveResult(
                     TRIGGERED_RETRIEVE_TIMEOUT_MS, pylon.TimeoutHandling_ThrowException
                 )
-            except Exception:
-                # Nothing more is coming; the frames not received count as failed.
-                break
+            except Exception as e:
+                write_line(
+                    f"STATUS:Only {len(frames)}/{num_frames} frames arrived, "
+                    f"so their positions are unknown: {e}"
+                )
+                return [None] * num_frames
             try:
                 frames.append(
                     grab_result.Array.copy() if grab_result.GrabSucceeded() else None
                 )
             finally:
                 grab_result.Release()
-        frames.extend([None] * (num_frames - len(frames)))
         return frames
 
     def stop_triggered_capture(self) -> None:
