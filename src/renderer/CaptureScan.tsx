@@ -36,6 +36,7 @@ import {
   validatePlantAgeDays,
 } from '../utils/metadata-validation';
 import { useWaveDateFields } from './hooks/useWaveDateFields';
+import { useUnsavedChanges } from './contexts/UnsavedChangesContext';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -84,6 +85,9 @@ export function CaptureScan() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   // Set when images were captured but the DB save failed (#392)
   const [unsavedScan, setUnsavedScan] = useState<UnsavedScan | null>(null);
+  const [scanFrame, setScanFrame] = useState<string | null>(null);
+  // Stays until dismissed or the next scan starts: a failed scan has no row for the
+  // duplicate check to flag, so this is the only sign that the plant needs a rescan.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showIdleResetBanner, setShowIdleResetBanner] = useState(false);
 
@@ -122,6 +126,14 @@ export function CaptureScan() {
     },
     []
   );
+
+  // Stay on this page until the scan has finished, including saving its images: its
+  // result, and any failure, is only shown here.
+  const { setBlockNavigation } = useUnsavedChanges();
+  useEffect(() => {
+    setBlockNavigation(isScanning);
+    return () => setBlockNavigation(false);
+  }, [isScanning, setBlockNavigation]);
 
   // Keep isScanningRef in sync with isScanning state so the onIdleReset closure
   // (which has [] deps) can read the current value without going stale.
@@ -450,7 +462,6 @@ export function CaptureScan() {
         // For now, keep the same experiment/phenotyper but increment plant
       } else {
         setErrorMessage(result.error || 'Scan failed');
-        setTimeout(() => setErrorMessage(null), 5000);
       }
     };
 
@@ -460,17 +471,18 @@ export function CaptureScan() {
       setIsScanning(false);
       setScanProgress(null);
       setErrorMessage(error);
-      setTimeout(() => setErrorMessage(null), 5000);
     };
 
     // Register listeners and get cleanup functions
     const cleanupProgress = window.electron.scanner.onProgress(handleProgress);
+    const cleanupFrame = window.electron.scanner.onFrame(setScanFrame);
     const cleanupComplete = window.electron.scanner.onComplete(handleComplete);
     const cleanupError = window.electron.scanner.onError(handleError);
 
     // Cleanup function removes all listeners
     return () => {
       cleanupProgress();
+      cleanupFrame();
       cleanupComplete();
       cleanupError();
     };
@@ -540,6 +552,7 @@ export function CaptureScan() {
     try {
       setIsScanning(true);
       setScanProgress(null);
+      setScanFrame(null);
       setErrorMessage(null);
       setUnsavedScan(null);
       setShowIdleResetBanner(false);
@@ -610,9 +623,14 @@ export function CaptureScan() {
       );
       setIsScanning(false);
       setScanProgress(null);
-      setTimeout(() => setErrorMessage(null), 5000);
     }
   };
+
+  // After the last frame is taken, all that's left is saving the images.
+  const isSaving =
+    isScanning &&
+    scanProgress !== null &&
+    scanProgress.frame_number + 1 >= scanProgress.total_frames;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
@@ -708,7 +726,7 @@ export function CaptureScan() {
           <div className="bg-red-50 border-2 border-red-500 rounded-lg p-4">
             <div className="flex items-center">
               <svg
-                className="h-5 w-5 text-red-600 mr-2"
+                className="h-5 w-5 shrink-0 text-red-600 mr-2"
                 fill="currentColor"
                 viewBox="0 0 20 20"
               >
@@ -718,7 +736,16 @@ export function CaptureScan() {
                   clipRule="evenodd"
                 />
               </svg>
-              <span className="font-medium text-red-800">{errorMessage}</span>
+              <span className="flex-1 font-medium text-red-800">
+                {errorMessage}
+              </span>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="ml-4 shrink-0 px-3 py-1 text-sm font-medium text-red-800 border border-red-500 rounded-md hover:bg-red-100"
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         )}
@@ -859,7 +886,11 @@ export function CaptureScan() {
                       : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   }`}
                 >
-                  {isScanning ? 'Scanning...' : 'Start Scan'}
+                  {isSaving
+                    ? 'Saving...'
+                    : isScanning
+                      ? 'Scanning...'
+                      : 'Start Scan'}
                 </button>
                 {!isFormValid && (
                   <p className="text-sm text-red-600 mt-2">
@@ -900,10 +931,36 @@ export function CaptureScan() {
                   </p>
                 </div>
               ) : isScanning && scanProgress ? (
-                <ScanProgress
-                  currentFrame={scanProgress.frame_number}
-                  totalFrames={scanProgress.total_frames}
-                />
+                <div className="space-y-4">
+                  {!isSaving && (
+                    <div
+                      className="flex items-center gap-2 text-sm font-semibold text-red-600"
+                      role="status"
+                      data-testid="scan-recording"
+                    >
+                      <span
+                        className="h-3 w-3 animate-pulse rounded-full bg-red-600"
+                        aria-hidden="true"
+                      />
+                      Recording in progress
+                    </div>
+                  )}
+                  <ScanProgress
+                    currentFrame={scanProgress.frame_number}
+                    totalFrames={scanProgress.total_frames}
+                    saving={isSaving}
+                  />
+                  {/* The scanner's own frames: the preview can't run during a scan. */}
+                  {scanFrame && (
+                    <img
+                      src={scanFrame}
+                      alt="The frame just taken"
+                      className="rounded-lg bg-black"
+                      style={{ width: 800, maxWidth: '100%' }}
+                      data-testid="scan-live-frame"
+                    />
+                  )}
+                </div>
               ) : cameraConfigured ? (
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
@@ -964,7 +1021,9 @@ export function CaptureScan() {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <RecentScansPreview
             scans={recentScans}
-            onViewAll={() => navigate('/browse-scans')}
+            onViewAll={() => {
+              if (!isScanning) navigate('/browse-scans');
+            }}
           />
         </div>
       </div>

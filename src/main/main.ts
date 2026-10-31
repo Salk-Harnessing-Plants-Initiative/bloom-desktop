@@ -52,6 +52,7 @@ import {
 } from './database';
 import { registerDatabaseHandlers } from './database-handlers';
 import { registerScannerHandlers } from './scanner-handlers';
+import { createScanQuitGuard } from './scan-quit-guard';
 import { registerScanUploadAllHandlers } from './scan-upload-all-handlers';
 import { ImageUploader } from './image-uploader';
 import { createSpeciesStore, SAVED_SPECIES_FILE } from './species-list';
@@ -232,6 +233,10 @@ const createWindow = (): void => {
 
   mainWindow.menuBarVisible = false;
   mainWindow.setMenu(null);
+
+  mainWindow.on('close', (event) => {
+    if (!scanQuitGuard.mayQuit()) event.preventDefault();
+  });
 
   // and load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
@@ -799,7 +804,7 @@ ipcMain.handle('daq:get-status', async () => {
 // IPC Handlers for Scanner Communication
 // =============================================================================
 
-registerScannerHandlers({
+const scannerHandlers = registerScannerHandlers({
   ipcMain,
   getPythonProcess: () => pythonProcess,
   createScanner: (python) => new ScannerProcess(python),
@@ -807,6 +812,29 @@ registerScannerHandlers({
   getMainWindow: () => mainWindow,
   getIdleTimer: () => idleTimer,
   getConfiguredCameraIp,
+});
+
+const QUIT_ANYWAY_BUTTON = 1;
+const scanQuitGuard = createScanQuitGuard({
+  isScanInProgress: scannerHandlers.isScanInProgress,
+  askToQuit: async () => {
+    const options = {
+      type: 'warning' as const,
+      title: 'Scan in progress',
+      message: 'A scan is still running.',
+      detail:
+        "If you quit now, this scan's images won't be saved and the plant will need to be rescanned.",
+      buttons: ['Keep scanning', 'Quit anyway'],
+      defaultId: 0,
+      cancelId: 0,
+    };
+    const { response } =
+      mainWindow && !mainWindow.isDestroyed()
+        ? await dialog.showMessageBox(mainWindow, options)
+        : await dialog.showMessageBox(options);
+    return response === QUIT_ANYWAY_BUTTON;
+  },
+  quit: () => app.quit(),
 });
 
 /**
@@ -1264,6 +1292,11 @@ let isQuitting = false;
 app.on('before-quit', async (event) => {
   // Prevent infinite loop - only run cleanup once
   if (isQuitting) {
+    return;
+  }
+
+  if (!scanQuitGuard.mayQuit()) {
+    event.preventDefault();
     return;
   }
 

@@ -139,6 +139,7 @@ beforeEach(() => {
       initialize: mockScannerInitialize,
       scan: mockScannerScan,
       onProgress: vi.fn().mockReturnValue(vi.fn()),
+      onFrame: vi.fn().mockReturnValue(vi.fn()),
       onComplete: mockScannerOnComplete,
       onError: vi.fn().mockReturnValue(vi.fn()),
     },

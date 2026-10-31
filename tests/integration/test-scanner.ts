@@ -245,6 +245,11 @@ async function runTest(): Promise<void> {
     console.log(
       '  Note: This will simulate 72 frames with rotation and capture'
     );
+    let scanOutput = '';
+    const collectScanOutput = (data: Buffer) => {
+      scanOutput += data.toString();
+    };
+    pythonProcess.stdout.on('data', collectScanOutput);
     const scanResult = await sendCommand(
       pythonProcess,
       {
@@ -253,6 +258,7 @@ async function runTest(): Promise<void> {
       },
       180000 // 3 minutes - scan operations can take longer on slow CI machines
     );
+    pythonProcess.stdout.off('data', collectScanOutput);
 
     if (!scanResult.success || !scanResult.data) {
       throw new Error(`Scan failed: ${scanResult.error}`);
@@ -269,6 +275,16 @@ async function runTest(): Promise<void> {
     }
     if (scanData.frames_captured !== 72) {
       throw new Error(`Expected 72 frames, got ${scanData.frames_captured}`);
+    }
+    const progressLines = scanOutput.match(/^PROGRESS:/gm)?.length ?? 0;
+    if (progressLines !== 72) {
+      throw new Error(`Expected 72 progress lines, got ${progressLines}`);
+    }
+    // At most one per frame: a picture is skipped if output is backed up.
+    const pictures =
+      scanOutput.match(/^FRAME:data:image\/jpeg;base64,/gm)?.length ?? 0;
+    if (pictures < 1 || pictures > 72) {
+      throw new Error(`Expected up to 72 frame pictures, got ${pictures}`);
     }
     console.log('[PASS] Scan completed successfully');
     console.log(`  - Frames captured: ${scanData.frames_captured}/72`);

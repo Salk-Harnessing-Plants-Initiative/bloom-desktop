@@ -20,14 +20,19 @@ from PIL import Image
 from pypylon import pylon
 
 try:
-    from .camera_types import CameraSettings
+    from .camera_types import CameraSettings, FrameNotArrivedError
 except ImportError:
-    from camera_types import CameraSettings  # type: ignore[no-redef]
+    from camera_types import CameraSettings, FrameNotArrivedError  # type: ignore[no-redef]
 
 try:
     from protocol_io import write_line  # type: ignore[import-not-found]
 except ImportError:
     from python.protocol_io import write_line  # Development/test path
+
+
+# Triggered capture
+TRIGGER_READY_TIMEOUT_MS = 1000  # How long a trigger waits for the camera to be ready
+TRIGGERED_RETRIEVE_TIMEOUT_MS = 1000  # How long to wait for each triggered frame
 
 
 class Camera:
@@ -142,6 +147,76 @@ class Camera:
         finally:
             if self.camera.IsGrabbing():
                 self.camera.StopGrabbing()
+
+    def start_triggered_capture(self, num_frames: int) -> None:
+        """Get ready to take frames on trigger, held by the camera driver until collected.
+
+        As in the pilot app, so a scan doesn't wait for each frame between turntable moves.
+
+        Args:
+            num_frames: How many frames will be triggered
+
+        Raises:
+            RuntimeError: If camera is not open
+        """
+        if not self.is_open or not self.camera:
+            raise RuntimeError("Camera is not open")
+
+        # Frames wait in buffers until collected, and the default is only 10.
+        self.camera.MaxNumBuffer.Value = num_frames
+        self.camera.TriggerSelector.Value = "FrameStart"
+        self.camera.TriggerMode.Value = "On"
+        self.camera.TriggerSource.Value = "Software"
+        self.camera.StartGrabbing(pylon.GrabStrategy_OneByOne)
+
+    def trigger_frame(self) -> None:
+        """Take a frame now. It's collected by retrieve_next_frame.
+
+        Raises:
+            RuntimeError: If capture hasn't started, or the camera isn't ready in time
+        """
+        if not self.camera or not self.camera.IsGrabbing():
+            raise RuntimeError("Triggered capture has not started")
+
+        self.camera.WaitForFrameTriggerReady(
+            TRIGGER_READY_TIMEOUT_MS, pylon.TimeoutHandling_ThrowException
+        )
+        self.camera.ExecuteSoftwareTrigger()
+
+    def retrieve_next_frame(self) -> Optional[np.ndarray]:
+        """Collect the oldest triggered frame not yet collected.
+
+        Call only after triggering it: the wait is for this frame, not for the next move.
+
+        Returns:
+            Its image, or None if the frame arrived marked as failed
+
+        Raises:
+            FrameNotArrivedError: If the frame didn't arrive in time
+        """
+        if not self.camera:
+            raise RuntimeError("Camera is not open")
+
+        try:
+            grab_result = self.camera.RetrieveResult(
+                TRIGGERED_RETRIEVE_TIMEOUT_MS, pylon.TimeoutHandling_ThrowException
+            )
+        except Exception as e:
+            raise FrameNotArrivedError(str(e)) from e
+        try:
+            return grab_result.Array.copy() if grab_result.GrabSucceeded() else None
+        finally:
+            grab_result.Release()
+
+    def stop_triggered_capture(self) -> None:
+        """Stop triggered capture, and leave the camera free-running for the preview."""
+        if not self.camera:
+            return
+        try:
+            if self.camera.IsGrabbing():
+                self.camera.StopGrabbing()
+        finally:
+            self.camera.TriggerMode.Value = "Off"
 
     def grab_frames(self, num_frames: Optional[int] = None) -> List[np.ndarray]:
         """Grab multiple frames from the camera.

@@ -66,7 +66,7 @@ function setup(options: { python?: boolean } = {}) {
     }),
   };
 
-  registerScannerHandlers({
+  const registered = registerScannerHandlers({
     ipcMain: ipcMain as never,
     getPythonProcess: () =>
       options.python === false ? null : ({} as PythonProcess),
@@ -82,7 +82,7 @@ function setup(options: { python?: boolean } = {}) {
     if (!handler) throw new Error(`No handler for ${channel}`);
     return handler({}, ...args);
   };
-  return { invoke, calls, scanner, preview, window, idleTimer };
+  return { invoke, calls, scanner, preview, window, idleTimer, registered };
 }
 
 // Lets an event's async listener finish.
@@ -155,6 +155,18 @@ describe('scanner handlers: the camera handoff', () => {
     expect(window.webContents.send).not.toHaveBeenCalled();
   });
 
+  it("forwards each frame's picture to the page", async () => {
+    const { invoke, scanner, window } = setup();
+    await invoke('scanner:initialize', SETTINGS);
+
+    scanner.emit('frame', 'data:image/jpeg;base64,AAAA');
+
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      'scanner:frame',
+      'data:image/jpeg;base64,AAAA'
+    );
+  });
+
   it('forwards progress to the page', async () => {
     const { invoke, scanner, window } = setup();
     await invoke('scanner:initialize', SETTINGS);
@@ -170,6 +182,23 @@ describe('scanner handlers: the camera handoff', () => {
 });
 
 describe('scanner handlers: scanner:scan', () => {
+  it('reports a scan in progress only while it runs', async () => {
+    const { invoke, scanner, registered } = setup();
+    await invoke('scanner:initialize', SETTINGS);
+    let finish: (result: unknown) => void = () => undefined;
+    scanner.scan.mockReturnValueOnce(
+      new Promise((resolve) => (finish = resolve)) as never
+    );
+    expect(registered.isScanInProgress()).toBe(false);
+
+    const scan = invoke('scanner:scan');
+    expect(registered.isScanInProgress()).toBe(true);
+
+    finish({ success: true, frames_captured: 72, output_path: '/scans/a' });
+    await scan;
+    expect(registered.isScanInProgress()).toBe(false);
+  });
+
   it('pauses the idle clock for the scan, then resumes it and closes the camera', async () => {
     const { invoke, calls } = setup();
     await invoke('scanner:initialize', SETTINGS);

@@ -199,6 +199,14 @@ export interface ScannerAPI {
   onProgress: (callback: (progress: ScanProgress) => void) => () => void;
 
   /**
+   * Event listener for a picture of each frame as the scan takes it.
+   *
+   * @param callback - Function called with the picture, as a data URI
+   * @returns Cleanup function to remove the listener
+   */
+  onFrame: (callback: (dataUri: string) => void) => () => void;
+
+  /**
    * Event listener for scan completion.
    *
    * @param callback - Function called when scan completes

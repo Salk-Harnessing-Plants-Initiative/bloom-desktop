@@ -175,6 +175,11 @@ const scannerAPI: ScannerAPI = {
     // Return cleanup function to remove listener
     return () => ipcRenderer.removeListener('scanner:progress', listener);
   },
+  onFrame: (callback: (dataUri: string) => void) => {
+    const listener = (_event: unknown, dataUri: string) => callback(dataUri);
+    ipcRenderer.on('scanner:frame', listener);
+    return () => ipcRenderer.removeListener('scanner:frame', listener);
+  },
   onComplete: (callback: (result: ScanResult) => void) => {
     const listener = (_event: unknown, result: ScanResult) => callback(result);
     ipcRenderer.on('scanner:complete', listener);

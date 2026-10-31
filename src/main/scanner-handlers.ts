@@ -31,6 +31,7 @@ export interface ScannerHandlersDeps {
 
 export function registerScannerHandlers(deps: ScannerHandlersDeps) {
   let scannerProcess: ScannerProcess | null = null;
+  let scanInProgress = false;
 
   const cameraHandoff = createCameraHandoff({
     getPreview: deps.getPreview,
@@ -58,6 +59,7 @@ export function registerScannerHandlers(deps: ScannerHandlersDeps) {
     scanner.on('progress', (progress) =>
       sendToPage('scanner:progress', progress)
     );
+    scanner.on('frame', (dataUri) => sendToPage('scanner:frame', dataUri));
     scanner.on('complete', async (result) => {
       // Before the page hears of it, as it then starts the preview again.
       await cameraHandoff.releaseFromScanner();
@@ -127,6 +129,7 @@ export function registerScannerHandlers(deps: ScannerHandlersDeps) {
       return { success: false, frames_captured: 0, output_path: '', error };
     }
     deps.getIdleTimer()?.pauseForScan();
+    scanInProgress = true;
     try {
       return await scannerProcess.scan();
     } catch (error) {
@@ -138,6 +141,7 @@ export function registerScannerHandlers(deps: ScannerHandlersDeps) {
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     } finally {
+      scanInProgress = false;
       // Resume first: a stuck cleanup mustn't hold the idle clock. And release here too,
       // as a scan that was cancelled sends neither 'complete' nor 'error'.
       deps.getIdleTimer()?.resumeAfterScan();
@@ -168,4 +172,6 @@ export function registerScannerHandlers(deps: ScannerHandlersDeps) {
       };
     }
   });
+
+  return { isScanInProgress: () => scanInProgress };
 }

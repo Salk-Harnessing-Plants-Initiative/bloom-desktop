@@ -21,11 +21,11 @@ The Scanner coordinates **Camera** and **DAQ** hardware to perform automated cyl
 2. **Home**: Move turntable to 0° starting position
 3. **Scan Loop**: For each frame (default 72 frames for 360°):
    - Rotate turntable by calculated degrees (e.g., 5° per frame)
-   - Wait for stabilization (50ms)
-   - Capture image with camera
-   - Report progress
+   - Trigger the camera, and hold still for the exposure
+   - Report progress, and send a small picture of the frame
 4. **Return Home**: Move turntable back to 0°
-5. **Cleanup**: Release camera and DAQ resources
+5. **Save**: Save all the frames together
+6. **Cleanup**: Release camera and DAQ resources
 
 The Scanner provides a **clean separation of concerns**:
 
@@ -302,9 +302,9 @@ The scan workflow:
 1. Homes turntable to 0°
 2. Loops through frames:
    - Rotates to position (degrees = frame × 360/num_frames)
-   - Waits 50ms for stabilization
-   - Captures image
+   - Triggers the camera, and holds still for the exposure
 3. Returns to home position (0°)
+4. Saves all the frames together
 
 ### Get Status
 
@@ -366,9 +366,8 @@ For a 72-frame scan (default):
 
 With mock hardware (default settings):
 
-- **Rotation time per frame**: ~50ms (stabilization wait)
-- **Capture time per frame**: ~10ms (mock camera)
-- **Total scan time**: ~72 frames × 60ms = ~4.5 seconds
+- **Hold per frame**: the exposure time plus 5ms (15ms at the default 10ms exposure)
+- **Total scan time**: about 4-5 seconds, including saving the frames at the end
 
 With real hardware:
 

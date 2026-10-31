@@ -36,6 +36,7 @@ a = Analysis(
         'hardware.daq',
         'hardware.daq_mock',
         'hardware.daq_types',
+        'hardware.scan_preview',
         'hardware.scanner',
         'hardware.scanner_types',
         # Development/fallback import paths
@@ -46,6 +47,7 @@ a = Analysis(
         'python.hardware.daq',
         'python.hardware.daq_mock',
         'python.hardware.daq_types',
+        'python.hardware.scan_preview',
         'python.hardware.scanner',
         'python.hardware.scanner_types',
         # Shared, lock-protected stdout writer (#316) — ipc_handler.py and the
