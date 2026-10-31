@@ -817,7 +817,7 @@ const scannerHandlers = registerScannerHandlers({
 const QUIT_ANYWAY_BUTTON = 1;
 const scanQuitGuard = createScanQuitGuard({
   isScanInProgress: scannerHandlers.isScanInProgress,
-  askToQuit: () => {
+  askToQuit: async () => {
     const options = {
       type: 'warning' as const,
       title: 'Scan in progress',
@@ -828,12 +828,13 @@ const scanQuitGuard = createScanQuitGuard({
       defaultId: 0,
       cancelId: 0,
     };
-    const choice =
+    const { response } =
       mainWindow && !mainWindow.isDestroyed()
-        ? dialog.showMessageBoxSync(mainWindow, options)
-        : dialog.showMessageBoxSync(options);
-    return choice === QUIT_ANYWAY_BUTTON;
+        ? await dialog.showMessageBox(mainWindow, options)
+        : await dialog.showMessageBox(options);
+    return response === QUIT_ANYWAY_BUTTON;
   },
+  quit: () => app.quit(),
 });
 
 /**
