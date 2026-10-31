@@ -175,11 +175,8 @@ class Scanner:
             futures = []
             for frame_idx, image in enumerate(frames):
                 if image is None:
-                    print(
-                        f"WARNING:Frame {frame_idx + 1} capture failed",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                    # Not stderr: that rejects the scan before its result can arrive.
+                    write_line(f"STATUS:Frame {frame_idx + 1} capture failed")
                 else:
                     futures.append(executor.submit(save, frame_idx, image))
             for future in futures:
@@ -292,10 +289,8 @@ class Scanner:
                     f"STATUS:Scan completed successfully: {frames_captured}/{num_frames} frames"
                 )
             else:
-                print(
-                    f"WARNING:Scan completed with errors: {frames_captured}/{num_frames} frames",
-                    file=sys.stderr,
-                    flush=True,
+                write_line(
+                    f"STATUS:Scan completed with errors: {frames_captured}/{num_frames} frames"
                 )
 
             return ScanResult(

@@ -95,6 +95,19 @@ def test_a_failed_frame_keeps_the_others_in_their_places(scan, tmp_path, monkeyp
     assert names == ["001.png", "003.png", "004.png"]
 
 
+def test_a_failed_frame_writes_nothing_to_stderr(scan, capsys):
+    # The app rejects every pending command on any stderr output, which would lose the
+    # "Only N/M frames captured" result and the wait for the scanner's cleanup.
+    scan.camera.retrieve_triggered_frames = lambda n: [IMAGE, None, IMAGE, IMAGE]
+
+    scan.perform_scan()
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    assert "STATUS:Frame 2 capture failed" in captured.out
+    assert "STATUS:Scan completed with errors: 3/4 frames" in captured.out
+
+
 def test_a_failed_move_stops_capture_and_saves_nothing(scan, tmp_path):
     scan.camera.stop_triggered_capture = MagicMock()
     scan.daq.rotate = MagicMock(side_effect=[True, RuntimeError("Motor fault")])
