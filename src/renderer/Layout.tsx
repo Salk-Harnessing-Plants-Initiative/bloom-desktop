@@ -386,7 +386,7 @@ export function Layout({ mode = null }: LayoutProps) {
   const guardNavigation = (): boolean => {
     if (blockNavigation) {
       window.alert(
-        'An import is still in progress. Please wait for it to finish before navigating away.'
+        'A scan or import is still in progress. Please wait for it to finish before navigating away.'
       );
       return false;
     }
