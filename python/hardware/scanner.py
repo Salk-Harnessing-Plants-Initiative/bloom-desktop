@@ -6,28 +6,46 @@ Coordinates camera and DAQ for automated cylinder scanning workflow.
 
 import os
 import sys
+import queue
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import imageio.v2 as iio
+import numpy as np
 
 from .camera import Camera
 from .camera_mock import MockCamera
+from .camera_types import FrameNotArrivedError
 from .daq import DAQ
 from .daq_mock import MockDAQ
+from .scan_preview import frame_preview_data_uri
 from .scanner_types import ScannerSettings, ScanResult
 
 try:
-    from protocol_io import write_line  # type: ignore[import-not-found]
+    from protocol_io import (  # type: ignore[import-not-found]
+        background_writes,
+        write_line,
+        writes_backed_up,
+    )
 except ImportError:
-    from python.protocol_io import write_line  # Development/test path
+    from python.protocol_io import (  # Development/test path
+        background_writes,
+        write_line,
+        writes_backed_up,
+    )
 
 MICROSECONDS_PER_SECOND = 1_000_000
 EXPOSURE_MARGIN_SECONDS = 0.005  # Allowed on top of the exposure before the next move
+COLLECTOR_THREAD_NAME = "scan-frame-collector"
 FRAME_SAVE_WORKERS = 8  # How many frames are saved at once at the end of a scan
+
+
+def _one_line(error: Exception) -> str:
+    """An error's text on one line, as the output protocol is line based."""
+    return " ".join(str(error).split())
 
 
 class Scanner:
@@ -38,11 +56,11 @@ class Scanner:
     2. Home the turntable to 0°
     3. For each frame:
        - Rotate to next position
-       - Wait for stabilization
-       - Capture image
+       - Trigger the frame, and hold still for its exposure
        - Report progress
     4. Return turntable to home
-    5. Cleanup resources
+    5. Save the frames
+    6. Cleanup resources
 
     Uses mock hardware when BLOOM_USE_MOCK_HARDWARE=true (default).
     """
@@ -151,6 +169,56 @@ class Scanner:
         self.is_initialized = False
         write_line("STATUS:Scanner cleanup complete")
 
+    @staticmethod
+    def _collect_frames(
+        camera: Union[Camera, MockCamera],
+        triggered: "queue.Queue[Optional[int]]",
+        frames: List[Optional[np.ndarray]],
+        on_preview: Optional[Callable[[str], None]],
+    ) -> None:
+        """Collect each triggered frame, and send its picture to the page.
+
+        Runs on a background thread, until it's told there are no more frames.
+
+        Args:
+            camera: The camera to collect from
+            triggered: The frame numbers as they're triggered, then None
+            frames: Where each collected frame goes
+            on_preview: Optional callback receiving each frame's picture, unless
+                output is backed up
+        """
+        positions_known = True
+        while (frame_idx := triggered.get()) is not None:
+            if not positions_known:
+                continue
+            try:
+                image = camera.retrieve_next_frame()
+            except FrameNotArrivedError as e:
+                # Frames are placed by arrival order, so nothing shows which one is
+                # missing or which angle the others belong to. Trust none of them, and
+                # don't wait for the rest: they're likely not coming either.
+                positions_known = False
+                frames[:] = [None] * len(frames)
+                write_line(
+                    f"STATUS:A frame didn't arrive, so positions are unknown: {_one_line(e)}"
+                )
+                continue
+            except Exception as e:
+                # This frame's slot was used, so the others keep their places.
+                write_line(
+                    f"STATUS:Couldn't collect frame {frame_idx + 1}: {_one_line(e)}"
+                )
+                continue
+            frames[frame_idx] = image
+            # A picture is the one thing a scan can do without if the app falls behind.
+            if image is None or on_preview is None or writes_backed_up():
+                continue
+            try:
+                on_preview(frame_preview_data_uri(image))
+            except Exception as e:
+                # Only a picture on the page, so it must never fail the scan.
+                write_line(f"STATUS:Couldn't send a scan preview: {_one_line(e)}")
+
     def _save_frames(self, frames: list, output_dir: Path) -> int:
         """Save the scan's frames in parallel, named by their position in the scan.
 
@@ -185,7 +253,9 @@ class Scanner:
         return saved
 
     def perform_scan(
-        self, on_frame: Optional[Callable[[int, float], None]] = None
+        self,
+        on_frame: Optional[Callable[[int, float], None]] = None,
+        on_preview: Optional[Callable[[str], None]] = None,
     ) -> ScanResult:
         """Perform a complete scan of the cylinder.
 
@@ -195,12 +265,16 @@ class Scanner:
            - Rotate to position
            - Trigger the frame, and hold still for its exposure
            - Call progress callback
+           - In the background, collect the frame and send its picture
         3. Save the frames, all together
         4. Return to home position
 
         Args:
             on_frame: Optional callback function called after each frame is taken.
                      Receives (frame_number, position_degrees).
+            on_preview: Optional callback function called from a background thread
+                     with a small picture of each frame, as a data URI. Pictures are
+                     skipped if the app is slow to read them.
 
         Returns:
             ScanResult with success status, frames captured, and output path
@@ -246,40 +320,55 @@ class Scanner:
             self.daq.home()
             write_line("STATUS:Turntable homed to 0°")
 
-            # Take the frames without stopping to fetch or save them, so the turntable keeps
-            # going as it does in the pilot app. Each frame is held by the camera driver.
+            # Take the frames without stopping to save them, so the turntable keeps going
+            # as it does in the pilot app. A background thread collects each frame, and
+            # sends its picture to the page, so that doesn't hold up the moves either.
             hold_seconds = (
                 self.settings.camera.exposure_time / MICROSECONDS_PER_SECOND
                 + EXPOSURE_MARGIN_SECONDS
             )
+            frames: List[Optional[np.ndarray]] = [None] * num_frames
+            triggered: "queue.Queue[Optional[int]]" = queue.Queue()
+            collector = threading.Thread(
+                target=self._collect_frames,
+                args=(self.camera, triggered, frames, on_preview),
+                name=COLLECTOR_THREAD_NAME,
+                daemon=True,
+            )
             self.camera.start_triggered_capture(num_frames)
-            try:
-                for frame_idx in range(num_frames):
-                    # Rotate to next position
-                    self.daq.rotate(degrees_per_frame)
-
-                    # Get current position
-                    position = self.daq.get_position()
-
-                    # Capture image, holding still for the exposure so it isn't blurred
-                    write_line(
-                        f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°"
-                    )
-                    self.camera.trigger_frame()
-                    time.sleep(hold_seconds)
-
-                    # Call progress callback if provided
-                    if on_frame is not None:
-                        on_frame(frame_idx, position)
-
-                frames = self.camera.retrieve_triggered_frames(num_frames)
-            finally:
-                # Saving doesn't need the camera, and an error here mustn't replace the
-                # reason a scan failed.
+            collector.start()
+            # Nothing in the turn waits for the app to read our output.
+            with background_writes():
                 try:
-                    self.camera.stop_triggered_capture()
-                except Exception as e:
-                    write_line(f"STATUS:Couldn't stop triggered capture: {e}")
+                    for frame_idx in range(num_frames):
+                        # Rotate to next position
+                        self.daq.rotate(degrees_per_frame)
+
+                        # Get current position
+                        position = self.daq.get_position()
+
+                        # Capture image, holding still for the exposure so it isn't blurred
+                        write_line(
+                            f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°"
+                        )
+                        self.camera.trigger_frame()
+                        triggered.put(frame_idx)
+                        time.sleep(hold_seconds)
+
+                        # Call progress callback if provided
+                        if on_frame is not None:
+                            on_frame(frame_idx, position)
+                finally:
+                    triggered.put(None)
+                    collector.join()
+                    # Saving doesn't need the camera, and an error here mustn't replace
+                    # the reason a scan failed.
+                    try:
+                        self.camera.stop_triggered_capture()
+                    except Exception as e:
+                        write_line(
+                            f"STATUS:Couldn't stop triggered capture: {_one_line(e)}"
+                        )
 
             # Save first, so a failed return home can't cost the frames
             frames_captured = self._save_frames(frames, output_dir)

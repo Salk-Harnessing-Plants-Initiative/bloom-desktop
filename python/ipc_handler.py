@@ -11,7 +11,8 @@ Protocol:
     - STATUS:<message> - Status updates
     - ERROR:<message> - Error messages
     - DATA:<json> - JSON data responses
-    - FRAME:<base64_data_uri> - Streaming frame data (base64-encoded JPEG)
+    - FRAME:<base64_data_uri> - Frame data (base64-encoded JPEG), from the preview or a scan
+    - PROGRESS:<json> - A scan's progress after each frame
 """
 
 import base64
@@ -862,7 +863,9 @@ def handle_scanner_command(cmd: Dict[str, Any]) -> None:
                 }
                 write_line(f"PROGRESS:{json.dumps(progress)}")
 
-            result = _scanner_instance.perform_scan(on_frame=report_progress)
+            result = _scanner_instance.perform_scan(
+                on_frame=report_progress, on_preview=send_frame
+            )
 
             send_data(
                 {

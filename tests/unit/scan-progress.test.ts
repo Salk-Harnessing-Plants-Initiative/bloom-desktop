@@ -11,6 +11,29 @@ vi.mock('../../src/main/database', () => ({ getDatabase: vi.fn() }));
 const parseLine = (process: PythonProcess, line: string) =>
   (process as unknown as { parseLine(l: string): void }).parseLine(line);
 
+describe("a scan's frames", () => {
+  it('reads a FRAME line into a frame event', () => {
+    const process = new PythonProcess('python', []);
+    const frame = vi.fn();
+    process.on('frame', frame);
+
+    parseLine(process, 'FRAME:data:image/jpeg;base64,AAAA');
+
+    expect(frame).toHaveBeenCalledWith('data:image/jpeg;base64,AAAA');
+  });
+
+  it('passes them on from the Python process', () => {
+    const python = new EventEmitter();
+    const scanner = new ScannerProcess(python as unknown as PythonProcess);
+    const frame = vi.fn();
+    scanner.on('frame', frame);
+
+    python.emit('frame', 'data:image/jpeg;base64,AAAA');
+
+    expect(frame).toHaveBeenCalledWith('data:image/jpeg;base64,AAAA');
+  });
+});
+
 describe('scan progress', () => {
   it('reads a PROGRESS line into a progress event', () => {
     const process = new PythonProcess('python', []);

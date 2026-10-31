@@ -11,6 +11,7 @@
  *     - ERROR:<message> - Error messages
  *     - DATA:<json> - JSON data responses
  *     - PROGRESS:<json> - A scan's progress after each frame
+ *     - FRAME:<data uri> - A picture of a scan's frame
  *     - IMAGE:data:image/jpeg;base64,<base64> - Base64-encoded images (future use)
  */
 
@@ -364,6 +365,8 @@ export class PythonProcess extends EventEmitter {
       } catch {
         console.warn(`[Python] Ignoring an unreadable progress line: ${line}`);
       }
+    } else if (line.startsWith('FRAME:')) {
+      this.emit('frame', line.substring(6));
     } else if (line.startsWith('DATA:')) {
       const jsonStr = line.substring(5);
       try {

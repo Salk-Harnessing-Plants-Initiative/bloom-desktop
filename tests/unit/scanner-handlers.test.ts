@@ -155,6 +155,18 @@ describe('scanner handlers: the camera handoff', () => {
     expect(window.webContents.send).not.toHaveBeenCalled();
   });
 
+  it("forwards each frame's picture to the page", async () => {
+    const { invoke, scanner, window } = setup();
+    await invoke('scanner:initialize', SETTINGS);
+
+    scanner.emit('frame', 'data:image/jpeg;base64,AAAA');
+
+    expect(window.webContents.send).toHaveBeenCalledWith(
+      'scanner:frame',
+      'data:image/jpeg;base64,AAAA'
+    );
+  });
+
   it('forwards progress to the page', async () => {
     const { invoke, scanner, window } = setup();
     await invoke('scanner:initialize', SETTINGS);

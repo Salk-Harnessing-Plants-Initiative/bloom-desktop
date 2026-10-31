@@ -21,9 +21,9 @@ import numpy as np
 from PIL import Image
 
 try:
-    from .camera_types import CameraSettings
+    from .camera_types import CameraSettings, FrameNotArrivedError
 except ImportError:
-    from camera_types import CameraSettings  # type: ignore[no-redef]
+    from camera_types import CameraSettings, FrameNotArrivedError  # type: ignore[no-redef]
 
 try:
     from protocol_io import write_line  # type: ignore[import-not-found]
@@ -79,6 +79,7 @@ class MockCamera:
         self.settings = settings
         self.is_open = False
         self._lock_file: Optional[TextIO] = None
+        self._triggered_frames: List[Optional[np.ndarray]] = []
         self.test_images = self._load_test_images()
 
     def _load_test_images(self) -> List[np.ndarray]:
@@ -225,25 +226,24 @@ class MockCamera:
         """
         if not self.is_open:
             raise RuntimeError("Camera is not open")
-        self._triggered_frames: List[Optional[np.ndarray]] = []
+        self._triggered_frames = []
 
     def trigger_frame(self) -> None:
-        """Take a frame now. It's collected later by retrieve_triggered_frames."""
+        """Take a frame now. It's collected by retrieve_next_frame."""
         self._triggered_frames.append(self.grab_frame())
 
-    def retrieve_triggered_frames(self, num_frames: int) -> List[Optional[np.ndarray]]:
-        """Collect the triggered frames, in the order they were triggered.
-
-        Args:
-            num_frames: How many frames were triggered
+    def retrieve_next_frame(self) -> Optional[np.ndarray]:
+        """Collect the oldest triggered frame not yet collected.
 
         Returns:
-            One entry per frame: its image, or None if that frame failed. If fewer
-            frames arrive than were triggered, every entry is None, as on the real camera.
+            Its image, or None if the frame arrived marked as failed
+
+        Raises:
+            FrameNotArrivedError: If there's no frame to collect
         """
-        frames = self._triggered_frames[:num_frames]
-        self._triggered_frames = []
-        return frames if len(frames) == num_frames else [None] * num_frames
+        if not self._triggered_frames:
+            raise FrameNotArrivedError("No frame to collect")
+        return self._triggered_frames.pop(0)
 
     def stop_triggered_capture(self) -> None:
         """Stop triggered capture."""

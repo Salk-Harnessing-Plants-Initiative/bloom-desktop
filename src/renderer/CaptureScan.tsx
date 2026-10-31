@@ -85,6 +85,7 @@ export function CaptureScan() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   // Set when images were captured but the DB save failed (#392)
   const [unsavedScan, setUnsavedScan] = useState<UnsavedScan | null>(null);
+  const [scanFrame, setScanFrame] = useState<string | null>(null);
   // Stays until dismissed or the next scan starts: a failed scan has no row for the
   // duplicate check to flag, so this is the only sign that the plant needs a rescan.
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -474,12 +475,14 @@ export function CaptureScan() {
 
     // Register listeners and get cleanup functions
     const cleanupProgress = window.electron.scanner.onProgress(handleProgress);
+    const cleanupFrame = window.electron.scanner.onFrame(setScanFrame);
     const cleanupComplete = window.electron.scanner.onComplete(handleComplete);
     const cleanupError = window.electron.scanner.onError(handleError);
 
     // Cleanup function removes all listeners
     return () => {
       cleanupProgress();
+      cleanupFrame();
       cleanupComplete();
       cleanupError();
     };
@@ -549,6 +552,7 @@ export function CaptureScan() {
     try {
       setIsScanning(true);
       setScanProgress(null);
+      setScanFrame(null);
       setErrorMessage(null);
       setUnsavedScan(null);
       setShowIdleResetBanner(false);
@@ -927,11 +931,36 @@ export function CaptureScan() {
                   </p>
                 </div>
               ) : isScanning && scanProgress ? (
-                <ScanProgress
-                  currentFrame={scanProgress.frame_number}
-                  totalFrames={scanProgress.total_frames}
-                  saving={isSaving}
-                />
+                <div className="space-y-4">
+                  {!isSaving && (
+                    <div
+                      className="flex items-center gap-2 text-sm font-semibold text-red-600"
+                      role="status"
+                      data-testid="scan-recording"
+                    >
+                      <span
+                        className="h-3 w-3 animate-pulse rounded-full bg-red-600"
+                        aria-hidden="true"
+                      />
+                      Recording in progress
+                    </div>
+                  )}
+                  <ScanProgress
+                    currentFrame={scanProgress.frame_number}
+                    totalFrames={scanProgress.total_frames}
+                    saving={isSaving}
+                  />
+                  {/* The scanner's own frames: the preview can't run during a scan. */}
+                  {scanFrame && (
+                    <img
+                      src={scanFrame}
+                      alt="The frame just taken"
+                      className="rounded-lg bg-black"
+                      style={{ width: 800, maxWidth: '100%' }}
+                      data-testid="scan-live-frame"
+                    />
+                  )}
+                </div>
               ) : cameraConfigured ? (
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">

@@ -59,6 +59,7 @@ export function registerScannerHandlers(deps: ScannerHandlersDeps) {
     scanner.on('progress', (progress) =>
       sendToPage('scanner:progress', progress)
     );
+    scanner.on('frame', (dataUri) => sendToPage('scanner:frame', dataUri));
     scanner.on('complete', async (result) => {
       // Before the page hears of it, as it then starts the preview again.
       await cameraHandoff.releaseFromScanner();
