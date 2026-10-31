@@ -38,7 +38,7 @@ export class ScannerProcess extends EventEmitter {
     super();
     this.pythonProcess = pythonProcess;
 
-    // Python reports each frame as it's saved.
+    // Python reports each frame as it's taken.
     this.pythonProcess.on('progress', (progress: ScanProgress) => {
       this.emit('progress', progress);
     });
@@ -118,8 +118,8 @@ export class ScannerProcess extends EventEmitter {
    *
    * This executes the full scanning workflow:
    * 1. Home turntable to 0°
-   * 2. For each frame: rotate, stabilize, capture
-   * 3. Return to home position
+   * 2. For each frame: rotate, trigger the camera
+   * 3. Return to home position, and save the frames
    * 4. Save to database (if metadata provided)
    *
    * @returns Promise resolving to scan result (includes scan_id if saved to database)

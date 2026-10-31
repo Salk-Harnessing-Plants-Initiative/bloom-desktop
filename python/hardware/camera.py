@@ -20,9 +20,9 @@ from PIL import Image
 from pypylon import pylon
 
 try:
-    from .camera_types import CameraSettings
+    from .camera_types import CameraSettings, FrameNotArrivedError
 except ImportError:
-    from camera_types import CameraSettings  # type: ignore[no-redef]
+    from camera_types import CameraSettings, FrameNotArrivedError  # type: ignore[no-redef]
 
 try:
     from protocol_io import write_line  # type: ignore[import-not-found]
@@ -189,7 +189,10 @@ class Camera:
         Call only after triggering it: the wait is for this frame, not for the next move.
 
         Returns:
-            Its image, or None if the frame failed or didn't arrive
+            Its image, or None if the frame arrived marked as failed
+
+        Raises:
+            FrameNotArrivedError: If the frame didn't arrive in time
         """
         if not self.camera:
             raise RuntimeError("Camera is not open")
@@ -198,8 +201,8 @@ class Camera:
             grab_result = self.camera.RetrieveResult(
                 TRIGGERED_RETRIEVE_TIMEOUT_MS, pylon.TimeoutHandling_ThrowException
             )
-        except Exception:
-            return None
+        except Exception as e:
+            raise FrameNotArrivedError(str(e)) from e
         try:
             return grab_result.Array.copy() if grab_result.GrabSucceeded() else None
         finally:

@@ -21,9 +21,9 @@ import numpy as np
 from PIL import Image
 
 try:
-    from .camera_types import CameraSettings
+    from .camera_types import CameraSettings, FrameNotArrivedError
 except ImportError:
-    from camera_types import CameraSettings  # type: ignore[no-redef]
+    from camera_types import CameraSettings, FrameNotArrivedError  # type: ignore[no-redef]
 
 try:
     from protocol_io import write_line  # type: ignore[import-not-found]
@@ -79,6 +79,7 @@ class MockCamera:
         self.settings = settings
         self.is_open = False
         self._lock_file: Optional[TextIO] = None
+        self._triggered_frames: List[Optional[np.ndarray]] = []
         self.test_images = self._load_test_images()
 
     def _load_test_images(self) -> List[np.ndarray]:
@@ -225,7 +226,7 @@ class MockCamera:
         """
         if not self.is_open:
             raise RuntimeError("Camera is not open")
-        self._triggered_frames: List[Optional[np.ndarray]] = []
+        self._triggered_frames = []
 
     def trigger_frame(self) -> None:
         """Take a frame now. It's collected by retrieve_next_frame."""
@@ -235,9 +236,14 @@ class MockCamera:
         """Collect the oldest triggered frame not yet collected.
 
         Returns:
-            Its image, or None if the frame failed or didn't arrive
+            Its image, or None if the frame arrived marked as failed
+
+        Raises:
+            FrameNotArrivedError: If there's no frame to collect
         """
-        return self._triggered_frames.pop(0) if self._triggered_frames else None
+        if not self._triggered_frames:
+            raise FrameNotArrivedError("No frame to collect")
+        return self._triggered_frames.pop(0)
 
     def stop_triggered_capture(self) -> None:
         """Stop triggered capture."""

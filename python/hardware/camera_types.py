@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 
+class FrameNotArrivedError(Exception):
+    """A triggered frame didn't arrive, so the frames after it can't be placed."""
+
+
 @dataclass
 class CameraSettings:
     """Configuration settings for the Basler acA2000-50gm camera.

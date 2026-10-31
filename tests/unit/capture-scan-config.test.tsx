@@ -1544,6 +1544,28 @@ describe('CaptureScan and the camera', () => {
     expect(screen.queryByTestId('scan-live-frame')).not.toBeInTheDocument();
   });
 
+  it('stops listening for frames when the scan ends', async () => {
+    const stopListening = vi.fn();
+    mockScannerOnFrame.mockReturnValue(stopListening);
+    let finishScan: (result: unknown) => void = () => undefined;
+    mockScannerOnComplete.mockImplementation((cb) => {
+      finishScan = cb;
+      return () => {};
+    });
+
+    await fillFormAndStartScan();
+    expect(stopListening).not.toHaveBeenCalled();
+    await act(async () =>
+      finishScan({
+        success: true,
+        frames_captured: 36,
+        output_path: '/tmp/scan',
+      })
+    );
+
+    await waitFor(() => expect(stopListening).toHaveBeenCalled());
+  });
+
   it('shows "Frame 12 of 36" as the scan runs', async () => {
     let sendProgress: (progress: unknown) => void = () => undefined;
     mockScannerOnProgress.mockImplementation((cb) => {

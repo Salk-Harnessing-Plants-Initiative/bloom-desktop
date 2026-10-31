@@ -762,7 +762,7 @@ class TestScannerImagePersistence:
 
 
 class TestScanProgress:
-    """The scan command reports each frame as it's saved."""
+    """The scan command reports each frame as it's taken."""
 
     def test_scan_sends_a_progress_line_per_frame(self, monkeypatch):
         import json
@@ -778,6 +778,7 @@ class TestScanProgress:
 
             def perform_scan(self, on_frame=None, on_preview=None):
                 on_frame(0, 180.0)
+                on_preview("data:image/jpeg;base64,AAAA")
                 on_frame(1, 0.0)
 
                 class Result:
@@ -804,5 +805,6 @@ class TestScanProgress:
             {"frame_number": 0, "total_frames": 2, "position": 180.0},
             {"frame_number": 1, "total_frames": 2, "position": 0.0},
         ]
+        assert "FRAME:data:image/jpeg;base64,AAAA" in lines
         # The scan's response comes after, and progress isn't mistaken for it.
         assert lines[-1].startswith("DATA:")

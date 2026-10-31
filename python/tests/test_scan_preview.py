@@ -11,12 +11,13 @@ from PIL import Image
 import pytest
 
 from python.hardware.scan_preview import PREVIEW_MAX_SIZE_PX, frame_preview_data_uri
-from python.hardware.scanner import MockScanner
+from python.hardware.scanner import COLLECTOR_THREAD_NAME, MockScanner
 from python.hardware.scanner_types import ScannerSettings
 
+pytestmark = pytest.mark.timeout(30)
+
 NUM_FRAMES = 4
-FULL_SIZE = np.arange(1088 * 2048, dtype=np.uint32).reshape(1088, 2048) % 256
-FULL_SIZE = FULL_SIZE.astype(np.uint8)
+FULL_SIZE = (np.arange(1088 * 2048).reshape(1088, 2048) % 256).astype(np.uint8)
 
 
 def decode(data_uri):
@@ -73,7 +74,7 @@ def test_saved_images_stay_full_size(scanner, tmp_path):
     assert np.array_equal(saved, FULL_SIZE)
 
 
-def test_a_preview_failure_does_not_fail_the_scan(scanner):
+def test_a_preview_failure_does_not_fail_the_scan(scanner, capsys):
     def on_preview(data_uri):
         raise RuntimeError("Pipe\nbroken")
 
@@ -81,30 +82,28 @@ def test_a_preview_failure_does_not_fail_the_scan(scanner):
 
     assert result.success is True
     assert result.frames_captured == NUM_FRAMES
+    assert "Couldn't send a scan preview: Pipe broken" in capsys.readouterr().out
 
 
 def test_a_slow_preview_does_not_hold_up_the_moves(scanner):
     release = threading.Event()
-    triggers = []
-    real_trigger = scanner.camera.trigger_frame
+    finished = []
+    finished_by_last_frame = []
 
-    def trigger():
-        triggers.append(1)
-        real_trigger()
-
-    scanner.camera.trigger_frame = trigger
+    def on_preview(data_uri):
+        release.wait(5)
+        finished.append(data_uri)
 
     def on_frame(frame_idx, position):
         if frame_idx == NUM_FRAMES - 1:
-            # Every frame was taken while the first picture was still being sent.
-            assert len(triggers) == NUM_FRAMES
+            finished_by_last_frame.append(len(finished))
             release.set()
 
-    result = scanner.perform_scan(
-        on_frame=on_frame, on_preview=lambda data_uri: release.wait(5)
-    )
+    result = scanner.perform_scan(on_frame=on_frame, on_preview=on_preview)
 
     assert result.success is True
+    assert finished_by_last_frame == [0]
+    assert len(finished) == NUM_FRAMES
 
 
 def test_no_failed_frame_picture_is_sent(scanner):
@@ -123,9 +122,8 @@ def test_a_failed_move_still_ends_the_background_thread(scanner):
         raise RuntimeError("Motor fault")
 
     scanner.daq.rotate = fail
-    before = threading.active_count()
 
     result = scanner.perform_scan(on_preview=lambda data_uri: None)
 
     assert result.success is False
-    assert threading.active_count() == before
+    assert COLLECTOR_THREAD_NAME not in [t.name for t in threading.enumerate()]

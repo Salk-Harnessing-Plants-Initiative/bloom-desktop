@@ -1,8 +1,8 @@
 """Shared, lock-protected stdout writer for the Bloom hardware IPC protocol.
 
-`ipc_handler.py`'s main command-processing thread and the camera-streaming
-background thread (`streaming_worker()`) both write line-delimited protocol
-messages to the same `sys.stdout`. A `FRAME:` line's base64 payload can be
+`ipc_handler.py`'s main command-processing thread, the camera-streaming
+background thread (`streaming_worker()`) and a scan's frame collector thread all
+write line-delimited protocol messages to the same `sys.stdout`. A `FRAME:` line's base64 payload can be
 large enough to need multiple OS write() syscalls to flush, and CPython
 releases the GIL during each one — so, unsynchronized, a second thread's
 write can land in the gap between two of those syscalls and corrupt the

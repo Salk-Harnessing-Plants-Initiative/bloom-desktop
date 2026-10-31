@@ -18,6 +18,7 @@ import numpy as np
 
 from .camera import Camera
 from .camera_mock import MockCamera
+from .camera_types import FrameNotArrivedError
 from .daq import DAQ
 from .daq_mock import MockDAQ
 from .scan_preview import frame_preview_data_uri
@@ -30,7 +31,13 @@ except ImportError:
 
 MICROSECONDS_PER_SECOND = 1_000_000
 EXPOSURE_MARGIN_SECONDS = 0.005  # Allowed on top of the exposure before the next move
+COLLECTOR_THREAD_NAME = "scan-frame-collector"
 FRAME_SAVE_WORKERS = 8  # How many frames are saved at once at the end of a scan
+
+
+def _one_line(error: Exception) -> str:
+    """An error's text on one line, as the output protocol is line based."""
+    return " ".join(str(error).split())
 
 
 class Scanner:
@@ -41,11 +48,11 @@ class Scanner:
     2. Home the turntable to 0°
     3. For each frame:
        - Rotate to next position
-       - Wait for stabilization
-       - Capture image
+       - Trigger the frame, and hold still for its exposure
        - Report progress
     4. Return turntable to home
-    5. Cleanup resources
+    5. Save the frames
+    6. Cleanup resources
 
     Uses mock hardware when BLOOM_USE_MOCK_HARDWARE=true (default).
     """
@@ -154,8 +161,9 @@ class Scanner:
         self.is_initialized = False
         write_line("STATUS:Scanner cleanup complete")
 
+    @staticmethod
     def _collect_frames(
-        self,
+        camera: Union[Camera, MockCamera],
         triggered: "queue.Queue[Optional[int]]",
         frames: List[Optional[np.ndarray]],
         on_preview: Optional[Callable[[str], None]],
@@ -165,13 +173,33 @@ class Scanner:
         Runs on a background thread, until it's told there are no more frames.
 
         Args:
+            camera: The camera to collect from
             triggered: The frame numbers as they're triggered, then None
             frames: Where each collected frame goes
             on_preview: Optional callback receiving each frame's picture
         """
-        assert self.camera is not None
+        positions_known = True
         while (frame_idx := triggered.get()) is not None:
-            image = self.camera.retrieve_next_frame()
+            if not positions_known:
+                continue
+            try:
+                image = camera.retrieve_next_frame()
+            except FrameNotArrivedError as e:
+                # Frames are placed by arrival order, so nothing shows which one is
+                # missing or which angle the others belong to. Trust none of them, and
+                # don't wait for the rest: they're likely not coming either.
+                positions_known = False
+                frames[:] = [None] * len(frames)
+                write_line(
+                    f"STATUS:A frame didn't arrive, so positions are unknown: {_one_line(e)}"
+                )
+                continue
+            except Exception as e:
+                # This frame's slot was used, so the others keep their places.
+                write_line(
+                    f"STATUS:Couldn't collect frame {frame_idx + 1}: {_one_line(e)}"
+                )
+                continue
             frames[frame_idx] = image
             if image is None or on_preview is None:
                 continue
@@ -179,8 +207,7 @@ class Scanner:
                 on_preview(frame_preview_data_uri(image))
             except Exception as e:
                 # Only a picture on the page, so it must never fail the scan.
-                reason = " ".join(str(e).split())
-                write_line(f"STATUS:Couldn't send a scan preview: {reason}")
+                write_line(f"STATUS:Couldn't send a scan preview: {_one_line(e)}")
 
     def _save_frames(self, frames: list, output_dir: Path) -> int:
         """Save the scan's frames in parallel, named by their position in the scan.
@@ -206,11 +233,8 @@ class Scanner:
             futures = []
             for frame_idx, image in enumerate(frames):
                 if image is None:
-                    print(
-                        f"WARNING:Frame {frame_idx + 1} capture failed",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                    # Not stderr: that rejects the scan before its result can arrive.
+                    write_line(f"STATUS:Frame {frame_idx + 1} capture failed")
                 else:
                     futures.append(executor.submit(save, frame_idx, image))
             for future in futures:
@@ -296,7 +320,8 @@ class Scanner:
             triggered: "queue.Queue[Optional[int]]" = queue.Queue()
             collector = threading.Thread(
                 target=self._collect_frames,
-                args=(triggered, frames, on_preview),
+                args=(self.camera, triggered, frames, on_preview),
+                name=COLLECTOR_THREAD_NAME,
                 daemon=True,
             )
             self.camera.start_triggered_capture(num_frames)
@@ -338,10 +363,8 @@ class Scanner:
                     f"STATUS:Scan completed successfully: {frames_captured}/{num_frames} frames"
                 )
             else:
-                print(
-                    f"WARNING:Scan completed with errors: {frames_captured}/{num_frames} frames",
-                    file=sys.stderr,
-                    flush=True,
+                write_line(
+                    f"STATUS:Scan completed with errors: {frames_captured}/{num_frames} frames"
                 )
 
             return ScanResult(
