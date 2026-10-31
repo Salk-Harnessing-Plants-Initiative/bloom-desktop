@@ -20,6 +20,10 @@ import {
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { CaptureScan } from '../../src/renderer/CaptureScan';
+import {
+  UnsavedChangesProvider,
+  useUnsavedChanges,
+} from '../../src/renderer/contexts/UnsavedChangesContext';
 import { toIsoDate } from '../../src/utils/wave-dates';
 
 // Capture Scan loads the session, config, waves and plants in a chain, which can take
@@ -195,10 +199,18 @@ beforeEach(() => {
   vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-1234' });
 });
 
+function NavigationBlockProbe() {
+  const { blockNavigation } = useUnsavedChanges();
+  return <div data-testid="navigation-blocked">{String(blockNavigation)}</div>;
+}
+
 function renderCaptureScan() {
   return render(
     <MemoryRouter>
-      <CaptureScan />
+      <UnsavedChangesProvider>
+        <CaptureScan />
+        <NavigationBlockProbe />
+      </UnsavedChangesProvider>
     </MemoryRouter>
   );
 }
@@ -1489,6 +1501,78 @@ describe('CaptureScan and the camera', () => {
     expect(
       mockScannerInitialize.mock.calls[0][0].daq.steps_per_revolution
     ).toBe(28571);
+  });
+
+  it('shows it is saving after the last frame, and only then', async () => {
+    let sendProgress: (progress: unknown) => void = () => undefined;
+    mockScannerOnProgress.mockImplementation((cb) => {
+      sendProgress = cb;
+      return () => {};
+    });
+
+    await fillFormAndStartScan();
+    await act(async () =>
+      sendProgress({ frame_number: 34, total_frames: 36, position: 350 })
+    );
+    expect(screen.queryByText(/Saving the images/)).not.toBeInTheDocument();
+
+    await act(async () =>
+      sendProgress({ frame_number: 35, total_frames: 36, position: 360 })
+    );
+    expect(screen.getByText(/Saving the images/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled();
+  });
+
+  it('keeps a failed scan on screen until it is dismissed', async () => {
+    let finishScan: (result: unknown) => void = () => undefined;
+    mockScannerScan.mockReturnValueOnce(
+      new Promise((resolve) => (finishScan = resolve))
+    );
+    await fillFormAndStartScan();
+
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      await act(async () =>
+        finishScan({
+          success: false,
+          frames_captured: 71,
+          output_path: '',
+          error: 'Only 71/72 frames captured',
+        })
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(
+        screen.getByText('Only 71/72 frames captured')
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+      expect(
+        screen.queryByText('Only 71/72 frames captured')
+      ).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('blocks leaving the page until the scan has finished', async () => {
+    let finishScan: (result: unknown) => void = () => undefined;
+    mockScannerScan.mockReturnValueOnce(
+      new Promise((resolve) => (finishScan = resolve))
+    );
+
+    await fillFormAndStartScan();
+    expect(screen.getByTestId('navigation-blocked')).toHaveTextContent('true');
+
+    await act(async () =>
+      finishScan({ success: false, frames_captured: 0, output_path: '' })
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('navigation-blocked')).toHaveTextContent(
+        'false'
+      )
+    );
   });
 
   it('shows "Frame 12 of 36" as the scan runs', async () => {
