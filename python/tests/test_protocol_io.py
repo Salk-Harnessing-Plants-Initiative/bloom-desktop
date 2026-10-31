@@ -271,3 +271,47 @@ def test_write_line_releases_lock_on_exception(capsys, monkeypatch):
         t.start()
         t.join(timeout=2.0)
         assert done.is_set(), "write_line() did not release its lock after an exception"
+
+
+def test_background_writes_keep_order_and_finish_on_leaving(capsys):
+    with protocol_io.background_writes():
+        for n in range(50):
+            protocol_io.write_line(f"line {n}")
+    protocol_io.write_line("after")
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines == [f"line {n}" for n in range(50)] + ["after"]
+
+
+def test_writes_only_count_as_backed_up_when_waiting(monkeypatch):
+    assert protocol_io.writes_backed_up() is False
+
+    release = threading.Event()
+
+    class Stuck:
+        def write(self, text):
+            release.wait(10)
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(sys, "stdout", Stuck())
+    with protocol_io.background_writes():
+        for n in range(protocol_io.BACKED_UP_LINES + 2):
+            protocol_io.write_line(f"line {n}")
+        assert protocol_io.writes_backed_up() is True
+        release.set()
+    assert protocol_io.writes_backed_up() is False
+
+
+def test_background_writes_survive_a_dead_reader(monkeypatch):
+    class Dead:
+        def write(self, text):
+            raise BrokenPipeError()
+
+        def flush(self):
+            pass
+
+    monkeypatch.setattr(sys, "stdout", Dead())
+    with protocol_io.background_writes():
+        protocol_io.write_line("nobody is reading")

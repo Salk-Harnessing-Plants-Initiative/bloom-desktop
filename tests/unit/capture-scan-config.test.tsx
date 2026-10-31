@@ -1544,6 +1544,48 @@ describe('CaptureScan and the camera', () => {
     expect(screen.queryByTestId('scan-live-frame')).not.toBeInTheDocument();
   });
 
+  it('shows recording in progress, with the progress bar above the picture', async () => {
+    let sendProgress: (progress: unknown) => void = () => undefined;
+    mockScannerOnProgress.mockImplementation((cb) => {
+      sendProgress = cb;
+      return () => {};
+    });
+    let sendFrame: (dataUri: string) => void = () => undefined;
+    mockScannerOnFrame.mockImplementation((cb) => {
+      sendFrame = cb;
+      return () => {};
+    });
+    let finishScan: (result: unknown) => void = () => undefined;
+    mockScannerOnComplete.mockImplementation((cb) => {
+      finishScan = cb;
+      return () => {};
+    });
+
+    await fillFormAndStartScan();
+    await act(async () => {
+      sendProgress({ frame_number: 0, total_frames: 36, position: 10 });
+      sendFrame('data:image/jpeg;base64,FIRST');
+    });
+
+    const recording = screen.getByTestId('scan-recording');
+    expect(recording).toHaveTextContent('Recording in progress');
+    const count = screen.getByText(/Frame 1 of 36/);
+    const picture = screen.getByTestId('scan-live-frame');
+    expect(
+      recording.compareDocumentPosition(count) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      count.compareDocumentPosition(picture) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    await act(async () =>
+      finishScan({ success: true, frames_captured: 36, output_path: '/tmp/s' })
+    );
+
+    expect(screen.queryByTestId('scan-recording')).not.toBeInTheDocument();
+  });
+
   it('stops listening for frames when the scan ends', async () => {
     const stopListening = vi.fn();
     mockScannerOnFrame.mockReturnValue(stopListening);

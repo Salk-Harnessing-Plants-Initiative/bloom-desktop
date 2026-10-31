@@ -25,9 +25,17 @@ from .scan_preview import frame_preview_data_uri
 from .scanner_types import ScannerSettings, ScanResult
 
 try:
-    from protocol_io import write_line  # type: ignore[import-not-found]
+    from protocol_io import (  # type: ignore[import-not-found]
+        background_writes,
+        write_line,
+        writes_backed_up,
+    )
 except ImportError:
-    from python.protocol_io import write_line  # Development/test path
+    from python.protocol_io import (  # Development/test path
+        background_writes,
+        write_line,
+        writes_backed_up,
+    )
 
 MICROSECONDS_PER_SECOND = 1_000_000
 EXPOSURE_MARGIN_SECONDS = 0.005  # Allowed on top of the exposure before the next move
@@ -176,7 +184,8 @@ class Scanner:
             camera: The camera to collect from
             triggered: The frame numbers as they're triggered, then None
             frames: Where each collected frame goes
-            on_preview: Optional callback receiving each frame's picture
+            on_preview: Optional callback receiving each frame's picture, unless
+                output is backed up
         """
         positions_known = True
         while (frame_idx := triggered.get()) is not None:
@@ -201,7 +210,8 @@ class Scanner:
                 )
                 continue
             frames[frame_idx] = image
-            if image is None or on_preview is None:
+            # A picture is the one thing a scan can do without if the app falls behind.
+            if image is None or on_preview is None or writes_backed_up():
                 continue
             try:
                 on_preview(frame_preview_data_uri(image))
@@ -263,7 +273,8 @@ class Scanner:
             on_frame: Optional callback function called after each frame is taken.
                      Receives (frame_number, position_degrees).
             on_preview: Optional callback function called from a background thread
-                     with a small picture of each frame, as a data URI.
+                     with a small picture of each frame, as a data URI. Pictures are
+                     skipped if the app is slow to read them.
 
         Returns:
             ScanResult with success status, frames captured, and output path
@@ -326,29 +337,31 @@ class Scanner:
             )
             self.camera.start_triggered_capture(num_frames)
             collector.start()
-            try:
-                for frame_idx in range(num_frames):
-                    # Rotate to next position
-                    self.daq.rotate(degrees_per_frame)
+            # Nothing in the turn waits for the app to read our output.
+            with background_writes():
+                try:
+                    for frame_idx in range(num_frames):
+                        # Rotate to next position
+                        self.daq.rotate(degrees_per_frame)
 
-                    # Get current position
-                    position = self.daq.get_position()
+                        # Get current position
+                        position = self.daq.get_position()
 
-                    # Capture image, holding still for the exposure so it isn't blurred
-                    write_line(
-                        f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°"
-                    )
-                    self.camera.trigger_frame()
-                    triggered.put(frame_idx)
-                    time.sleep(hold_seconds)
+                        # Capture image, holding still for the exposure so it isn't blurred
+                        write_line(
+                            f"STATUS:Capturing frame {frame_idx + 1}/{num_frames} at {position:.2f}°"
+                        )
+                        self.camera.trigger_frame()
+                        triggered.put(frame_idx)
+                        time.sleep(hold_seconds)
 
-                    # Call progress callback if provided
-                    if on_frame is not None:
-                        on_frame(frame_idx, position)
-            finally:
-                triggered.put(None)
-                collector.join()
-                self.camera.stop_triggered_capture()
+                        # Call progress callback if provided
+                        if on_frame is not None:
+                            on_frame(frame_idx, position)
+                finally:
+                    triggered.put(None)
+                    collector.join()
+                    self.camera.stop_triggered_capture()
 
             # Return to home
             self.daq.home()

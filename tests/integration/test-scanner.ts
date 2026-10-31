@@ -276,14 +276,15 @@ async function runTest(): Promise<void> {
     if (scanData.frames_captured !== 72) {
       throw new Error(`Expected 72 frames, got ${scanData.frames_captured}`);
     }
-    for (const [kind, line] of [
-      ['progress', /^PROGRESS:/gm],
-      ['frame picture', /^FRAME:data:image\/jpeg;base64,/gm],
-    ] as const) {
-      const count = scanOutput.match(line)?.length ?? 0;
-      if (count !== 72) {
-        throw new Error(`Expected 72 ${kind} lines, got ${count}`);
-      }
+    const progressLines = scanOutput.match(/^PROGRESS:/gm)?.length ?? 0;
+    if (progressLines !== 72) {
+      throw new Error(`Expected 72 progress lines, got ${progressLines}`);
+    }
+    // At most one per frame: a picture is skipped if output is backed up.
+    const pictures =
+      scanOutput.match(/^FRAME:data:image\/jpeg;base64,/gm)?.length ?? 0;
+    if (pictures < 1 || pictures > 72) {
+      throw new Error(`Expected up to 72 frame pictures, got ${pictures}`);
     }
     console.log('[PASS] Scan completed successfully');
     console.log(`  - Frames captured: ${scanData.frames_captured}/72`);

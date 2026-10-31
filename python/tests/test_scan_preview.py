@@ -1,6 +1,7 @@
 """The page sees each frame during a scan, without that touching the scan or its images."""
 
 import base64
+import sys
 import threading
 from io import BytesIO
 from pathlib import Path
@@ -10,9 +11,11 @@ import numpy as np
 from PIL import Image
 import pytest
 
+from python.hardware import scanner as scanner_module
 from python.hardware.scan_preview import PREVIEW_MAX_SIZE_PX, frame_preview_data_uri
 from python.hardware.scanner import COLLECTOR_THREAD_NAME, MockScanner
 from python.hardware.scanner_types import ScannerSettings
+from python.protocol_io import write_line
 
 pytestmark = pytest.mark.timeout(30)
 
@@ -104,6 +107,65 @@ def test_a_slow_preview_does_not_hold_up_the_moves(scanner):
     assert result.success is True
     assert finished_by_last_frame == [0]
     assert len(finished) == NUM_FRAMES
+
+
+class StuckStdout:
+    """A reader that stops reading when told to, until released."""
+
+    def __init__(self):
+        self.stuck = False
+        self.release = threading.Event()
+        self.lines = []
+
+    def write(self, text):
+        if self.stuck:
+            self.release.wait(10)
+        self.lines.append(text)
+
+    def flush(self):
+        pass
+
+
+def test_a_stuck_reader_does_not_hold_up_the_moves(scanner, monkeypatch):
+    # As if the app stops reading its output once the turn has started.
+    stdout = StuckStdout()
+    written_at_start = []
+    written_by_last_frame = []
+
+    def rotate(degrees):
+        if not stdout.stuck:
+            stdout.stuck = True
+            written_at_start.append(len(stdout.lines))
+        return True
+
+    def on_frame(frame_idx, position):
+        write_line(f"PROGRESS:{frame_idx}")
+        if frame_idx == NUM_FRAMES - 1:
+            written_by_last_frame.append(len(stdout.lines))
+            stdout.release.set()
+
+    scanner.daq.rotate = rotate
+    monkeypatch.setattr(sys, "stdout", stdout)
+    result = scanner.perform_scan(on_frame=on_frame)
+    monkeypatch.undo()
+
+    assert result.success is True
+    # Every move and frame finished with nothing more written.
+    assert written_by_last_frame == written_at_start
+    # Nothing is lost, and order is kept, once the reader catches up.
+    written = "".join(stdout.lines)
+    positions = [written.index(f"PROGRESS:{n}") for n in range(NUM_FRAMES)]
+    assert positions == sorted(positions)
+
+
+def test_skips_pictures_when_output_is_backed_up(scanner, monkeypatch):
+    monkeypatch.setattr(scanner_module, "writes_backed_up", lambda: True)
+    pictures = []
+
+    result = scanner.perform_scan(on_preview=pictures.append)
+
+    assert pictures == []
+    assert result.frames_captured == NUM_FRAMES
 
 
 def test_no_failed_frame_picture_is_sent(scanner):

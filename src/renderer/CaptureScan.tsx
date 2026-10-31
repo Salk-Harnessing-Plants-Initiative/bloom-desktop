@@ -905,6 +905,21 @@ export function CaptureScan() {
                 </div>
               ) : isScanning && scanProgress ? (
                 <div className="space-y-4">
+                  <div
+                    className="flex items-center gap-2 text-sm font-semibold text-red-600"
+                    role="status"
+                    data-testid="scan-recording"
+                  >
+                    <span
+                      className="h-3 w-3 animate-pulse rounded-full bg-red-600"
+                      aria-hidden="true"
+                    />
+                    Recording in progress
+                  </div>
+                  <ScanProgress
+                    currentFrame={scanProgress.frame_number}
+                    totalFrames={scanProgress.total_frames}
+                  />
                   {/* The scanner's own frames: the preview can't run during a scan. */}
                   {scanFrame && (
                     <img
@@ -915,10 +930,6 @@ export function CaptureScan() {
                       data-testid="scan-live-frame"
                     />
                   )}
-                  <ScanProgress
-                    currentFrame={scanProgress.frame_number}
-                    totalFrames={scanProgress.total_frames}
-                  />
                 </div>
               ) : cameraConfigured ? (
                 <div>

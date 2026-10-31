@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Capture Scan shows each frame as the scan takes it, in place of the live preview, which can't run during a scan.
+- Capture Scan shows each frame as the scan takes it, in place of the live preview, which can't run during a scan, with the progress bar above it and a red "Recording in progress" indicator.
 
 ## [0.2.4] - 2026-10-30
 
