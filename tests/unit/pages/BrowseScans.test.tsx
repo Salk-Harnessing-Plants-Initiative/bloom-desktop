@@ -7,6 +7,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { BrowseScans } from '../../../src/renderer/BrowseScans';
+import { StationConfigProvider } from '../../../src/renderer/contexts/StationConfigContext';
 
 const baseScan = {
   id: 'scan-1',
@@ -94,7 +95,8 @@ function renderPage() {
   return render(
     <MemoryRouter>
       <BrowseScans />
-    </MemoryRouter>
+    </MemoryRouter>,
+    { wrapper: StationConfigProvider }
   );
 }
 
@@ -374,12 +376,10 @@ describe('thumbnail column', () => {
     });
   });
 
-  it('does not attempt (or blacklist) a thumbnail before scansDir config has loaded, even if the scan list resolves first', async () => {
-    // Regression test: scansDir loads via a separate IPC call from the scan
-    // list. If scans.list() resolves first, an <img> built without the
-    // scans_dir prefix would 404 and permanently blacklist the row via
-    // thumbnailErrors. Simulate that ordering by holding config.get() open
-    // until after the scan list has rendered.
+  it("waits for the station's scans folder before showing scans, so no thumbnail is tried without it (#477)", async () => {
+    // Regression test: an <img> built without the scans_dir prefix would 404
+    // and permanently blacklist the row via thumbnailErrors. The page now
+    // renders only once the station's settings have arrived.
     let resolveConfig: (value: {
       config: { scans_dir: string };
     }) => void = () => {};
@@ -390,11 +390,8 @@ describe('thumbnail column', () => {
     );
 
     renderPage();
-    await waitFor(() => expect(mockList).toHaveBeenCalled());
-    await screen.findByText('PLANT-001');
-
-    // Before config resolves, no <img> should have been attempted (which
-    // would risk a premature onError blacklisting this row).
+    expect(screen.getByTestId('startup-loader')).toBeInTheDocument();
+    expect(mockList).not.toHaveBeenCalled();
     expect(screen.queryByAltText(/thumbnail/i)).not.toBeInTheDocument();
 
     resolveConfig!({ config: { scans_dir: '/scans' } });

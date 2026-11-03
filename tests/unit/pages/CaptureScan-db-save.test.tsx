@@ -26,6 +26,7 @@ vi.mock('../../../src/components/Streamer', () => ({
 }));
 import type { ScanResult } from '../../../src/types/scanner';
 import { toIsoDate } from '../../../src/utils/wave-dates';
+import { StationConfigProvider } from '../../../src/renderer/contexts/StationConfigContext';
 
 /** Local "YYYY-MM-DD" `days` ago, by calendar arithmetic so DST can't shift it. */
 const sownDaysAgo = (days: number) => {
@@ -69,7 +70,12 @@ beforeEach(() => {
     config: {
       ...win.electron?.config,
       get: vi.fn().mockResolvedValue({
-        config: { scanner_name: 'Test Scanner', scans_dir: '/scans' },
+        config: {
+          scanner_name: 'Test Scanner',
+          scans_dir: '/scans',
+          num_frames: 72,
+          seconds_per_rot: 7,
+        },
       }),
     },
     database: {
@@ -156,7 +162,8 @@ async function startScan(): Promise<(result: ScanResult) => void> {
   render(
     <MemoryRouter>
       <CaptureScan />
-    </MemoryRouter>
+    </MemoryRouter>,
+    { wrapper: StationConfigProvider }
   );
 
   const barcodeInput = await screen.findByTestId('plant-barcode-input');

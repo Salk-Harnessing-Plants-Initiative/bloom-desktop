@@ -716,19 +716,28 @@ export interface SessionAPI {
   checkIdleReset: () => Promise<boolean>;
 }
 
+/** The station configuration as the renderer gets it. */
+export interface StationConfigResponse {
+  config: MachineConfig; // Now includes credential fields
+  hasCredentials: boolean;
+  loadError: string | null;
+}
+
 /**
  * Machine Configuration API
  */
 export interface ConfigAPI {
   /**
-   * Get current machine configuration (unified - includes credentials)
+   * Get current machine configuration (unified - includes credentials): the copy
+   * read from ~/.bloom/.env when the app started (#477)
    * @returns Promise resolving to unified config. The password is always
-   * blank; hasCredentials is true when one is saved in .env
+   * blank; hasCredentials is true when one is saved in .env; loadError says why
+   * the file couldn't be read (the config is then the built-in defaults)
    */
-  get: () => Promise<{
-    config: MachineConfig; // Now includes credential fields
-    hasCredentials: boolean;
-  }>;
+  get: () => Promise<StationConfigResponse>;
+
+  /** Read ~/.bloom/.env again (Retry after a failed read) */
+  reload: () => Promise<StationConfigResponse>;
 
   /**
    * Save unified machine configuration

@@ -194,8 +194,14 @@ describe('App routing', () => {
 
     render(<App />);
 
+    // The sidebar link, and the Home workflow's step, appear together once the
+    // station's settings have loaded (#477).
     await waitFor(() => {
-      expect(screen.getByText('Browse Scans')).toBeInTheDocument();
+      expect(
+        screen
+          .getAllByRole('link', { name: /Browse Scans/ })
+          .some((link) => link.getAttribute('href') === '/browse-scans')
+      ).toBe(true);
     });
   });
 

@@ -12,7 +12,7 @@ import type { Prisma, PrismaClient } from '@prisma/client';
 import type { PaginatedScanSummariesResponse } from '../types/database';
 import { ImageUploader, UploadResult } from './image-uploader';
 import { resolveScanPath } from './scan-protocol';
-import { getScansDir } from './config-store';
+import { stationScansDir } from './station-config';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -2333,7 +2333,7 @@ export function registerDatabaseHandlers(deps: {
       _event,
       params: { scanIds: string[]; destinationDir: string }
     ): Promise<DatabaseResponse<ScansExportData>> => {
-      const scansDir = getScansDir();
+      const scansDir = stationScansDir();
       const onProgress = (progress: ScansExportProgress) => {
         const win = deps.getMainWindow?.();
         if (win && !win.isDestroyed()) {
@@ -2509,7 +2509,7 @@ export function registerDatabaseHandlers(deps: {
   ipcMain.handle(
     'db:scans:delete',
     async (_event, id: string): Promise<DatabaseResponse> => {
-      return scansDelete(db, id, getScansDir(), deps.markMetadataDeleted);
+      return scansDelete(db, id, stationScansDir(), deps.markMetadataDeleted);
     }
   );
 

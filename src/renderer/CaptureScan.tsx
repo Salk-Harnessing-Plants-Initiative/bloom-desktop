@@ -37,6 +37,9 @@ import {
 } from '../utils/metadata-validation';
 import { useWaveDateFields } from './hooks/useWaveDateFields';
 import { useUnsavedChanges } from './contexts/UnsavedChangesContext';
+import { useStationConfig } from './contexts/StationConfigContext';
+import { StationConfigNotice } from './components/StationConfigNotice';
+import { scanStationSettings } from './utils/scan-station-settings';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -61,13 +64,14 @@ export function CaptureScan() {
   const [cameraConfigured, setCameraConfigured] = useState(false);
   const [showCameraSettings, setShowCameraSettings] = useState(false);
 
-  // Machine config state
-  const [scannerName, setScannerName] = useState('CaptureScan-UI');
-  const [scansDir, setScansDir] = useState('~/.bloom/scans');
-  const [scanNumFrames, setScanNumFrames] = useState<number | null>(null);
-  const [scanSecondsPerRot, setScanSecondsPerRot] = useState<number | null>(
-    null
+  // The station's scanner name, scans folder, frames and rotation, read once at app
+  // start. There are no fallbacks: without them, scanning is off (#477).
+  const stationConfig = useStationConfig();
+  const station = scanStationSettings(
+    stationConfig.config,
+    stationConfig.error
   );
+  const scansDir = station.settings?.scans_dir ?? '';
 
   // Scanning state
   const [isScanning, setIsScanning] = useState(false);
@@ -252,30 +256,6 @@ export function CaptureScan() {
     metadata.waveNumber,
     metadata.plantAgeDays,
   ]);
-
-  // Load machine config on mount
-  useEffect(() => {
-    const loadMachineConfig = async () => {
-      try {
-        const { config } = await window.electron.config.get();
-        if (config.scanner_name) {
-          setScannerName(config.scanner_name);
-        }
-        if (config.scans_dir) {
-          setScansDir(config.scans_dir);
-        }
-        if (config.num_frames != null) {
-          setScanNumFrames(config.num_frames);
-        }
-        if (config.seconds_per_rot != null) {
-          setScanSecondsPerRot(config.seconds_per_rot);
-        }
-      } catch (error) {
-        console.error('Failed to load machine config:', error);
-      }
-    };
-    loadMachineConfig();
-  }, []);
 
   // Load recent scans from database on mount
   useEffect(() => {
@@ -528,6 +508,7 @@ export function CaptureScan() {
     : errors;
   const isFormValid = Object.keys(errors).length === 0;
   const canStartScan =
+    station.settings !== null &&
     isFormValid &&
     cameraConfigured &&
     !isScanning &&
@@ -537,7 +518,9 @@ export function CaptureScan() {
 
   // Start scan handler
   const handleStartScan = async () => {
-    if (!canStartScan) return;
+    if (!canStartScan || !station.settings) return;
+    const { scanner_name, scans_dir, num_frames, seconds_per_rot } =
+      station.settings;
     // Guard against rapid re-invocation (e.g., double-click) before React
     // re-renders with the disabled button state.
     if (isScanningRef.current) return;
@@ -569,24 +552,21 @@ export function CaptureScan() {
       // Build pilot-compatible scan directory path: YYYY-MM-DD/<plant_qr_code>/<scan_uuid>
       const scanUuid = crypto.randomUUID();
       const relativePath = buildScanPath(metadata.plantQrCode, scanUuid);
-      const outputPath = `${scansDir}/${relativePath}`;
-
-      const numFrames = scanNumFrames ?? 72;
-      const secondsPerRot = scanSecondsPerRot ?? 7.0;
+      const outputPath = `${scans_dir}/${relativePath}`;
 
       const init = await window.electron.scanner.initialize({
         camera: cameraSettings,
         daq: {
           ...DEFAULT_DAQ_SETTINGS,
-          num_frames: numFrames,
-          seconds_per_rot: secondsPerRot,
+          num_frames,
+          seconds_per_rot,
         },
-        num_frames: numFrames,
+        num_frames,
         output_path: outputPath,
         metadata: {
           experiment_id: metadata.experimentId,
           phenotyper_id: metadata.phenotyper,
-          scanner_name: scannerName,
+          scanner_name,
           plant_id: metadata.plantQrCode,
           accession_name: metadata.accessionName || undefined,
           plant_age_days: plantAge,
@@ -858,8 +838,9 @@ export function CaptureScan() {
 
               {/* Scan Parameters (read-only from Machine Configuration) */}
               <div className="mt-4 text-sm text-gray-500">
-                {scanNumFrames ?? 72} frames, ~{scanSecondsPerRot ?? 7.0}s
-                rotation
+                {station.settings
+                  ? `${station.settings.num_frames} frames, ~${station.settings.seconds_per_rot}s rotation`
+                  : 'Frames and rotation: not set'}
                 {cameraConfigured && (
                   <span data-testid="camera-settings-summary">
                     {' '}
@@ -877,6 +858,12 @@ export function CaptureScan() {
 
               {/* Start Scan Button */}
               <div className="mt-6">
+                {station.problem && (
+                  <StationConfigNotice
+                    problem={station.problem}
+                    onRetry={stationConfig.retry}
+                  />
+                )}
                 <button
                   onClick={handleStartScan}
                   disabled={!canStartScan}

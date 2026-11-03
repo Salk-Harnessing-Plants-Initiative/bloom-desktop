@@ -60,7 +60,6 @@ import { fetchBloomSpecies, registerSpeciesHandlers } from './species-handlers';
 import { registerCylinderWaveHandlers } from './cylinder-wave-handlers';
 import { registerCylinderPlantHandlers } from './cylinder-plant-handlers';
 import {
-  loadEnvConfig,
   saveEnvConfig,
   validateConfig,
   fetchScannersFromBloom,
@@ -86,6 +85,7 @@ import {
   shouldQuitAsSecondInstance,
   focusExistingWindow,
 } from './single-instance';
+import { stationConfig } from './station-config';
 import {
   CAMERA_SETTINGS_FILE,
   createCameraSettingsSession,
@@ -442,7 +442,7 @@ async function ensureCameraProcess(): Promise<CameraProcess> {
  * change applies without restarting the app (#390).
  */
 function getConfiguredCameraIp(): string | null {
-  return readConfiguredCameraIp(() => loadEnvConfig(ENV_PATH));
+  return readConfiguredCameraIp(() => stationConfig.get().config);
 }
 
 /**
@@ -855,15 +855,22 @@ ipcMain.handle('scanner:get-scanner-id', (): string => {
 
 /**
  * Handle config:get - Get current configuration and credentials
- * The stored password is never sent; hasCredentials says one is saved (#391)
+ * The stored password is never sent; hasCredentials says one is saved (#391).
+ * The configuration is the copy read at start-up; loadError says why the file
+ * couldn't be read (#477).
  */
 ipcMain.handle('config:get', async () => {
-  try {
-    return toRendererConfig(loadEnvConfig(ENV_PATH));
-  } catch (error) {
-    console.error('config:get error:', error);
-    throw error;
-  }
+  const { config, error } = stationConfig.get();
+  return { ...toRendererConfig(config), loadError: error };
+});
+
+/**
+ * Handle config:reload - Read ~/.bloom/.env again (Retry, after a failed read)
+ */
+ipcMain.handle('config:reload', async () => {
+  const { config, error } = stationConfig.reload();
+  scannerIdentity.name = config.scanner_name || '';
+  return { ...toRendererConfig(config), loadError: error };
 });
 
 /**
@@ -874,7 +881,7 @@ ipcMain.handle('config:set', async (_event, submitted: MachineConfig) => {
   try {
     // Blank password keeps the stored one (#391)
     const result = saveSubmittedConfig(submitted, {
-      load: () => loadEnvConfig(ENV_PATH),
+      load: () => stationConfig.get().config,
       save: (config) => saveEnvConfig(config, ENV_PATH),
       validate: validateConfig,
     });
@@ -882,6 +889,8 @@ ipcMain.handle('config:set', async (_event, submitted: MachineConfig) => {
       return { success: false, errors: result.errors };
     }
 
+    // The file now holds the saved values merged with what was there: keep that.
+    stationConfig.reload();
     // Sync scanner identity from saved config
     scannerIdentity.name = result.saved.scanner_name || '';
     console.log('[Scanner Identity] Updated:', scannerIdentity.name);
@@ -980,7 +989,7 @@ ipcMain.handle('config:exists', async () => {
  */
 ipcMain.handle('config:get-mode', async () => {
   try {
-    const config = loadEnvConfig(ENV_PATH);
+    const { config } = stationConfig.get();
     return { mode: config.scanner_mode || '' };
   } catch (error) {
     console.error('config:get-mode error:', error);
@@ -995,7 +1004,7 @@ ipcMain.handle('config:get-mode', async () => {
  */
 ipcMain.handle('config:get-graviscan-env-status', async () => {
   try {
-    const config = loadEnvConfig(ENV_PATH);
+    const { config } = stationConfig.get();
     return getGraviScanEnvStatus(config);
   } catch (error) {
     console.error('config:get-graviscan-env-status error:', error);
@@ -1030,7 +1039,7 @@ ipcMain.handle(
       // username only (#391)
       const resolution = withResolvedPassword(
         { ...submitted, bloom_api_url: apiUrl ?? '' },
-        () => loadEnvConfig(ENV_PATH)
+        () => stationConfig.get().config
       );
       if ('error' in resolution) {
         return { success: false, error: resolution.error };
@@ -1130,7 +1139,7 @@ app.on('ready', async () => {
   // request a bloom-scan:// resource before the handler exists (#93).
   protocol.handle(
     'bloom-scan',
-    createScanProtocolHandler(() => loadEnvConfig(ENV_PATH).scans_dir)
+    createScanProtocolHandler(() => stationConfig.get().config.scans_dir)
   );
 
   createWindow();
@@ -1173,7 +1182,7 @@ app.on('ready', async () => {
     // E2E runs use the built-in list and never call Bloom.
     const speciesStore = createSpeciesStore({
       file: path.join(path.dirname(getDatabasePath()), SAVED_SPECIES_FILE),
-      fetchFromBloom: () => fetchBloomSpecies(loadEnvConfig(ENV_PATH)),
+      fetchFromBloom: () => fetchBloomSpecies(stationConfig.get().config),
     });
     registerSpeciesHandlers({
       ipcMain,
@@ -1184,7 +1193,7 @@ app.on('ready', async () => {
 
     // Initialize GraviScan handlers if mode is graviscan
     try {
-      const modeConfig = loadEnvConfig(ENV_PATH);
+      const modeConfig = stationConfig.get().config;
       await initGraviScan(
         modeConfig.scanner_mode || '',
         ipcMain,
@@ -1221,9 +1230,9 @@ app.on('ready', async () => {
 
   await initializePythonProcess();
 
-  // Initialize scanner identity from config
+  // Initialize scanner identity from config, read once here and kept (#477)
   try {
-    const config = loadEnvConfig(ENV_PATH);
+    const { config } = stationConfig.get();
 
     if (config.slack_webhook_url) {
       process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL = config.slack_webhook_url;

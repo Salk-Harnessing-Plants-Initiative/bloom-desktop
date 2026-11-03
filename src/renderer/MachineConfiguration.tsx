@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { MachineConfig, Scanner } from '../main/config-store';
 import type { DetectedCamera } from '../types/camera';
 import type { HardwareStatus } from '../types/electron';
+import { useRefreshStationConfig } from './contexts/StationConfigContext';
 
 type FormState = 'loading' | 'config'; // Removed 'login' state
 type CameraTestStatus = 'idle' | 'testing' | 'success' | 'error';
@@ -26,6 +27,8 @@ interface FormErrors {
 }
 
 export function MachineConfiguration() {
+  // Pages share the station configuration read at start-up: a save refreshes it (#477).
+  const refreshStationConfig = useRefreshStationConfig();
   // Form state
   const [formState, setFormState] = useState<FormState>('loading');
 
@@ -274,6 +277,7 @@ export function MachineConfiguration() {
       const result = await window.electron.config.set(config);
 
       if (result.success) {
+        await refreshStationConfig();
         // Don't keep the typed password in renderer state once it's saved
         const savedConfig = { ...config, bloom_scanner_password: '' };
         setConfig(savedConfig);
