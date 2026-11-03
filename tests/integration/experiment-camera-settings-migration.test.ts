@@ -47,6 +47,8 @@ describe('add_experiment_camera_settings migration', () => {
   beforeEach(() => {
     db = new Database(':memory:');
     for (const name of earlierMigrations()) db.exec(migrationSql(name));
+    // As Prisma runs migrations: a row the foreign keys refuse fails the migration.
+    db.pragma('foreign_keys = ON');
     db.exec(
       `INSERT INTO "Phenotyper" ("id", "name", "email") VALUES ('ph', 'Ana', 'ana@example.org')`
     );
@@ -164,7 +166,7 @@ describe('add_experiment_camera_settings migration', () => {
 
   it('compares text dates from the pilot app with millisecond dates by time', () => {
     seed(
-      ['Pilot', 'Mixed'],
+      ['Pilot', 'OldTextNewMs', 'OldMsNewText'],
       [
         {
           id: 'p1',
@@ -178,21 +180,41 @@ describe('add_experiment_camera_settings migration', () => {
           captured: '2025-03-05T10:00:00.000Z',
           exposure: 6500,
         },
-        // The newer one is text: a plain comparison would put any number first.
+        // SQLite sorts any text after any number, so a plain comparison would
+        // pick the older pilot scan here: the newer one is in milliseconds.
         {
           id: 'm1',
-          experiment: 'Mixed',
-          captured: '2026-10-30 10:00:00',
+          experiment: 'OldTextNewMs',
+          captured: '2025-03-01 10:00:00',
           exposure: 5000,
         },
-        { id: 'm2', experiment: 'Mixed', captured: OCT_20, exposure: 5100 },
+        {
+          id: 'm2',
+          experiment: 'OldTextNewMs',
+          captured: OCT_20,
+          exposure: 5100,
+        },
+        // And the other way round: the newer one is text.
+        {
+          id: 'n1',
+          experiment: 'OldMsNewText',
+          captured: '2026-10-30 10:00:00',
+          exposure: 5200,
+        },
+        {
+          id: 'n2',
+          experiment: 'OldMsNewText',
+          captured: OCT_1,
+          exposure: 5300,
+        },
       ]
     );
     db.exec(migrationSql(CAMERA_SETTINGS_MIGRATION));
     expect(
       settingsRows().map((r) => [r.experiment_id, r.exposure_time])
     ).toEqual([
-      ['Mixed', 5000],
+      ['OldMsNewText', 5200],
+      ['OldTextNewMs', 5100],
       ['Pilot', 6500],
     ]);
   });
@@ -211,6 +233,66 @@ describe('add_experiment_camera_settings migration', () => {
     ).toEqual([
       ['Alfalfa', 8800],
       ['KCS', 7400],
+    ]);
+  });
+
+  it('adds nothing on a new station, and succeeds', () => {
+    db.exec(migrationSql(CAMERA_SETTINGS_MIGRATION));
+    expect(settingsRows()).toEqual([]);
+  });
+
+  it('skips scans whose experiment no longer exists, instead of failing', () => {
+    seed(
+      ['KCS'],
+      [{ id: 'k1', experiment: 'KCS', captured: OCT_20, exposure: 7400 }]
+    );
+    // Left behind with the foreign keys off, as the pilot conversion can.
+    db.pragma('foreign_keys = OFF');
+    seed(
+      [],
+      [{ id: 'o1', experiment: 'Gone', captured: OCT_21, exposure: 9000 }]
+    );
+    db.pragma('foreign_keys = ON');
+
+    db.exec(migrationSql(CAMERA_SETTINGS_MIGRATION));
+    expect(
+      settingsRows().map((r) => [r.experiment_id, r.exposure_time])
+    ).toEqual([['KCS', 7400]]);
+  });
+
+  it("notes an unknown date, instead of failing, when no scan's date can be read", () => {
+    seed(
+      ['Odd'],
+      [
+        {
+          id: 'x1',
+          experiment: 'Odd',
+          captured: '2025/03/05 10:00',
+          exposure: 6400,
+        },
+      ]
+    );
+    db.exec(migrationSql(CAMERA_SETTINGS_MIGRATION));
+    expect(settingsRows()).toMatchObject([
+      {
+        experiment_id: 'Odd',
+        exposure_time: 6400,
+        note: 'Copied from latest scan (unknown date)',
+      },
+    ]);
+  });
+
+  it('prefers a scan with a readable date over one without', () => {
+    seed(
+      ['Odd'],
+      [
+        { id: 'x1', experiment: 'Odd', captured: 'not a date', exposure: 6400 },
+        { id: 'x2', experiment: 'Odd', captured: OCT_1, exposure: 6500 },
+      ]
+    );
+    db.exec(migrationSql(CAMERA_SETTINGS_MIGRATION));
+    expect(settingsRows()).toMatchObject([
+      { experiment_id: 'Odd', exposure_time: 6500 },
     ]);
   });
 });

@@ -6,12 +6,11 @@
  * unchanged values needs no note; a change does, except for an experiment's first.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CameraSettingsForm } from '../../components/CameraSettingsForm';
-import { formatCameraSetting } from '../../types/camera';
+import { ReferenceLine, changedTodayText } from './CameraSettingsReferenceLine';
 import {
   STARTING_CAMERA_VALUES,
-  type CameraSettingsChangedToday,
   type CameraSettingsReference,
   type CameraValues,
   type ExperimentCameraSettingsStatus,
@@ -20,8 +19,8 @@ import {
   cameraValuesError,
   sameCameraValues,
 } from '../../utils/experiment-camera-settings';
-import { pathToFileUrl } from '../../utils/file-url';
-import { isAbsolutePath } from '../../utils/scan-path';
+
+export { changedTodayText } from './CameraSettingsReferenceLine';
 
 /** How long the values must stay still before the preview restarts with them. */
 export const PREVIEW_DELAY_MS = 500;
@@ -39,108 +38,15 @@ export interface CameraSettingsCheckPanelProps {
   onConfirm: (values: CameraValues, note: string) => Promise<string | null>;
 }
 
-function valuesText(v: CameraValues): string {
-  return `${formatCameraSetting('exposure_time', v.exposure_time)} µs · gain ${formatCameraSetting(
-    'gain',
-    v.gain
-  )} · gamma ${formatCameraSetting('gamma', v.gamma)}`;
+/** Only the three settings the panel keeps (the form also passes the camera IP). */
+function cameraValues(v: CameraValues): CameraValues {
+  return { exposure_time: v.exposure_time, gain: v.gain, gamma: v.gamma };
 }
 
-function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function timeOfDay(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-/** "Changed today at 10:15 AM by Ana: 7,300 → 7,400 µs. Roots too dark" */
-export function changedTodayText(change: CameraSettingsChangedToday): string {
-  const { from, to } = change;
-  const parts = from
-    ? [
-        from.exposure_time !== to.exposure_time &&
-          `${formatCameraSetting('exposure_time', from.exposure_time)} → ${formatCameraSetting(
-            'exposure_time',
-            to.exposure_time
-          )} µs`,
-        from.gain !== to.gain &&
-          `gain ${formatCameraSetting('gain', from.gain)} → ${formatCameraSetting('gain', to.gain)}`,
-        from.gamma !== to.gamma &&
-          `gamma ${formatCameraSetting('gamma', from.gamma)} → ${formatCameraSetting(
-            'gamma',
-            to.gamma
-          )}`,
-      ].filter(Boolean)
-    : [`set to ${valuesText(to)}`];
-  const who = change.by_name ? ` by ${change.by_name}` : '';
-  return `Changed today at ${timeOfDay(change.at)}${who}: ${parts.join(', ')}. ${change.note}`;
-}
-
-function scanImageUrl(path: string, scansDir: string): string {
-  return pathToFileUrl(isAbsolutePath(path) ? path : `${scansDir}/${path}`);
-}
-
-function ReferenceLine({
-  line,
-  scansDir,
-  onPick,
-}: {
-  line: CameraSettingsReference;
-  scansDir: string;
-  onPick: () => void;
-}) {
-  const [imageFailed, setImageFailed] = useState(false);
-  const used =
-    line.scan_count === 0 || !line.first_captured || !line.last_captured
-      ? 'saved, not used yet'
-      : `${line.scan_count} ${line.scan_count === 1 ? 'scan' : 'scans'} · ${shortDate(
-          line.first_captured
-        )}${
-          shortDate(line.first_captured) === shortDate(line.last_captured)
-            ? ''
-            : ` – ${shortDate(line.last_captured)}`
-        }`;
-  return (
-    <li>
-      <button
-        type="button"
-        onClick={onPick}
-        className="flex w-full items-center gap-3 rounded px-2 py-2 text-left hover:bg-lime-50"
-        data-testid="camera-reference-line"
-      >
-        {line.latest_image_path && !imageFailed ? (
-          <img
-            src={scanImageUrl(line.latest_image_path, scansDir)}
-            alt={`Latest scan at ${valuesText(line)}`}
-            className="h-16 w-12 rounded border border-gray-200 object-cover"
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-          />
-        ) : (
-          <div className="flex h-16 w-12 items-center justify-center rounded border border-gray-200 bg-gray-100 text-xs text-gray-400">
-            N/A
-          </div>
-        )}
-        <span className="flex-1 text-sm">
-          <span className="font-medium text-gray-900">{valuesText(line)}</span>
-          {line.is_current && (
-            <span className="ml-2 rounded bg-lime-100 px-1.5 py-0.5 text-xs font-medium text-lime-800">
-              current
-            </span>
-          )}
-          <span className="block text-xs text-gray-500">{used}</span>
-        </span>
-      </button>
-    </li>
-  );
+function startingValues(
+  current: ExperimentCameraSettingsStatus['current']
+): CameraValues {
+  return current ? cameraValues(current) : STARTING_CAMERA_VALUES;
 }
 
 export function CameraSettingsCheckPanel({
@@ -153,34 +59,53 @@ export function CameraSettingsCheckPanel({
 }: CameraSettingsCheckPanelProps) {
   const current = status.current;
   const [values, setValues] = useState<CameraValues>(() =>
-    current
-      ? {
-          exposure_time: current.exposure_time,
-          gain: current.gain,
-          gamma: current.gamma,
-        }
-      : STARTING_CAMERA_VALUES
+    startingValues(current)
   );
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The settings changed underneath (e.g. "were just changed, check them again"):
+  // start again from the new ones. An error saying why stays.
+  const shownSettingsId = useRef(current?.id ?? null);
+  useEffect(() => {
+    const id = current?.id ?? null;
+    if (id === shownSettingsId.current) return;
+    shownSettingsId.current = id;
+    setValues(startingValues(current));
+    setNote('');
+  }, [current]);
+
+  /** New values from the form or the list; an earlier error no longer applies. */
+  const change = (next: Partial<CameraValues>) => {
+    setValues((prev) => cameraValues({ ...prev, ...next }));
+    setError(null);
+  };
+
   const invalid = cameraValuesError(values);
   const changed = current !== null && !sameCameraValues(values, current);
   const noteMissing = changed && note.trim() === '';
 
-  // The preview restarts the camera stream: wait until the values stop changing.
+  // The preview restarts the camera stream: wait until the values stop changing. Only
+  // the values restart the wait, not a new onPreview from a parent's re-render.
+  const onPreviewRef = useRef(onPreview);
+  onPreviewRef.current = onPreview;
   useEffect(() => {
     if (invalid) return;
-    const timer = setTimeout(() => onPreview(values), PREVIEW_DELAY_MS);
+    const timer = setTimeout(
+      () => onPreviewRef.current(values),
+      PREVIEW_DELAY_MS
+    );
     return () => clearTimeout(timer);
-  }, [values, invalid, onPreview]);
+  }, [values, invalid]);
 
   const confirm = async () => {
     setSaving(true);
     setError(null);
     try {
       setError(await onConfirm(values, note.trim()));
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Unknown error');
     } finally {
       setSaving(false);
     }
@@ -218,7 +143,7 @@ export function CameraSettingsCheckPanel({
         <div>
           <CameraSettingsForm
             settings={values}
-            onChange={(next) => setValues((prev) => ({ ...prev, ...next }))}
+            onChange={change}
             showActions={false}
           />
           <label className="mt-4 block text-sm font-medium text-gray-700">
@@ -254,13 +179,7 @@ export function CameraSettingsCheckPanel({
                   key={`${line.exposure_time}/${line.gain}/${line.gamma}`}
                   line={line}
                   scansDir={scansDir}
-                  onPick={() =>
-                    setValues({
-                      exposure_time: line.exposure_time,
-                      gain: line.gain,
-                      gamma: line.gamma,
-                    })
-                  }
+                  onPick={() => change(line)}
                 />
               ))}
             </ul>

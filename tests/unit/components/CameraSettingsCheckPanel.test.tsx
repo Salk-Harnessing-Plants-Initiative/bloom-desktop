@@ -256,6 +256,91 @@ describe('CameraSettingsCheckPanel', () => {
     });
     expect(onPreview).not.toHaveBeenCalled();
   });
+
+  it('shows a save that fails outright, and stays open (#484 review)', async () => {
+    const onConfirm = vi.fn(async (): Promise<string | null> => {
+      throw new Error('IPC gone');
+    });
+    renderPanel({ onConfirm });
+    fireEvent.click(confirmButton());
+    expect(await screen.findByRole('alert')).toHaveTextContent('IPC gone');
+    expect(confirmButton()).toBeEnabled();
+  });
+
+  it('clears an error once the values are edited', async () => {
+    const onConfirm = vi.fn(async () => 'Something went wrong');
+    renderPanel({ onConfirm });
+    fireEvent.click(confirmButton());
+    await screen.findByRole('alert');
+    fireEvent.change(numberBoxes()[1], { target: { value: '260' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('starts again from the new settings when they change underneath, keeping the reason', async () => {
+    const onConfirm = vi.fn(
+      async () =>
+        "This experiment's camera settings were just changed. Check them again."
+    );
+    const props = {
+      experimentName: 'KCS',
+      reference: [],
+      scansDir: '/scans',
+      onPreview: vi.fn(),
+      onConfirm,
+    };
+    const { rerender } = render(
+      <CameraSettingsCheckPanel {...props} status={status()} />
+    );
+    fireEvent.change(numberBoxes()[0], { target: { value: '7900' } });
+    fireEvent.change(noteBox(), { target: { value: 'brighter' } });
+    fireEvent.click(confirmButton());
+    await screen.findByRole('alert');
+
+    // The parent loads the settings someone else just saved.
+    rerender(
+      <CameraSettingsCheckPanel
+        {...props}
+        status={status({
+          current: { ...current, id: 'r3', exposure_time: 8000 },
+        })}
+      />
+    );
+    expect(numberBoxes().map((b) => b.value)).toEqual(['8000', '250', '1']);
+    expect(noteBox()).toHaveValue('');
+    expect(screen.getByRole('alert')).toHaveTextContent('were just changed');
+    expect(confirmButton()).toBeEnabled();
+  });
+
+  it("doesn't restart the preview wait when the parent passes a new onPreview", () => {
+    vi.useFakeTimers();
+    const first = vi.fn();
+    const props = {
+      experimentName: 'KCS',
+      status: status(),
+      reference: [],
+      scansDir: '/scans',
+      onConfirm: vi.fn(async () => null),
+    };
+    const { rerender } = render(
+      <CameraSettingsCheckPanel {...props} onPreview={first} />
+    );
+    const second = vi.fn();
+    act(() => {
+      vi.advanceTimersByTime(PREVIEW_DELAY_MS - 100);
+    });
+    // A re-render with a new function, as an inline arrow would give.
+    rerender(<CameraSettingsCheckPanel {...props} onPreview={second} />);
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+    expect(second).toHaveBeenCalledWith({
+      exposure_time: 7400,
+      gain: 250,
+      gamma: 1,
+    });
+  });
 });
 
 describe('changedTodayText', () => {
@@ -275,6 +360,16 @@ describe('changedTodayText', () => {
     ).toBe(
       'Changed today at 02:05 PM by Ana: gain 100 → 250, gamma 1.0 → 1.2. New lens'
     );
+  });
+
+  it('ignores gamma that differs only by float noise', () => {
+    expect(
+      changedTodayText({
+        ...base,
+        from: { exposure_time: 7000, gain: 250, gamma: 1 },
+        to: { exposure_time: 7400, gain: 250, gamma: 1.0000001 },
+      })
+    ).toBe('Changed today at 02:05 PM by Ana: 7,000 → 7,400 µs. New lens');
   });
 
   it("describes an experiment's first settings", () => {
