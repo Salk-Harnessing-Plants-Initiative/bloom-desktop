@@ -8,9 +8,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import '@testing-library/jest-dom';
 import { CaptureScan } from '../../../src/renderer/CaptureScan';
+import { CameraSettings } from '../../../src/renderer/CameraSettings';
 
 // The live preview needs the camera streaming API; it is not under test here
 vi.mock('../../../src/components/Streamer', () => ({
@@ -170,13 +171,19 @@ const CHECKED_TODAY: ExperimentCameraSettingsStatus = {
   changedToday: null,
 };
 
+/** Capture Scan, with Camera Settings one link away, as in the app. */
 function renderPage() {
   render(
-    <MemoryRouter>
-      <CaptureScan />
+    <MemoryRouter initialEntries={['/capture-scan']}>
+      <Routes>
+        <Route path="/capture-scan" element={<CaptureScan />} />
+        <Route path="/camera-settings" element={<CameraSettings />} />
+      </Routes>
     </MemoryRouter>
   );
 }
+
+const SETTINGS_LINK = '/camera-settings?experiment=exp-1&phenotyper=pheno-1';
 
 async function enterBarcode() {
   const barcodeInput = await screen.findByTestId('plant-barcode-input');
@@ -201,14 +208,19 @@ function setCameraApi(status: ExperimentCameraSettingsStatus) {
 }
 
 describe('Capture Scan and the experiment camera settings (#483)', () => {
-  it("asks for a check when this phenotyper hasn't checked them today, and Start Scan waits", async () => {
+  it("asks for a check on Camera Settings when this phenotyper hasn't checked them today, and Start Scan waits", async () => {
     setCameraApi(NOT_CHECKED_TODAY);
     renderPage();
     await enterBarcode();
 
     expect(
-      await screen.findByText('Set camera settings for KCS')
+      await screen.findByText(
+        'Check the camera settings for KCS before scanning.'
+      )
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Check camera settings →' })
+    ).toHaveAttribute('href', SETTINGS_LINK);
     expect(cameraApi.status).toHaveBeenCalledWith('exp-1', 'pheno-1');
     // Long enough for every other check to have passed.
     await new Promise((r) => setTimeout(r, 300));
@@ -216,19 +228,30 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     expect(
       screen.getByText("Check this experiment's camera settings first")
     ).toBeInTheDocument();
+    // The check happens on Camera Settings, not on this page.
+    expect(
+      screen.queryByTestId('camera-settings-check-panel')
+    ).not.toBeInTheDocument();
   });
 
-  it("scans with the experiment's settings once confirmed, not the station's", async () => {
+  it("checks them on Camera Settings, comes back, and scans with the experiment's settings, not the station's", async () => {
     setCameraApi(NOT_CHECKED_TODAY);
     cameraApi.status
       .mockResolvedValueOnce({ success: true, data: NOT_CHECKED_TODAY })
       .mockResolvedValue({ success: true, data: CHECKED_TODAY });
     cameraApi.confirm.mockResolvedValue({ success: true, data: CHECKED_TODAY });
     renderPage();
-    await enterBarcode();
 
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Confirm and continue' })
+      await screen.findByRole('link', { name: 'Check camera settings →' })
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Camera settings for KCS' })
+    ).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Confirm and return to Capture Scan',
+      })
     );
     await waitFor(() =>
       expect(cameraApi.confirm).toHaveBeenCalledWith({
@@ -241,12 +264,12 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
         note: '',
       })
     );
+
+    // Back on Capture Scan, with the experiment still chosen.
+    await enterBarcode();
     await waitFor(() => expect(startButton()).toBeEnabled(), {
       timeout: START_ENABLED_TIMEOUT_MS,
     });
-    expect(
-      screen.queryByText('Set camera settings for KCS')
-    ).not.toBeInTheDocument();
     expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
       /Camera: 7,400 µs · gain 250 · gamma 1\.0 \(KCS\)/
     );
@@ -260,7 +283,7 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     });
   });
 
-  it('goes straight to scanning when this phenotyper checked them today, and Change reopens the panel', async () => {
+  it('goes straight to scanning when this phenotyper checked them today, with Change linking to Camera Settings', async () => {
     setCameraApi(CHECKED_TODAY);
     renderPage();
     await enterBarcode();
@@ -268,15 +291,26 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     await waitFor(() => expect(startButton()).toBeEnabled(), {
       timeout: START_ENABLED_TIMEOUT_MS,
     });
-    expect(
-      screen.queryByText('Set camera settings for KCS')
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Change' })).toHaveAttribute(
+      'href',
+      SETTINGS_LINK
+    );
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Change' }));
-    expect(
-      await screen.findByText('Set camera settings for KCS')
-    ).toBeInTheDocument();
-    expect(startButton()).toBeDisabled();
+  it('goes back to Capture Scan without saving from Camera Settings', async () => {
+    setCameraApi(CHECKED_TODAY);
+    renderPage();
+    fireEvent.click(await screen.findByRole('link', { name: 'Change' }));
+    fireEvent.click(
+      await screen.findByRole('link', { name: 'Back to Capture Scan' })
+    );
+    // Back on Capture Scan, with the experiment's settings still in use.
+    await waitFor(() =>
+      expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
+        'Camera: 7,400 µs'
+      )
+    );
+    expect(cameraApi.confirm).not.toHaveBeenCalled();
   });
 
   it('shows why the settings could not be loaded, with Retry', async () => {

@@ -37,6 +37,10 @@ export interface CameraSettingsCheckPanelProps {
   onPreview: (values: CameraValues) => void;
   /** Saves; resolves to an error to show, or null once saved. */
   onConfirm: (values: CameraValues, note: string) => Promise<string | null>;
+  /** The confirm button's text. */
+  confirmLabel?: string;
+  /** Show the "Set camera settings for …" heading (a page may have its own). */
+  showTitle?: boolean;
 }
 
 /** Only the three settings the panel keeps (the form also passes the camera IP). */
@@ -57,6 +61,8 @@ export function CameraSettingsCheckPanel({
   scansDir,
   onPreview,
   onConfirm,
+  confirmLabel = 'Confirm and continue',
+  showTitle = true,
 }: CameraSettingsCheckPanelProps) {
   const current = status.current;
   const [values, setValues] = useState<CameraValues>(() =>
@@ -120,15 +126,14 @@ export function CameraSettingsCheckPanel({
   return (
     <section
       className="mb-6 rounded-lg border-2 border-amber-300 bg-amber-50 p-4"
-      aria-labelledby="camera-check-title"
+      aria-label={`Set camera settings for ${experimentName}`}
       data-testid="camera-settings-check-panel"
     >
-      <h3
-        id="camera-check-title"
-        className="text-lg font-semibold text-gray-900"
-      >
-        Set camera settings for {experimentName}
-      </h3>
+      {showTitle && (
+        <h3 className="text-lg font-semibold text-gray-900">
+          Set camera settings for {experimentName}
+        </h3>
+      )}
       <p className="mt-1 text-sm text-gray-700">
         {current
           ? 'Check the live preview with a plant in the scanner. If it looks right, confirm. If not, change the settings and say why.'
@@ -218,7 +223,7 @@ export function CameraSettingsCheckPanel({
           disabled={!!invalid || noteMissing || saving}
           className="rounded-lg bg-green-600 px-5 py-2 font-semibold text-white shadow hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
         >
-          {saving ? 'Saving…' : 'Confirm and continue'}
+          {saving ? 'Saving…' : confirmLabel}
         </button>
       </div>
     </section>

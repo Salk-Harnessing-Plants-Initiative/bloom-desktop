@@ -6,6 +6,8 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ExperimentCameraSettingsPage } from './ExperimentCameraSettingsPage';
 import { Streamer } from '../components/Streamer';
 import { CameraSettingsForm } from '../components/CameraSettingsForm';
 import {
@@ -22,7 +24,26 @@ import {
 // How long the "Camera settings applied" confirmation stays on screen.
 const APPLIED_MESSAGE_MS = 4000;
 
+/**
+ * Camera Settings: the station's settings, or one experiment's when opened from
+ * Capture Scan with ?experiment=…&phenotyper=… (#483).
+ */
 export function CameraSettings() {
+  const [params] = useSearchParams();
+  const experimentId = params.get('experiment');
+  const phenotyperId = params.get('phenotyper');
+  if (experimentId && phenotyperId) {
+    return (
+      <ExperimentCameraSettingsPage
+        experimentId={experimentId}
+        phenotyperId={phenotyperId}
+      />
+    );
+  }
+  return <StationCameraSettings />;
+}
+
+function StationCameraSettings() {
   const [currentSettings, setCurrentSettings] = useState<
     Partial<CameraSettings>
   >({

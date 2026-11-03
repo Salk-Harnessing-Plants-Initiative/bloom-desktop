@@ -37,9 +37,7 @@ import {
 import { useWaveDateFields } from './hooks/useWaveDateFields';
 import { useUnsavedChanges } from './contexts/UnsavedChangesContext';
 import { useExperimentCameraSettings } from './hooks/useExperimentCameraSettings';
-import { CameraSettingsCheckPanel } from './components/CameraSettingsCheckPanel';
 import { ExperimentCameraSummary } from './components/ExperimentCameraSummary';
-import type { CameraValues } from '../types/experiment-camera-settings';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -72,23 +70,16 @@ export function CaptureScan() {
   );
 
   // The selected experiment's camera settings (#483): scans use them once the
-  // phenotyper has checked them today. While the panel is open, the preview shows the
-  // values being set; the station's saved settings only fill the preview before an
-  // experiment is chosen.
+  // phenotyper has checked them today, on Camera Settings. The station's saved
+  // settings only fill the preview before then.
   const experimentCamera = useExperimentCameraSettings(
     metadata.experimentId,
     metadata.phenotyper
   );
-  const [panelPreview, setPanelPreview] = useState<CameraValues | null>(null);
-  // Another experiment's values must never reach this one's preview.
-  useEffect(() => {
-    setPanelPreview(null);
-  }, [metadata.experimentId]);
   const experimentCameraValues = experimentCamera.needsCheck
-    ? panelPreview
+    ? null
     : experimentCamera.checkedValues;
-  const experimentReady =
-    experimentCamera.checkedValues !== null && !experimentCamera.needsCheck;
+  const experimentReady = experimentCameraValues !== null;
   // A stable object, so the preview stream only restarts when a value changes.
   const activeCameraSettings: CameraSettings = useMemo(
     () =>
@@ -798,6 +789,20 @@ export function CaptureScan() {
                 errors={shownErrors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
                 waveNote={waveNote}
+                experimentNote={
+                  <ExperimentCameraSummary
+                    camera={experimentCamera}
+                    chosen={
+                      metadata.experimentId.trim() !== '' &&
+                      metadata.phenotyper.trim() !== ''
+                    }
+                    scanning={isScanning}
+                    settingsLink={`/camera-settings?${new URLSearchParams({
+                      experiment: metadata.experimentId,
+                      phenotyper: metadata.phenotyper,
+                    })}`}
+                  />
+                }
                 plantAgeReadOnly
                 plantAgeNote={plantAgeNote}
                 plantAgeLabel={
@@ -831,16 +836,6 @@ export function CaptureScan() {
                   </div>
                 </div>
               )}
-
-              {/* The experiment's camera settings (#483) */}
-              <ExperimentCameraSummary
-                camera={experimentCamera}
-                chosen={
-                  metadata.experimentId.trim() !== '' &&
-                  metadata.phenotyper.trim() !== ''
-                }
-                scanning={isScanning}
-              />
 
               {/* Scan Parameters (read-only from Machine Configuration) */}
               <div className="mt-4 text-sm text-gray-500">
@@ -907,23 +902,6 @@ export function CaptureScan() {
           {/* Right Panel: Preview / Progress */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg shadow-sm p-6">
-              {/* Set camera settings for <experiment> (#483), above the preview. */}
-              {!isScanning &&
-                experimentCamera.needsCheck &&
-                experimentCamera.status && (
-                  <CameraSettingsCheckPanel
-                    // A different experiment starts fresh.
-                    key={metadata.experimentId}
-                    experimentName={
-                      experimentCamera.experimentName || 'this experiment'
-                    }
-                    status={experimentCamera.status}
-                    reference={experimentCamera.reference}
-                    scansDir={scansDir}
-                    onPreview={setPanelPreview}
-                    onConfirm={experimentCamera.confirm}
-                  />
-                )}
               {isScanning && !scanProgress ? (
                 // The preview is gone: the scanner needs the camera to itself.
                 <div

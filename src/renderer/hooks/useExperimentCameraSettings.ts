@@ -1,8 +1,8 @@
 /**
  * The selected experiment's camera settings on Capture Scan (#483). Once an experiment
  * and a phenotyper are chosen, it loads whether this phenotyper has checked the
- * settings today, and the settings used before in the experiment, for the Set camera
- * settings panel. Scans use the experiment's settings only once they're checked.
+ * settings today, and the settings used before in the experiment. The check itself is
+ * on Camera Settings; scans use the experiment's settings only once they're checked.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -20,12 +20,10 @@ export interface ExperimentCameraSettings {
   loading: boolean;
   /** Why the settings couldn't be loaded. */
   loadError: string | null;
-  /** True when the panel must be shown: no settings yet, not checked today, or Change. */
+  /** True when a check is needed: no settings yet, or not checked today by this phenotyper. */
   needsCheck: boolean;
   /** The checked settings scans use; null until there are some. */
   checkedValues: CameraValues | null;
-  /** Show the panel to change settings that are already checked. */
-  startChange: () => void;
   /** Confirm and continue; resolves to an error to show, or null. */
   confirm: (values: CameraValues, note: string) => Promise<string | null>;
   reload: () => void;
@@ -46,7 +44,6 @@ export function useExperimentCameraSettings(
   const [reference, setReference] = useState<CameraSettingsReference[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [changing, setChanging] = useState(false);
   const [loadCount, setLoadCount] = useState(0);
 
   const experiment = experimentId.trim();
@@ -60,7 +57,6 @@ export function useExperimentCameraSettings(
       loadedFor.current = key;
       setStatus(null);
       setReference([]);
-      setChanging(false);
     }
     setLoadError(null);
     if (!experiment || !phenotyper) {
@@ -120,7 +116,6 @@ export function useExperimentCameraSettings(
         return result.error ?? 'Unknown error';
       }
       setStatus(result.data);
-      setChanging(false);
       reload();
       return null;
     },
@@ -135,11 +130,9 @@ export function useExperimentCameraSettings(
     reference,
     loading,
     loadError,
-    needsCheck:
-      status !== null && (current === null || !confirmedToday || changing),
+    needsCheck: status !== null && (current === null || !confirmedToday),
     checkedValues:
       current !== null && confirmedToday ? cameraValues(current) : null,
-    startChange: () => setChanging(true),
     confirm,
     reload,
   };

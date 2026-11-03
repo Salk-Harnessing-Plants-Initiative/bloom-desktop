@@ -3,6 +3,7 @@
  * scans will use and when they were checked, with Change; or why scanning waits.
  */
 
+import { Link } from 'react-router-dom';
 import { formatCameraSetting } from '../../types/camera';
 import type { ExperimentCameraSettings } from '../hooks/useExperimentCameraSettings';
 
@@ -12,6 +13,8 @@ export interface ExperimentCameraSummaryProps {
   chosen: boolean;
   /** A scan is running: settings can't change now. */
   scanning: boolean;
+  /** Camera Settings for this experiment and phenotyper. */
+  settingsLink: string;
 }
 
 function checkedAt(iso: string | null): string {
@@ -26,8 +29,10 @@ export function ExperimentCameraSummary({
   camera,
   chosen,
   scanning,
+  settingsLink,
 }: ExperimentCameraSummaryProps) {
-  const base = 'mt-6 border-t border-gray-200 pt-6 text-sm';
+  // Shown under the experiment dropdown.
+  const base = 'mt-2 text-sm';
   if (!chosen) {
     return (
       <p
@@ -66,15 +71,19 @@ export function ExperimentCameraSummary({
     );
   }
   if (camera.needsCheck) {
+    const name = camera.experimentName || 'this experiment';
     return (
-      <p
-        className={`${base} font-medium text-amber-800`}
-        data-testid="experiment-camera-summary"
-      >
-        Check the camera settings for{' '}
-        {camera.experimentName || 'this experiment'} next to the preview before
-        scanning.
-      </p>
+      <div className={base} data-testid="experiment-camera-summary">
+        <p className="font-medium text-amber-800">
+          Check the camera settings for {name} before scanning.
+        </p>
+        <Link
+          to={settingsLink}
+          className="mt-2 inline-block rounded-md bg-lime-700 px-3 py-1.5 font-medium text-white hover:bg-lime-800"
+        >
+          Check camera settings →
+        </Link>
+      </div>
     );
   }
   const values = camera.checkedValues;
@@ -97,14 +106,18 @@ export function ExperimentCameraSummary({
             ` by ${current.last_confirmed_by_name}`}
         </span>
       </p>
-      <button
-        type="button"
-        onClick={camera.startChange}
-        disabled={scanning}
-        className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-      >
-        Change
-      </button>
+      {scanning ? (
+        <span className="rounded-md border border-gray-200 px-3 py-1 font-medium text-gray-400">
+          Change
+        </span>
+      ) : (
+        <Link
+          to={settingsLink}
+          className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Change
+        </Link>
+      )}
     </div>
   );
 }
