@@ -42,6 +42,7 @@ model Experiment {
   graviPlateAssignments GraviScanPlateAssignment[]
   graviWaveMetadata     GraviExperimentWaveMetadata[]
   cylinderWaves         CylinderWave[]
+  cameraSettings        ExperimentCameraSettings[]
 }
 
 model Accessions {
@@ -402,4 +403,24 @@ model CylinderPlantDateChange {
   plant CylinderPlant @relation(fields: [plant_id], references: [id], onDelete: Cascade)
 
   @@index([plant_id])
+}
+
+// An experiment's camera settings (#483). A change adds a row, so the rows are the
+// history; the newest row is the one scans use. Only the last check is ever updated: Capture
+// Scan asks again on a new day, or when another phenotyper takes over.
+model ExperimentCameraSettings {
+  id                              String    @id @default(uuid())
+  experiment_id                   String
+  exposure_time                   Int
+  gain                            Float
+  gamma                           Float
+  note                            String
+  set_by_phenotyper_id            String?
+  createdAt                       DateTime  @default(now())
+  last_confirmed_at               DateTime?
+  last_confirmed_by_phenotyper_id String?
+
+  experiment Experiment @relation(fields: [experiment_id], references: [id], onDelete: Cascade)
+
+  @@index([experiment_id, createdAt])
 }

@@ -19,6 +19,7 @@ import {
 // eslint-disable-next-line import/no-unresolved
 import type { MachineConfig } from './config-store';
 import type { SpeciesAPI } from '../types/species';
+import type { ConfirmCameraSettingsInput } from '../types/experiment-camera-settings';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
@@ -243,6 +244,20 @@ const databaseAPI: DatabaseAPI = {
       ipcRenderer.invoke('db:cylinderWaves:useSameDates', input),
     useDatesPerPlant: (input: CylinderWaveDatesPerPlantInput) =>
       ipcRenderer.invoke('db:cylinderWaves:useDatesPerPlant', input),
+  },
+  experimentCameraSettings: {
+    status: (experimentId: string, phenotyperId: string) =>
+      ipcRenderer.invoke(
+        'db:experimentCameraSettings:status',
+        experimentId,
+        phenotyperId
+      ),
+    history: (experimentId: string) =>
+      ipcRenderer.invoke('db:experimentCameraSettings:history', experimentId),
+    reference: (experimentId: string) =>
+      ipcRenderer.invoke('db:experimentCameraSettings:reference', experimentId),
+    confirm: (input: ConfirmCameraSettingsInput) =>
+      ipcRenderer.invoke('db:experimentCameraSettings:confirm', input),
   },
   cylinderPlants: {
     list: (waveId: string) =>

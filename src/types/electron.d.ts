@@ -24,6 +24,12 @@ import {
 } from './daq';
 import { ScannerAPI } from './scanner';
 import type { SpeciesAPI } from './species';
+import type {
+  CameraSettingsReference,
+  ConfirmCameraSettingsInput,
+  ExperimentCameraSettingsInfo,
+  ExperimentCameraSettingsStatus,
+} from './experiment-camera-settings';
 import {
   DatabaseResponse,
   ExperimentWithRelations,
@@ -441,6 +447,26 @@ export interface DatabaseAPI {
     useDatesPerPlant: (
       input: CylinderWaveDatesPerPlantInput
     ) => Promise<DatabaseResponse<null>>;
+  };
+  /** An experiment's camera settings and their daily check (#483). */
+  experimentCameraSettings: {
+    /** The current settings, and whether this phenotyper confirmed them today. */
+    status: (
+      experimentId: string,
+      phenotyperId: string
+    ) => Promise<DatabaseResponse<ExperimentCameraSettingsStatus>>;
+    /** Every saved setting, newest first. */
+    history: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<ExperimentCameraSettingsInfo[]>>;
+    /** "Used before in this experiment", most recently used first. */
+    reference: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<CameraSettingsReference[]>>;
+    /** Confirm unchanged values, or save changed ones (a note is needed after the first). */
+    confirm: (
+      input: ConfirmCameraSettingsInput
+    ) => Promise<DatabaseResponse<ExperimentCameraSettingsStatus>>;
   };
   /** The plants in a CylinderScan wave and their dates (#428). */
   cylinderPlants: {

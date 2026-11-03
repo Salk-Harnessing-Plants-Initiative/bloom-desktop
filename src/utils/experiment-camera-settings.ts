@@ -1,0 +1,112 @@
+/**
+ * Rules for an experiment's camera settings (#483), shared by the main process and the
+ * Set camera settings panel.
+ */
+
+import { cameraSettingsErrors } from '../types/camera';
+import type {
+  CameraSettingsReference,
+  CameraValues,
+} from '../types/experiment-camera-settings';
+import { toIsoDate } from './wave-dates';
+
+export const NOTE_REQUIRED =
+  'Add a note saying why the camera settings changed.';
+export const SETTINGS_CHANGED_MEANWHILE =
+  "This experiment's camera settings were just changed. Check them again.";
+
+/** Gamma is stored as a float: two decimals are as precise as the form gets. */
+export function roundGamma(gamma: number): number {
+  return Math.round(gamma * 100) / 100;
+}
+
+export function sameCameraValues(a: CameraValues, b: CameraValues): boolean {
+  return (
+    a.exposure_time === b.exposure_time &&
+    a.gain === b.gain &&
+    roundGamma(a.gamma) === roundGamma(b.gamma)
+  );
+}
+
+/** Why the values can't be saved, or null. Exposure is stored as a whole number of µs. */
+export function cameraValuesError(
+  values: Partial<CameraValues>
+): string | null {
+  const errors = Object.values(cameraSettingsErrors(values));
+  if (errors.length > 0) return errors.join(' ');
+  if (!Number.isInteger(values.exposure_time)) {
+    return 'Exposure must be a whole number of µs.';
+  }
+  return null;
+}
+
+/** True when both times fall on the same calendar day on this station. */
+export function sameLocalDay(a: Date, b: Date): boolean {
+  return toIsoDate(a) === toIsoDate(b);
+}
+
+/** The settings scans were taken with, one group per setting. */
+export interface ScanSettingsGroup extends CameraValues {
+  scan_count: number;
+  first_captured: Date;
+  last_captured: Date;
+  latest_image_path: string | null;
+}
+
+/**
+ * "Used before in this experiment": the experiment's scan settings, plus saved settings
+ * no scan used yet, most recently used first. Groups whose gamma differs only by float
+ * noise are merged.
+ */
+export function referenceList(
+  scanGroups: ScanSettingsGroup[],
+  saved: Array<CameraValues & { created_at: Date }>,
+  current: CameraValues | null
+): CameraSettingsReference[] {
+  const merged: ScanSettingsGroup[] = [];
+  for (const group of scanGroups) {
+    const same = merged.find((m) => sameCameraValues(m, group));
+    if (!same) {
+      merged.push({ ...group, gamma: roundGamma(group.gamma) });
+      continue;
+    }
+    same.scan_count += group.scan_count;
+    if (group.first_captured < same.first_captured) {
+      same.first_captured = group.first_captured;
+    }
+    if (group.last_captured > same.last_captured) {
+      same.last_captured = group.last_captured;
+      same.latest_image_path = group.latest_image_path;
+    }
+  }
+  const lines: Array<CameraSettingsReference & { usedAt: number }> = merged.map(
+    (g) => ({
+      exposure_time: g.exposure_time,
+      gain: g.gain,
+      gamma: g.gamma,
+      scan_count: g.scan_count,
+      first_captured: g.first_captured.toISOString(),
+      last_captured: g.last_captured.toISOString(),
+      latest_image_path: g.latest_image_path,
+      is_current: current !== null && sameCameraValues(g, current),
+      usedAt: g.last_captured.getTime(),
+    })
+  );
+  for (const row of saved) {
+    if (lines.some((l) => sameCameraValues(l, row))) continue;
+    lines.push({
+      exposure_time: row.exposure_time,
+      gain: row.gain,
+      gamma: roundGamma(row.gamma),
+      scan_count: 0,
+      first_captured: null,
+      last_captured: null,
+      latest_image_path: null,
+      is_current: current !== null && sameCameraValues(row, current),
+      usedAt: row.created_at.getTime(),
+    });
+  }
+  lines.sort((a, b) => b.usedAt - a.usedAt);
+  for (const line of lines) delete (line as Partial<typeof line>).usedAt;
+  return lines;
+}
