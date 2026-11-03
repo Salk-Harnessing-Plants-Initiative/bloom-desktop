@@ -15,10 +15,10 @@ export interface SettingsRow extends CameraValues {
   last_confirmed_by_phenotyper_id: string | null;
 }
 
-export interface ScanGroupRow extends CameraValues {
-  _count: { _all: number };
-  _min: { capture_date: Date | null };
-  _max: { capture_date: Date | null };
+/** A live scan's settings and when it was taken. */
+export interface ScanSettingsRow extends CameraValues {
+  id: string;
+  capture_date: Date;
 }
 
 export type SettingsCreateData = CameraValues & {
@@ -57,28 +57,27 @@ export interface CameraSettingsDbLike {
     }): Promise<Array<{ id: string; name: string }>>;
   };
   scan: {
-    groupBy(args: {
-      by: ['exposure_time', 'gain', 'gamma'];
+    findMany(args: {
       where: {
         experiment_id: string;
         deleted: false;
         exposure_time: { gt: 0 };
       };
-      _count: { _all: true };
-      _min: { capture_date: true };
-      _max: { capture_date: true };
-    }): Promise<ScanGroupRow[]>;
-    findFirst(args: {
-      where: CameraValues & { experiment_id: string; deleted: false };
-      orderBy: { capture_date: 'desc' };
       select: {
-        images: {
-          orderBy: { frame_number: 'asc' };
-          take: 1;
-          select: { path: true };
-        };
+        id: true;
+        exposure_time: true;
+        gain: true;
+        gamma: true;
+        capture_date: true;
       };
-    }): Promise<{ images: Array<{ path: string }> } | null>;
+    }): Promise<ScanSettingsRow[]>;
+  };
+  image: {
+    findFirst(args: {
+      where: { scan_id: string };
+      orderBy: { frame_number: 'asc' };
+      select: { path: true };
+    }): Promise<{ path: string } | null>;
   };
   experimentCameraSettings: SettingsTableLike;
   $transaction<T>(

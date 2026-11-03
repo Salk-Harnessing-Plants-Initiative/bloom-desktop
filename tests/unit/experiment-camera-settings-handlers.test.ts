@@ -38,6 +38,7 @@ const row = (
 });
 
 interface FakeScan {
+  id: string;
   experiment_id: string;
   exposure_time: number;
   gain: number;
@@ -108,45 +109,21 @@ function fakeDb(rows: SettingsRow[], scans: FakeScan[] = []) {
       ),
     },
     scan: {
-      groupBy: vi.fn(async (args: { where: { experiment_id: string } }) => {
-        const groups = new Map<string, FakeScan[]>();
-        for (const s of live(args.where.experiment_id)) {
-          const key = `${s.exposure_time}/${s.gain}/${s.gamma}`;
-          groups.set(key, [...(groups.get(key) ?? []), s]);
-        }
-        return [...groups.values()].map((g) => ({
-          exposure_time: g[0].exposure_time,
-          gain: g[0].gain,
-          gamma: g[0].gamma,
-          _count: { _all: g.length },
-          _min: {
-            capture_date: new Date(Math.min(...g.map((s) => +s.capture_date))),
-          },
-          _max: {
-            capture_date: new Date(Math.max(...g.map((s) => +s.capture_date))),
-          },
-        }));
-      }),
-      findFirst: vi.fn(
-        async (args: {
-          where: {
-            experiment_id: string;
-            exposure_time: number;
-            gain: number;
-            gamma: number;
-          };
-        }) => {
-          const latest = live(args.where.experiment_id)
-            .filter(
-              (s) =>
-                s.exposure_time === args.where.exposure_time &&
-                s.gain === args.where.gain &&
-                s.gamma === args.where.gamma
-            )
-            .sort((a, b) => +b.capture_date - +a.capture_date)[0];
-          return latest ? { images: [{ path: latest.image }] } : null;
-        }
+      findMany: vi.fn(async (args: { where: { experiment_id: string } }) =>
+        live(args.where.experiment_id).map((s) => ({
+          id: s.id,
+          exposure_time: s.exposure_time,
+          gain: s.gain,
+          gamma: s.gamma,
+          capture_date: s.capture_date,
+        }))
       ),
+    },
+    image: {
+      findFirst: vi.fn(async (args: { where: { scan_id: string } }) => {
+        const found = scans.find((s) => s.id === args.where.scan_id);
+        return found ? { path: found.image } : null;
+      }),
     },
     experimentCameraSettings: settings,
     $transaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
@@ -458,6 +435,7 @@ describe('listReference', () => {
     day: number,
     extra: Partial<FakeScan> = {}
   ): FakeScan => ({
+    id: `${exposure_time}-${day}`,
     experiment_id: 'kcs',
     exposure_time,
     gain: 250,
@@ -491,7 +469,7 @@ describe('listReference', () => {
       [7400, 2, true, '7400-3/frame_1.png'],
       [7000, 1, false, '7000-1/frame_1.png'],
     ]);
-    expect(raw.scan.groupBy).toHaveBeenCalledWith(
+    expect(raw.scan.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           experiment_id: 'kcs',
@@ -502,30 +480,23 @@ describe('listReference', () => {
     );
   });
 
-  it('keeps each line with its own image when a setting has no dates', async () => {
-    const { db, raw } = fakeDb([], [scan(7000, 1), scan(7400, 2)]);
-    raw.scan.groupBy.mockResolvedValueOnce([
-      {
-        exposure_time: 7000,
-        gain: 250,
-        gamma: 1,
-        _count: { _all: 1 },
-        _min: { capture_date: null },
-        _max: { capture_date: null },
-      },
-      {
-        exposure_time: 7400,
-        gain: 250,
-        gamma: 1,
-        _count: { _all: 1 },
-        _min: { capture_date: at(2, 10) },
-        _max: { capture_date: at(2, 10) },
-      },
-    ]);
+  it("takes each line's image from that setting's latest scan, first frame", async () => {
+    const { db, raw } = fakeDb(
+      [],
+      [scan(7400, 2), scan(7400, 5), scan(7000, 9)]
+    );
     const result = await listReference({ db }, 'kcs');
     expect(
       result.data?.map((l) => [l.exposure_time, l.latest_image_path])
-    ).toEqual([[7400, '7400-2/frame_1.png']]);
+    ).toEqual([
+      [7000, '7000-9/frame_1.png'],
+      [7400, '7400-5/frame_1.png'],
+    ]);
+    expect(raw.image.findFirst).toHaveBeenCalledWith({
+      where: { scan_id: '7400-5' },
+      orderBy: { frame_number: 'asc' },
+      select: { path: true },
+    });
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   cameraValuesError,
+  groupScansBySettings,
   referenceList,
   roundGamma,
   sameCameraValues,
@@ -160,5 +161,48 @@ describe('referenceList', () => {
 
   it('is empty for a new experiment', () => {
     expect(referenceList([], [], null)).toEqual([]);
+  });
+});
+
+describe('groupScansBySettings', () => {
+  const scan = (id: string, exposure_time: number, date: Date) => ({
+    id,
+    exposure_time,
+    gain: 250,
+    gamma: 1,
+    capture_date: date,
+  });
+
+  it('counts each setting and keeps its first date, latest date and latest scan', () => {
+    expect(
+      groupScansBySettings([
+        scan('b', 7400, at(20)),
+        scan('a', 7400, at(1)),
+        scan('c', 7000, at(5)),
+      ])
+    ).toEqual([
+      {
+        exposure_time: 7400,
+        gain: 250,
+        gamma: 1,
+        scan_count: 2,
+        first_captured: at(1),
+        last_captured: at(20),
+        latest_scan_id: 'b',
+      },
+      {
+        exposure_time: 7000,
+        gain: 250,
+        gamma: 1,
+        scan_count: 1,
+        first_captured: at(5),
+        last_captured: at(5),
+        latest_scan_id: 'c',
+      },
+    ]);
+  });
+
+  it('is empty without scans', () => {
+    expect(groupScansBySettings([])).toEqual([]);
   });
 });

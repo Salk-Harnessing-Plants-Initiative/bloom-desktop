@@ -54,6 +54,47 @@ export interface ScanSettingsGroup extends CameraValues {
 }
 
 /**
+ * Groups an experiment's live scans by their settings, comparing dates as times: scans
+ * from the pilot app may store theirs as text, which the database would sort after any
+ * date stored as a number, whatever the actual date. Each group keeps its latest scan.
+ */
+export function groupScansBySettings(
+  scans: Array<CameraValues & { id: string; capture_date: Date }>
+): Array<
+  Omit<ScanSettingsGroup, 'latest_image_path'> & { latest_scan_id: string }
+> {
+  const groups = new Map<
+    string,
+    Omit<ScanSettingsGroup, 'latest_image_path'> & { latest_scan_id: string }
+  >();
+  for (const scan of scans) {
+    const key = `${scan.exposure_time}/${scan.gain}/${scan.gamma}`;
+    const group = groups.get(key);
+    if (!group) {
+      groups.set(key, {
+        exposure_time: scan.exposure_time,
+        gain: scan.gain,
+        gamma: scan.gamma,
+        scan_count: 1,
+        first_captured: scan.capture_date,
+        last_captured: scan.capture_date,
+        latest_scan_id: scan.id,
+      });
+      continue;
+    }
+    group.scan_count += 1;
+    if (scan.capture_date < group.first_captured) {
+      group.first_captured = scan.capture_date;
+    }
+    if (scan.capture_date > group.last_captured) {
+      group.last_captured = scan.capture_date;
+      group.latest_scan_id = scan.id;
+    }
+  }
+  return [...groups.values()];
+}
+
+/**
  * "Used before in this experiment": the experiment's scan settings, plus saved settings
  * no scan used yet, most recently used first. Groups whose gamma differs only by float
  * noise are merged.

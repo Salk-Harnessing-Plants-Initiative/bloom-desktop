@@ -29,6 +29,7 @@ import {
   NOTE_REQUIRED,
   SETTINGS_CHANGED_MEANWHILE,
   cameraValuesError,
+  groupScansBySettings,
   referenceList,
   sameCameraValues,
   sameLocalDay,
@@ -182,32 +183,32 @@ export async function listReference(
     return { success: false, error: 'experimentId must be a non-empty string' };
   }
   try {
-    const groups = await deps.db.scan.groupBy({
-      by: ['exposure_time', 'gain', 'gamma'],
-      // Deleted scans aren't uploaded; 0 / 0 are deploy self-tests.
-      where: {
-        experiment_id: experiment,
-        deleted: false,
-        exposure_time: { gt: 0 },
-      },
-      _count: { _all: true },
-      _min: { capture_date: true },
-      _max: { capture_date: true },
-    });
-    // One small query per setting for its latest scan's first frame; an experiment
-    // has a handful of settings, not one per scan.
-    const latest = await Promise.all(
+    // Grouped here rather than in the database, so dates are compared as times.
+    const groups = groupScansBySettings(
+      await deps.db.scan.findMany({
+        // Deleted scans aren't uploaded; 0 / 0 are deploy self-tests.
+        where: {
+          experiment_id: experiment,
+          deleted: false,
+          exposure_time: { gt: 0 },
+        },
+        select: {
+          id: true,
+          exposure_time: true,
+          gain: true,
+          gamma: true,
+          capture_date: true,
+        },
+      })
+    );
+    // Frame 1 of each setting's latest scan: an experiment has a handful of
+    // settings, not one per scan.
+    const firstFrames = await Promise.all(
       groups.map((g) =>
-        deps.db.scan.findFirst({
-          where: { experiment_id: experiment, deleted: false, ...values(g) },
-          orderBy: { capture_date: 'desc' },
-          select: {
-            images: {
-              orderBy: { frame_number: 'asc' },
-              take: 1,
-              select: { path: true },
-            },
-          },
+        deps.db.image.findFirst({
+          where: { scan_id: g.latest_scan_id },
+          orderBy: { frame_number: 'asc' },
+          select: { path: true },
         })
       )
     );
@@ -218,19 +219,15 @@ export async function listReference(
     return {
       success: true,
       data: referenceList(
-        groups.flatMap((g, i) =>
-          g._min.capture_date && g._max.capture_date
-            ? [
-                {
-                  ...values(g),
-                  scan_count: g._count._all,
-                  first_captured: g._min.capture_date,
-                  last_captured: g._max.capture_date,
-                  latest_image_path: latest[i]?.images[0]?.path ?? null,
-                },
-              ]
-            : []
-        ),
+        groups.map((g, i) => ({
+          exposure_time: g.exposure_time,
+          gain: g.gain,
+          gamma: g.gamma,
+          scan_count: g.scan_count,
+          first_captured: g.first_captured,
+          last_captured: g.last_captured,
+          latest_image_path: firstFrames[i]?.path ?? null,
+        })),
         saved.map((r) => ({ ...values(r), created_at: r.createdAt })),
         saved[0] ? values(saved[0]) : null
       ),
