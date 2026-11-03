@@ -30,6 +30,7 @@ import { WaveMetadataLinksProvider } from './contexts/WaveMetadataLinksContext';
 import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext';
 import { StationConfigProvider } from './contexts/StationConfigContext';
 import { StartupLoader } from './components/StartupLoader';
+import { StationSettingsUnreadable } from './components/StationSettingsUnreadable';
 
 // Lazy-loaded: Metadata is GraviScan-only, so there's no reason to bundle
 // it (and its Excel-parsing UI) into every mode's initial load.
@@ -38,9 +39,15 @@ const Metadata = lazy(() =>
 );
 
 export default function App() {
-  const { mode, isLoading } = useAppMode();
+  const { mode, isLoading, loadError, retry } = useAppMode();
 
   if (isLoading) return <StartupLoader />;
+
+  // The settings file is there but couldn't be read: not a new station. Neither
+  // first-run setup nor the app opens, so nothing can be saved over it (#485).
+  if (loadError) {
+    return <StationSettingsUnreadable loadError={loadError} onRetry={retry} />;
+  }
 
   // First run (empty mode) — show only Machine Config, no sidebar/layout
   if (mode === '') {

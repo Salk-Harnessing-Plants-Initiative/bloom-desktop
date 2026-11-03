@@ -57,7 +57,8 @@ export interface RendererConfigResponse {
 /** Result of `config:set`. */
 export interface SaveConfigResult {
   success: boolean;
-  errors?: ValidationResult['errors'];
+  /** Field errors, or `general` when the save couldn't be attempted. */
+  errors?: ValidationResult['errors'] & { general?: string };
 }
 
 /** Injected config-store functions, bound to the .env path by the caller. */

@@ -101,21 +101,28 @@ describe('StationConfigProvider (#477)', () => {
     expect(screen.getByTestId('name')).toHaveTextContent('PBIOBScanner');
   });
 
-  it('asks again on refresh, without showing the loader', async () => {
+  it('keeps the pages on screen while a refresh is under way', async () => {
+    let resolveRefresh: (value: unknown) => void = () => {};
     get
       .mockResolvedValueOnce(loaded('SlowScanner'))
-      .mockResolvedValueOnce(loaded('PBIOBScanner'));
+      .mockReturnValueOnce(new Promise((r) => (resolveRefresh = r)));
     render(
       <StationConfigProvider>
         <Probe />
       </StationConfigProvider>
     );
     await screen.findByText('SlowScanner');
-    await act(async () => {
+
+    act(() => {
       fireEvent.click(screen.getByText('refresh'));
     });
-    expect(screen.getByTestId('name')).toHaveTextContent('PBIOBScanner');
+    // Still waiting: the page stays, with what it had, and no loader.
+    expect(get).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId('startup-loader')).not.toBeInTheDocument();
+    expect(screen.getByTestId('name')).toHaveTextContent('SlowScanner');
+
+    await act(async () => resolveRefresh(loaded('PBIOBScanner')));
+    expect(screen.getByTestId('name')).toHaveTextContent('PBIOBScanner');
   });
 });
 

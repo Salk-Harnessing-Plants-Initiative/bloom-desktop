@@ -732,12 +732,20 @@ test.describe('ScanPreview Image Loading', () => {
 
     // Point the configured scans_dir at the fixtures directory for this
     // test only, so this test's absolute fixture path is genuinely inside
-    // the containment boundary the #93 protocol handler enforces (it's
-    // read fresh per-request, so overriding it here mid-suite still takes
-    // effect). Other tests in this file use non-existent fake image paths
-    // and never assert a real image load, so they're unaffected by
-    // scans_dir's value and don't need this override.
+    // the containment boundary the #93 protocol handler enforces. Other
+    // tests in this file use non-existent fake image paths and never assert
+    // a real image load, so they're unaffected by scans_dir's value and
+    // don't need this override.
     createTestBloomConfig(path.join(__dirname, '../fixtures'));
+    // The app reads ~/.bloom/.env once at start-up (#477): re-read it, as
+    // Retry does after the file is edited outside the app.
+    await window.evaluate(() =>
+      (
+        window as unknown as {
+          electron: { config: { reload: () => Promise<unknown> } };
+        }
+      ).electron.config.reload()
+    );
 
     // Verify fixture exists
     if (!fs.existsSync(testImagePath)) {

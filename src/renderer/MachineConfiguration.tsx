@@ -5,11 +5,12 @@
  * Protected by Bloom credential authentication (except on first run).
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { MachineConfig, Scanner } from '../main/config-store';
 import type { DetectedCamera } from '../types/camera';
 import type { HardwareStatus } from '../types/electron';
 import { useRefreshStationConfig } from './contexts/StationConfigContext';
+import { StationConfigNotice } from './components/StationConfigNotice';
 
 type FormState = 'loading' | 'config'; // Removed 'login' state
 type CameraTestStatus = 'idle' | 'testing' | 'success' | 'error';
@@ -29,6 +30,9 @@ interface FormErrors {
 export function MachineConfiguration() {
   // Pages share the station configuration read at start-up: a save refreshes it (#477).
   const refreshStationConfig = useRefreshStationConfig();
+  const [settingsLoadError, setSettingsLoadError] = useState<string | null>(
+    null
+  );
   // Form state
   const [formState, setFormState] = useState<FormState>('loading');
 
@@ -126,17 +130,25 @@ export function MachineConfiguration() {
     }
   };
 
+  // Shows the form's values; config:reload (Retry) reads the file again first.
+  const showConfiguration = useCallback(
+    (configData: Awaited<ReturnType<typeof window.electron.config.get>>) => {
+      // Set unified config (includes credentials)
+      setConfig(configData.config);
+      setOriginalConfig(configData.config);
+      setHasSavedPassword(configData.hasCredentials);
+      // The settings file couldn't be read: the form holds defaults, not the
+      // station's settings, so it isn't saved until Retry reads them (#485).
+      setSettingsLoadError(configData.loadError ?? null);
+    },
+    []
+  );
+
   // Load configuration on mount
   useEffect(() => {
     const loadConfiguration = async () => {
       try {
-        const configData = await window.electron.config.get();
-
-        // Set unified config (includes credentials)
-        setConfig(configData.config);
-        setOriginalConfig(configData.config);
-        setHasSavedPassword(configData.hasCredentials);
-
+        showConfiguration(await window.electron.config.get());
         // Always show config form (no login screen)
         setFormState('config');
       } catch (error) {
@@ -146,7 +158,18 @@ export function MachineConfiguration() {
     };
 
     loadConfiguration();
-  }, []);
+  }, [showConfiguration]);
+
+  const retryLoadingSettings = async () => {
+    try {
+      showConfiguration(await window.electron.config.reload());
+      await refreshStationConfig();
+    } catch (error) {
+      setSettingsLoadError(
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+    }
+  };
 
   // Detect cameras — callable both automatically (once, on mount, guarded
   // by hasDetectedCamerasRef below) and manually via the "Detect Cameras"
@@ -384,6 +407,15 @@ export function MachineConfiguration() {
       <p className="text-gray-600 mb-8">
         Configure machine-level settings for this scanner station.
       </p>
+
+      {settingsLoadError && (
+        <StationConfigNotice
+          title="Couldn't read this station's settings: saving is off"
+          problem={`${settingsLoadError}. The form shows defaults, not this station's settings. Press Retry to read them again.`}
+          onRetry={retryLoadingSettings}
+          showMachineConfigLink={false}
+        />
+      )}
 
       {/* Restart-required notice — persistent, dismissible, does NOT
           auto-clear on a timer like the generic save toast below, since a
@@ -1077,7 +1109,7 @@ export function MachineConfiguration() {
           </button>
           <button
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || settingsLoadError !== null}
             className="px-6 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:opacity-50"
           >
             {isSaving ? 'Saving...' : 'Save Configuration'}

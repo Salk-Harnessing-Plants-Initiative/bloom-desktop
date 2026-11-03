@@ -63,9 +63,9 @@ function urlPathToNativePath(requestUrl: string): string {
 /**
  * Build the bloom-scan:// protocol.handle() callback.
  *
- * @param getScansDir - Called fresh on every request (not cached), since
- *   `scans_dir` can change at runtime via Configure Scanner / Machine
- *   Configuration. Extracted as a parameter (rather than reading
+ * @param getScansDir - Called on every request, since `scans_dir` can change
+ *   at runtime via Machine Configuration (the app's kept copy is re-read on
+ *   save). Extracted as a parameter (rather than reading
  *   config-store directly here) so this factory's freshness behavior is
  *   unit-testable without importing main.ts, which has heavy top-level
  *   side effects (app lifecycle registration).

@@ -655,16 +655,6 @@ export function loadEnvConfig(
 }
 
 /**
- * Resolve the configured scans directory, falling back to
- * `~/.bloom/scans` when unset. Shared by any code that needs to locate a
- * scan's files on disk from its relative `Scan.path`.
- */
-export function getScansDir(): string {
-  const config = loadEnvConfig(path.join(os.homedir(), '.bloom', '.env'));
-  return config.scans_dir || path.join(os.homedir(), '.bloom', 'scans');
-}
-
-/**
  * Save unified configuration to .env file.
  *
  * Final-review fix #2: read-merge-write. Any field that is `undefined`

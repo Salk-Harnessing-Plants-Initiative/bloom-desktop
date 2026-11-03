@@ -773,7 +773,11 @@ export interface ConfigAPI {
    * Get the configured scanner mode
    * @returns Promise resolving to the scanner mode ('cylinderscan', 'graviscan', or '' for unconfigured)
    */
-  getMode: () => Promise<{ mode: string }>;
+  getMode: () => Promise<{
+    mode: string;
+    /** Set when ~/.bloom/.env exists but couldn't be read: not a new station (#485). */
+    loadError?: string | null;
+  }>;
 
   /**
    * Boolean-only status of the GraviScan Slack webhook / libusb-recovery
