@@ -33,6 +33,12 @@ export function StationConfigNotice({
     setRetrying(true);
     try {
       await onRetry();
+    } catch (error) {
+      // Shown as a Retry that didn't fix it (the contact line below).
+      console.error(
+        '[StationConfig] Retry failed:',
+        error instanceof Error ? error.message : 'Unknown error'
+      );
     } finally {
       setRetrying(false);
       setRetried(true);
