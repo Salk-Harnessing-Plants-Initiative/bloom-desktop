@@ -368,6 +368,19 @@ describe('confirmSettings', () => {
     ).toEqual({ success: false, error: SETTINGS_CHANGED_MEANWHILE });
   });
 
+  it('refuses gamma with two decimal places without writing', async () => {
+    const { db, raw } = fakeDb([row('r1', 7400, at(1, 9))]);
+    const result = await confirmSettings(
+      { db, now },
+      { ...input, gamma: 1.04, note: 'tweak' }
+    );
+    expect(result).toEqual({
+      success: false,
+      error: 'Gamma can have one decimal place, e.g. 1.1.',
+    });
+    expect(raw.$transaction).not.toHaveBeenCalled();
+  });
+
   it('rejects out-of-range values without writing', async () => {
     const { db, raw } = fakeDb([row('r1', 7400, at(1, 9))]);
     const result = await confirmSettings(

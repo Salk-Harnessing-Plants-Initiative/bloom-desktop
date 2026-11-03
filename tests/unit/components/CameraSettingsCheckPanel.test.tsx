@@ -132,6 +132,20 @@ describe('CameraSettingsCheckPanel', () => {
     );
   });
 
+  it('says gamma can have one decimal place, and waits', () => {
+    renderPanel();
+    fireEvent.change(numberBoxes()[2], { target: { value: '1.04' } });
+    fireEvent.change(noteBox(), { target: { value: 'tweak' } });
+    expect(screen.getByTestId('camera-values-error')).toHaveTextContent(
+      'Gamma can have one decimal place, e.g. 1.1.'
+    );
+    expect(confirmButton()).toBeDisabled();
+
+    fireEvent.change(numberBoxes()[2], { target: { value: '1.1' } });
+    expect(screen.queryByTestId('camera-values-error')).not.toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
+  });
+
   it("can't confirm values outside the limits", () => {
     renderPanel();
     fireEvent.change(numberBoxes()[1], { target: { value: '600' } });

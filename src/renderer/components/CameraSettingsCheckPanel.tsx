@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { CameraSettingsForm } from '../../components/CameraSettingsForm';
+import { cameraSettingsErrors } from '../../types/camera';
 import { ReferenceLine, changedTodayText } from './CameraSettingsReferenceLine';
 import {
   STARTING_CAMERA_VALUES,
@@ -83,6 +84,11 @@ export function CameraSettingsCheckPanel({
   };
 
   const invalid = cameraValuesError(values);
+  // The form shows its own range errors under each field; these rules it doesn't know.
+  const ruleError =
+    invalid && Object.keys(cameraSettingsErrors(values)).length === 0
+      ? invalid
+      : null;
   const changed = current !== null && !sameCameraValues(values, current);
   const noteMissing = changed && note.trim() === '';
 
@@ -190,6 +196,14 @@ export function CameraSettingsCheckPanel({
       {error && (
         <p role="alert" className="mt-3 text-sm font-medium text-red-600">
           {error}
+        </p>
+      )}
+      {ruleError && (
+        <p
+          className="mt-3 text-sm font-medium text-red-600"
+          data-testid="camera-values-error"
+        >
+          {ruleError}
         </p>
       )}
       {noteMissing && !invalid && (
