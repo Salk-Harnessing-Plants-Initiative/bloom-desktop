@@ -113,7 +113,7 @@ export function groupScansBySettings(
 }
 
 /**
- * "Used before in this experiment": the experiment's scan settings, plus saved settings
+ * "Previous camera settings used in this experiment": the experiment's scan settings, plus saved settings
  * no scan used yet, most recently used first. Groups whose gamma differs only by float
  * noise are merged.
  */

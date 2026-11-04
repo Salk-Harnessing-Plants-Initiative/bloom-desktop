@@ -70,54 +70,68 @@ export function ExperimentCameraSummary({
       </p>
     );
   }
+  const linkClass = 'font-medium text-lime-700 underline hover:text-lime-800';
   if (camera.needsCheck) {
-    const name = camera.experimentName || 'this experiment';
+    // The experiment has none yet: add them. They exist, but this phenotyper hasn't
+    // checked them today: verify them.
+    if (camera.status?.current == null) {
+      return (
+        <div className={base} data-testid="experiment-camera-summary">
+          <p className="text-amber-800">
+            <span aria-hidden="true">⚠ </span>Camera settings not configured
+          </p>
+          <Link
+            to={settingsLink}
+            className="mt-2 inline-block rounded-md bg-lime-700 px-3 py-1.5 font-medium text-white hover:bg-lime-800"
+          >
+            Add camera settings →
+          </Link>
+        </div>
+      );
+    }
     return (
-      <div className={base} data-testid="experiment-camera-summary">
-        <p className="font-medium text-amber-800">
-          Check the camera settings for {name} before scanning.
-        </p>
-        <Link
-          to={settingsLink}
-          className="mt-2 inline-block rounded-md bg-lime-700 px-3 py-1.5 font-medium text-white hover:bg-lime-800"
-        >
-          Check camera settings →
+      <p
+        className={`${base} text-amber-800`}
+        data-testid="experiment-camera-summary"
+      >
+        <span aria-hidden="true">⚠ </span>
+        Camera not verified today ·{' '}
+        <Link to={settingsLink} className={linkClass}>
+          Verify
         </Link>
-      </div>
+      </p>
     );
   }
   const values = camera.checkedValues;
   const current = camera.status?.current;
   if (!values || !current) return null;
+  const checked = [
+    'Checked today',
+    checkedAt(current.last_confirmed_at),
+    current.last_confirmed_by_name && `by ${current.last_confirmed_by_name}`,
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
-    <div
-      className={`${base} flex items-center justify-between gap-3`}
+    <p
+      className={`${base} text-gray-700`}
       data-testid="experiment-camera-summary"
+      title={checked}
     >
-      <p className="text-gray-700">
-        <span className="font-medium">Camera:</span>{' '}
-        {formatCameraSetting('exposure_time', values.exposure_time)} µs · gain{' '}
-        {formatCameraSetting('gain', values.gain)} · gamma{' '}
-        {formatCameraSetting('gamma', values.gamma)}
-        {camera.experimentName && ` (${camera.experimentName})`}
-        <span className="block text-xs text-gray-500">
-          Checked today {checkedAt(current.last_confirmed_at)}
-          {current.last_confirmed_by_name &&
-            ` by ${current.last_confirmed_by_name}`}
-        </span>
-      </p>
-      {scanning ? (
-        <span className="rounded-md border border-gray-200 px-3 py-1 font-medium text-gray-400">
-          Change
-        </span>
-      ) : (
-        <Link
-          to={settingsLink}
-          className="rounded-md border border-gray-300 px-3 py-1 font-medium text-gray-700 hover:bg-gray-50"
-        >
-          Change
-        </Link>
+      <span className="text-green-700" aria-hidden="true">
+        ✓{' '}
+      </span>
+      Camera set: {formatCameraSetting('exposure_time', values.exposure_time)}{' '}
+      µs · Gain {formatCameraSetting('gain', values.gain)} · Gamma{' '}
+      {formatCameraSetting('gamma', values.gamma)}
+      {scanning ? null : (
+        <>
+          {' · '}
+          <Link to={settingsLink} className={linkClass}>
+            Edit
+          </Link>
+        </>
       )}
-    </div>
+    </p>
   );
 }

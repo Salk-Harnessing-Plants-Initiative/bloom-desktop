@@ -889,7 +889,7 @@ export function CaptureScan() {
                 )}
                 {!experimentReady && isFormValid && !barcodeValidationError && (
                   <p className="text-sm text-red-600 mt-2">
-                    Check this experiment&apos;s camera settings first
+                    Set or verify the camera settings first
                   </p>
                 )}
                 {startScanHold && (

@@ -53,15 +53,24 @@ export function ExperimentCameraSettingsPage({
               them. Check the live preview with a plant in the scanner.
             </p>
           </div>
-          <Link
-            to={BACK_TO_CAPTURE_SCAN}
-            className="whitespace-nowrap rounded-md border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Back to Capture Scan
-          </Link>
+          <div className="flex flex-col items-end gap-2">
+            <Link
+              to={BACK_TO_CAPTURE_SCAN}
+              className="whitespace-nowrap rounded-md border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Back to Capture Scan
+            </Link>
+            <Link
+              to="/camera-settings?station=1"
+              className="text-sm text-gray-500 underline hover:text-gray-700"
+            >
+              Station camera settings
+            </Link>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
+        {/* Settings in a narrow column, the preview filling the rest. */}
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
           <div>
             {camera.loadError ? (
               <div className="rounded-lg bg-white p-6 shadow-sm">
@@ -87,6 +96,7 @@ export function ExperimentCameraSettingsPage({
                 onConfirm={confirm}
                 confirmLabel="Confirm and return to Capture Scan"
                 showTitle={false}
+                stacked
               />
             ) : (
               <p className="text-gray-500">
@@ -100,12 +110,13 @@ export function ExperimentCameraSettingsPage({
               Live Preview
             </h2>
             {previewSettings ? (
-              <div className="flex justify-center">
+              <div>
                 <Streamer
                   settings={previewSettings}
                   width={800}
                   height={600}
                   showFps={true}
+                  fitWidth
                 />
               </div>
             ) : (

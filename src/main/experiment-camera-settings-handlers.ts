@@ -173,7 +173,7 @@ export async function listHistory(
   }
 }
 
-/** "Used before in this experiment": each setting its live scans used, and saved ones. */
+/** "Previous camera settings used in this experiment": each setting its live scans used, and saved ones. */
 export async function listReference(
   deps: CameraSettingsDeps,
   experimentId: string

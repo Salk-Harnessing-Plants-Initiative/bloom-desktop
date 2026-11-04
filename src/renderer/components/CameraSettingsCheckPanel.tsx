@@ -29,7 +29,7 @@ export const PREVIEW_DELAY_MS = 500;
 export interface CameraSettingsCheckPanelProps {
   experimentName: string;
   status: ExperimentCameraSettingsStatus;
-  /** "Used before in this experiment", most recently used first. */
+  /** "Previous camera settings used in this experiment", most recently used first. */
   reference: CameraSettingsReference[];
   /** Where scan images are, for the thumbnails. */
   scansDir: string;
@@ -41,6 +41,8 @@ export interface CameraSettingsCheckPanelProps {
   confirmLabel?: string;
   /** Show the "Set camera settings for …" heading (a page may have its own). */
   showTitle?: boolean;
+  /** One column (fields, note, then the previous settings), for a narrow space beside a preview. */
+  stacked?: boolean;
 }
 
 /** Only the three settings the panel keeps (the form also passes the camera IP). */
@@ -63,6 +65,7 @@ export function CameraSettingsCheckPanel({
   onConfirm,
   confirmLabel = 'Confirm and continue',
   showTitle = true,
+  stacked = false,
 }: CameraSettingsCheckPanelProps) {
   const current = status.current;
   const [values, setValues] = useState<CameraValues>(() =>
@@ -150,7 +153,7 @@ export function CameraSettingsCheckPanel({
         </p>
       )}
 
-      <div className="mt-4 grid gap-6 lg:grid-cols-2">
+      <div className={`mt-4 grid gap-6 ${stacked ? '' : 'lg:grid-cols-2'}`}>
         <div>
           <CameraSettingsForm
             settings={values}
@@ -174,7 +177,7 @@ export function CameraSettingsCheckPanel({
 
         <div>
           <h4 className="text-sm font-medium text-gray-700">
-            Used before in this experiment
+            Previous camera settings used in this experiment
           </h4>
           {reference.length === 0 ? (
             <p className="mt-2 text-sm text-gray-500">
@@ -183,7 +186,7 @@ export function CameraSettingsCheckPanel({
           ) : (
             <ul
               className="mt-2 max-h-72 divide-y divide-gray-200 overflow-y-auto rounded border border-gray-200 bg-white"
-              aria-label="Camera settings used before in this experiment"
+              aria-label="Previous camera settings used in this experiment"
             >
               {reference.map((line) => (
                 <ReferenceLine

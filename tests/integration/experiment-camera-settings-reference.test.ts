@@ -1,5 +1,5 @@
 /**
- * Integration test: "Used before in this experiment" on a real database, through the
+ * Integration test: "Previous camera settings used in this experiment" on a real database, through the
  * real Prisma client (#484 review). Scans from the pilot app may store capture_date as
  * text, which SQLite sorts after any date stored as a number, whatever the actual date.
  * The list must still show each setting's real latest scan.

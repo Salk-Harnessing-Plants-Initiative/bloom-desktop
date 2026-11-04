@@ -1,5 +1,5 @@
 /**
- * The text and the "Used before in this experiment" lines of the Set camera settings
+ * The text and the "Previous camera settings used in this experiment" lines of the Set camera settings
  * panel (#483).
  */
 

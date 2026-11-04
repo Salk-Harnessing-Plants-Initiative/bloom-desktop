@@ -40,7 +40,7 @@ export interface ExperimentCameraSettingsStatus {
   changedToday: CameraSettingsChangedToday | null;
 }
 
-/** One line of "Used before in this experiment". */
+/** One line of "Previous camera settings used in this experiment". */
 export interface CameraSettingsReference extends CameraValues {
   scan_count: number;
   /** ISO times of the first and latest scan; null for saved settings no scan used yet. */

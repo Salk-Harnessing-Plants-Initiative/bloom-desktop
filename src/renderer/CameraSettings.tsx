@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ExperimentCameraSettingsPage } from './ExperimentCameraSettingsPage';
+import { useCaptureScanChoice } from './hooks/useCaptureScanChoice';
 import { Streamer } from '../components/Streamer';
 import { CameraSettingsForm } from '../components/CameraSettingsForm';
 import {
@@ -25,18 +26,31 @@ import {
 const APPLIED_MESSAGE_MS = 4000;
 
 /**
- * Camera Settings: the station's settings, or one experiment's when opened from
- * Capture Scan with ?experiment=…&phenotyper=… (#483).
+ * Camera Settings (#483): one experiment's settings when opened from Capture Scan's
+ * link (?experiment=…&phenotyper=…), or from the sidebar while an experiment and a
+ * phenotyper are chosen on Capture Scan. Otherwise, or with ?station=1, the station's.
  */
 export function CameraSettings() {
   const [params] = useSearchParams();
-  const experimentId = params.get('experiment');
-  const phenotyperId = params.get('phenotyper');
-  if (experimentId && phenotyperId) {
+  const linked = params.get('experiment') && params.get('phenotyper');
+  const station = params.get('station') === '1';
+  const chosen = useCaptureScanChoice(!linked && !station);
+  if (linked) {
     return (
       <ExperimentCameraSettingsPage
-        experimentId={experimentId}
-        phenotyperId={phenotyperId}
+        experimentId={params.get('experiment') as string}
+        phenotyperId={params.get('phenotyper') as string}
+      />
+    );
+  }
+  // Still asking which experiment is chosen: show nothing rather than flash the
+  // station page.
+  if (chosen === undefined) return null;
+  if (chosen) {
+    return (
+      <ExperimentCameraSettingsPage
+        experimentId={chosen.experimentId}
+        phenotyperId={chosen.phenotyperId}
       />
     );
   }

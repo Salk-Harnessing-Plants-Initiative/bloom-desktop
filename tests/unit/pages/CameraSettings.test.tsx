@@ -10,8 +10,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import type { ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { CameraSettings } from '../../../src/renderer/CameraSettings';
+
+/** The station's Camera Settings page, whatever is chosen on Capture Scan (#483). */
+function StationPage({ children }: { children: ReactNode }) {
+  return (
+    <MemoryRouter initialEntries={['/camera-settings?station=1']}>
+      {children}
+    </MemoryRouter>
+  );
+}
 
 // The live preview streams frames over IPC; it isn't under test here.
 vi.mock('../../../src/components/Streamer', () => ({
@@ -39,7 +49,7 @@ beforeEach(() => {
 
 describe('CameraSettings page layout', () => {
   it('centers content in a max-w-7xl container matching CaptureScan.tsx', () => {
-    const { container } = render(<CameraSettings />, { wrapper: MemoryRouter });
+    const { container } = render(<CameraSettings />, { wrapper: StationPage });
 
     const shell = container.querySelector('.min-h-screen.bg-gray-50.p-6');
     expect(shell).not.toBeNull();
@@ -49,7 +59,7 @@ describe('CameraSettings page layout', () => {
   });
 
   it('uses shadow-sm (not shadow) on both panels', () => {
-    const { container } = render(<CameraSettings />, { wrapper: MemoryRouter });
+    const { container } = render(<CameraSettings />, { wrapper: StationPage });
 
     const grid = container.querySelector('.grid.grid-cols-1.lg\\:grid-cols-2');
     const panels = grid ? Array.from(grid.children) : [];
@@ -62,14 +72,14 @@ describe('CameraSettings page layout', () => {
   });
 
   it('keeps the pre-existing two-column grid (unaffected by this change)', () => {
-    const { container } = render(<CameraSettings />, { wrapper: MemoryRouter });
+    const { container } = render(<CameraSettings />, { wrapper: StationPage });
 
     const grid = container.querySelector('.grid.grid-cols-1.lg\\:grid-cols-2');
     expect(grid).not.toBeNull();
   });
 
   it('keeps Settings form in the left column and Live Preview in the right column', () => {
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     const headings = screen.getAllByRole('heading', { level: 2 });
     const headingTexts = headings.map((h) => h.textContent);
@@ -81,7 +91,7 @@ describe('CameraSettings page layout', () => {
   });
 
   it('does not show camera-selection/auto-detection UI (#338 — moved to Machine Configuration)', () => {
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     expect(
       screen.queryByRole('button', { name: /Detect Cameras/i })
@@ -94,7 +104,7 @@ describe('CameraSettings page layout', () => {
 
 describe('CameraSettings Apply feedback', () => {
   it('shows "Not applied yet" before anything is applied', async () => {
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     expect(await screen.findByText(/Not applied yet/i)).toBeInTheDocument();
     expect(screen.queryByText(/ago/)).not.toBeInTheDocument();
@@ -102,7 +112,7 @@ describe('CameraSettings Apply feedback', () => {
 
   it('confirms a successful Apply and shows when it was applied', async () => {
     mockConfigure.mockResolvedValue({ success: true });
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
 
@@ -124,7 +134,7 @@ describe('CameraSettings Apply feedback', () => {
       gamma: 1.2,
       source: 'saved',
     });
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     expect(
       await screen.findByText('Saved for future sessions')
@@ -146,7 +156,7 @@ describe('CameraSettings Apply feedback', () => {
         message: 'No permission to write the settings file: EPERM',
       },
     });
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
 
@@ -171,7 +181,7 @@ describe('CameraSettings Apply feedback', () => {
       source: 'applied-unsaved',
       saveError: { code: 'CAM-SAVE-01', message: 'Settings out of range' },
     });
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     const notice = await screen.findByText(
       'Applied to the camera, but not saved for future sessions.'
@@ -189,7 +199,7 @@ describe('CameraSettings Apply feedback', () => {
   it('disables Apply until the camera answers', async () => {
     let answer: (value: unknown) => void = () => undefined;
     mockConfigure.mockReturnValue(new Promise((resolve) => (answer = resolve)));
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     fireEvent.click(screen.getByRole('button', { name: /Apply Settings/i }));
     const applying = await screen.findByRole('button', { name: 'Applying…' });
@@ -204,7 +214,7 @@ describe('CameraSettings Apply feedback', () => {
   });
 
   it('lists every save error code on the page', () => {
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
     for (const code of [
       'CAM-SAVE-01',
       'CAM-SAVE-02',
@@ -223,7 +233,7 @@ describe('CameraSettings Apply feedback', () => {
       gamma: 1.2,
       source: 'saved',
     });
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     await screen.findByText('Saved for future sessions');
     expect(screen.queryByText('Not applied yet')).not.toBeInTheDocument();
@@ -231,7 +241,7 @@ describe('CameraSettings Apply feedback', () => {
 
   it('says the defaults are not saved yet when nothing was ever applied', async () => {
     mockGetSettings.mockResolvedValue(null);
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
 
     expect(
       await screen.findByText('Defaults (not saved yet)')
@@ -243,7 +253,7 @@ describe('CameraSettings Apply feedback', () => {
       success: false,
       error: 'Camera not connected',
     });
-    render(<CameraSettings />, { wrapper: MemoryRouter });
+    render(<CameraSettings />, { wrapper: StationPage });
     // Exposure, gain, gamma: the third number box is gamma.
     fireEvent.change(screen.getAllByRole('spinbutton')[2], {
       target: { value: '1.2' },

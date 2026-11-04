@@ -127,6 +127,12 @@ beforeEach(() => {
       },
     },
     camera: {
+      // The station Camera Settings page streams too.
+      startStream: vi.fn().mockResolvedValue({ success: true }),
+      stopStream: vi.fn().mockResolvedValue({ success: true }),
+      onFrame: vi.fn(() => () => undefined),
+      offFrame: vi.fn(),
+      removeAllListeners: vi.fn(),
       getStatus: vi.fn().mockResolvedValue({ connected: true }),
       getSettings: vi
         .fn()
@@ -213,20 +219,22 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     renderPage();
     await enterBarcode();
 
-    expect(
-      await screen.findByText(
-        'Check the camera settings for KCS before scanning.'
+    // KCS has settings, not checked today by this phenotyper: Verify.
+    await waitFor(() =>
+      expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
+        'Camera not verified today · Verify'
       )
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: 'Check camera settings →' })
-    ).toHaveAttribute('href', SETTINGS_LINK);
+    );
+    expect(await screen.findByRole('link', { name: 'Verify' })).toHaveAttribute(
+      'href',
+      SETTINGS_LINK
+    );
     expect(cameraApi.status).toHaveBeenCalledWith('exp-1', 'pheno-1');
     // Long enough for every other check to have passed.
     await new Promise((r) => setTimeout(r, 300));
     expect(startButton()).toBeDisabled();
     expect(
-      screen.getByText("Check this experiment's camera settings first")
+      screen.getByText('Set or verify the camera settings first')
     ).toBeInTheDocument();
     // The check happens on Camera Settings, not on this page.
     expect(
@@ -242,9 +250,7 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     cameraApi.confirm.mockResolvedValue({ success: true, data: CHECKED_TODAY });
     renderPage();
 
-    fireEvent.click(
-      await screen.findByRole('link', { name: 'Check camera settings →' })
-    );
+    fireEvent.click(await screen.findByRole('link', { name: 'Verify' }));
     expect(
       await screen.findByRole('heading', { name: 'Camera settings for KCS' })
     ).toBeInTheDocument();
@@ -271,7 +277,7 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
       timeout: START_ENABLED_TIMEOUT_MS,
     });
     expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
-      /Camera: 7,400 µs · gain 250 · gamma 1\.0 \(KCS\)/
+      /Camera set: 7,400 µs · Gain 250 · Gamma 1\.0 · Edit/
     );
 
     fireEvent.click(startButton());
@@ -283,7 +289,7 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     });
   });
 
-  it('goes straight to scanning when this phenotyper checked them today, with Change linking to Camera Settings', async () => {
+  it('goes straight to scanning when this phenotyper checked them today, with Edit linking to Camera Settings', async () => {
     setCameraApi(CHECKED_TODAY);
     renderPage();
     await enterBarcode();
@@ -291,7 +297,12 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     await waitFor(() => expect(startButton()).toBeEnabled(), {
       timeout: START_ENABLED_TIMEOUT_MS,
     });
-    expect(screen.getByRole('link', { name: 'Change' })).toHaveAttribute(
+    // Who checked them, and when, is in the tooltip.
+    expect(screen.getByTestId('experiment-camera-summary')).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^Checked today .* by Demo Phenotyper$/)
+    );
+    expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute(
       'href',
       SETTINGS_LINK
     );
@@ -300,14 +311,14 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
   it('goes back to Capture Scan without saving from Camera Settings', async () => {
     setCameraApi(CHECKED_TODAY);
     renderPage();
-    fireEvent.click(await screen.findByRole('link', { name: 'Change' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Edit' }));
     fireEvent.click(
       await screen.findByRole('link', { name: 'Back to Capture Scan' })
     );
     // Back on Capture Scan, with the experiment's settings still in use.
     await waitFor(() =>
       expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
-        'Camera: 7,400 µs'
+        'Camera set: 7,400 µs'
       )
     );
     expect(cameraApi.confirm).not.toHaveBeenCalled();
@@ -326,8 +337,68 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
       expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
-        'Camera: 7,400 µs'
+        'Camera set: 7,400 µs'
       )
     );
+  });
+
+  it('asks to set camera settings for an experiment that has none yet', async () => {
+    setCameraApi({ current: null, confirmedToday: false, changedToday: null });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
+        'Camera settings not configuredAdd camera settings →'
+      )
+    );
+    expect(
+      await screen.findByRole('link', { name: 'Add camera settings →' })
+    ).toHaveAttribute('href', SETTINGS_LINK);
+  });
+
+  it('opens the chosen experiment from the sidebar, with a link to the station page', async () => {
+    setCameraApi(CHECKED_TODAY);
+    render(
+      <MemoryRouter initialEntries={['/camera-settings']}>
+        <Routes>
+          <Route path="/camera-settings" element={<CameraSettings />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    // The session has exp-1 and pheno-1 chosen on Capture Scan.
+    expect(
+      await screen.findByRole('heading', { name: 'Camera settings for KCS' })
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole('link', { name: 'Station camera settings' })
+    );
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Camera Settings & Live Preview',
+      })
+    ).toBeInTheDocument();
+  });
+
+  it('opens the station page from the sidebar when nothing is chosen', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).electron.session.get = vi.fn().mockResolvedValue({
+      phenotyperId: null,
+      experimentId: 'exp-1',
+      waveNumber: null,
+      plantAgeDays: null,
+      accessionName: null,
+    });
+    render(
+      <MemoryRouter initialEntries={['/camera-settings']}>
+        <Routes>
+          <Route path="/camera-settings" element={<CameraSettings />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Camera Settings & Live Preview',
+      })
+    ).toBeInTheDocument();
   });
 });
