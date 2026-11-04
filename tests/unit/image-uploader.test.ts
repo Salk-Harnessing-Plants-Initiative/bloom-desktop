@@ -79,9 +79,9 @@ vi.mock('@salk-harnessing-plants-initiative/bloom-fs', () => ({
 }));
 
 // Mock config-store
-vi.mock('../../src/main/config-store', () => ({
-  loadEnvConfig: vi.fn(),
-  getScansDir: vi.fn(),
+vi.mock('../../src/main/station-config', () => ({
+  stationConfig: { get: vi.fn() },
+  stationScansDir: vi.fn(),
 }));
 
 // Import after mocking
@@ -94,7 +94,11 @@ import {
   uploadImages,
   concurrentMap,
 } from '@salk-harnessing-plants-initiative/bloom-fs';
-import { loadEnvConfig, getScansDir } from '../../src/main/config-store';
+import { stationConfig, stationScansDir } from '../../src/main/station-config';
+
+/** The station configuration the uploader sees. */
+const stationConfigIs = (config: unknown) =>
+  (stationConfig.get as Mock).mockReturnValue({ config, error: null });
 
 // Import the module under test (will fail until implemented)
 import {
@@ -262,8 +266,8 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
     );
 
     // Setup mock config
-    (loadEnvConfig as Mock).mockReturnValue(mockCredentials);
-    (getScansDir as Mock).mockReturnValue(mockCredentials.scans_dir);
+    stationConfigIs(mockCredentials);
+    (stationScansDir as Mock).mockReturnValue(mockCredentials.scans_dir);
 
     // Default concurrentMap: functionally equivalent to bloom-fs's real
     // implementation (runs asyncFunc for every item, bounded concurrency
@@ -304,7 +308,7 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
 
-        expect(loadEnvConfig).toHaveBeenCalled();
+        expect(stationConfig.get).toHaveBeenCalled();
       });
 
       it('should create Supabase client with correct credentials', async () => {
@@ -343,7 +347,7 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
       });
 
       it('should throw error when credentials are missing', async () => {
-        (loadEnvConfig as Mock).mockReturnValue({
+        stationConfigIs({
           ...mockCredentials,
           bloom_scanner_username: '',
           bloom_scanner_password: '',

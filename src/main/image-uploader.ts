@@ -17,12 +17,8 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import type { ImageStatus } from '../types/database';
 import { germDay } from '../utils/wave-dates';
-import {
-  loadEnvConfig,
-  getScansDir as getConfiguredScansDir,
-} from './config-store';
+import { stationConfig, stationScansDir } from './station-config';
 import path from 'path';
-import os from 'os';
 import type {
   TypedSupabaseClient,
   SupabaseUploader,
@@ -43,10 +39,6 @@ const VERIFICATION_RETRY_DELAY_MS = 500;
 const VERIFICATION_CONCURRENCY = 4;
 
 type VerificationOutcome = 'present' | 'missing' | 'inconclusive';
-
-// Default env path for credentials
-const BLOOM_DIR = path.join(os.homedir(), '.bloom');
-const ENV_PATH = path.join(BLOOM_DIR, '.env');
 
 /**
  * Result of uploading a single scan
@@ -137,7 +129,7 @@ export class ImageUploader {
    * Used to resolve relative Image.path values to absolute paths for upload.
    */
   private async getScansDir(): Promise<string> {
-    return getConfiguredScansDir();
+    return stationScansDir();
   }
 
   /**
@@ -148,8 +140,8 @@ export class ImageUploader {
    * matching the pattern in config-store.ts fetchScannersFromBloom()
    */
   async authenticate(): Promise<void> {
-    // Load credentials from config
-    const config = loadEnvConfig(ENV_PATH);
+    // Credentials from the station configuration read at start-up (#477)
+    const { config } = stationConfig.get();
 
     // Validate credentials exist
     if (!config.bloom_scanner_username || !config.bloom_scanner_password) {

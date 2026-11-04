@@ -494,10 +494,12 @@ export function validateConfig(config: MachineConfig): ValidationResult {
  * `config.json`).
  *
  * @param envPath - Path to `.env` file
+ * @param strict - Throw when the file exists but can't be read, instead of
+ *   treating it as empty (the station configuration loaded at start-up, #477)
  * @returns Whatever fields were present in the file; missing/invalid
  *   fields are simply absent from the returned object.
  */
-function parseEnvFile(envPath: string): Partial<MachineConfig> {
+function parseEnvFile(envPath: string, strict = false): Partial<MachineConfig> {
   const envConfig: Partial<MachineConfig> = {};
 
   try {
@@ -581,7 +583,8 @@ function parseEnvFile(envPath: string): Partial<MachineConfig> {
         }
       }
     }
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     // Ignore errors reading .env
   }
 
@@ -593,9 +596,13 @@ function parseEnvFile(envPath: string): Partial<MachineConfig> {
  * Includes automatic migration from legacy config.json + .env format
  *
  * @param envPath - Path to .env file (e.g., ~/.bloom/.env)
+ * @param options.strict - Throw when the file exists but can't be read
  * @returns Unified configuration with all fields
  */
-export function loadEnvConfig(envPath: string): MachineConfig {
+export function loadEnvConfig(
+  envPath: string,
+  options: { strict?: boolean } = {}
+): MachineConfig {
   const defaults = getDefaultConfig();
   const emptyCredentials = {
     bloom_scanner_username: '',
@@ -617,7 +624,7 @@ export function loadEnvConfig(envPath: string): MachineConfig {
   }
 
   // Load from .env file
-  const envConfig = parseEnvFile(envPath);
+  const envConfig = parseEnvFile(envPath, options.strict);
 
   // Merge: defaults < legacyConfig < envConfig
   const merged: MachineConfig = {
@@ -645,16 +652,6 @@ export function loadEnvConfig(envPath: string): MachineConfig {
   }
 
   return merged;
-}
-
-/**
- * Resolve the configured scans directory, falling back to
- * `~/.bloom/scans` when unset. Shared by any code that needs to locate a
- * scan's files on disk from its relative `Scan.path`.
- */
-export function getScansDir(): string {
-  const config = loadEnvConfig(path.join(os.homedir(), '.bloom', '.env'));
-  return config.scans_dir || path.join(os.homedir(), '.bloom', 'scans');
 }
 
 /**

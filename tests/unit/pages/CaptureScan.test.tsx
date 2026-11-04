@@ -23,6 +23,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import '@testing-library/jest-dom';
 import { CaptureScan } from '../../../src/renderer/CaptureScan';
+import { StationConfigProvider } from '../../../src/renderer/contexts/StationConfigContext';
 
 const mockCheckIdleReset = vi.fn().mockResolvedValue(false);
 const mockOnIdleReset = vi.fn().mockReturnValue(vi.fn());
@@ -137,7 +138,8 @@ function renderCaptureScan() {
   return render(
     <MemoryRouter>
       <CaptureScan />
-    </MemoryRouter>
+    </MemoryRouter>,
+    { wrapper: StationConfigProvider }
   );
 }
 
@@ -219,7 +221,8 @@ describe('CaptureScan color palette (camera-not-configured state)', () => {
             element={<p>Camera Settings page</p>}
           />
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: StationConfigProvider }
     );
     await waitFor(() => expect(mockCameraGetStatus).toHaveBeenCalled());
     if (inPanel) fireEvent.click(await screen.findByText(/Camera Settings/));

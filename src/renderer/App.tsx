@@ -28,6 +28,9 @@ import { useAppMode } from './hooks/useAppMode';
 import { UploadStatusProvider } from './contexts/UploadStatusContext';
 import { WaveMetadataLinksProvider } from './contexts/WaveMetadataLinksContext';
 import { UnsavedChangesProvider } from './contexts/UnsavedChangesContext';
+import { StationConfigProvider } from './contexts/StationConfigContext';
+import { StartupLoader } from './components/StartupLoader';
+import { StationSettingsUnreadable } from './components/StationSettingsUnreadable';
 
 // Lazy-loaded: Metadata is GraviScan-only, so there's no reason to bundle
 // it (and its Excel-parsing UI) into every mode's initial load.
@@ -36,101 +39,106 @@ const Metadata = lazy(() =>
 );
 
 export default function App() {
-  const { mode, isLoading } = useAppMode();
+  const { mode, isLoading, loadError, retry } = useAppMode();
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="text-gray-600">Loading...</div>
-      </div>
-    );
+  if (isLoading) return <StartupLoader />;
+
+  // The settings file is there but couldn't be read: not a new station. Neither
+  // first-run setup nor the app opens, so nothing can be saved over it (#485).
+  if (loadError) {
+    return <StationSettingsUnreadable loadError={loadError} onRetry={retry} />;
   }
 
   // First run (empty mode) — show only Machine Config, no sidebar/layout
   if (mode === '') {
     return (
-      <Router initialEntries={['/machine-config']}>
-        <Routes>
-          <Route path="/machine-config" element={<MachineConfiguration />} />
-          <Route path="*" element={<Navigate to="/machine-config" />} />
-        </Routes>
-      </Router>
+      <StationConfigProvider>
+        <Router initialEntries={['/machine-config']}>
+          <Routes>
+            <Route path="/machine-config" element={<MachineConfiguration />} />
+            <Route path="*" element={<Navigate to="/machine-config" />} />
+          </Routes>
+        </Router>
+      </StationConfigProvider>
     );
   }
 
+  // Pages wait for the station's settings, read once here (#477).
   return (
-    <UploadStatusProvider>
-      <WaveMetadataLinksProvider>
-        <UnsavedChangesProvider>
-          <Router initialEntries={['/']}>
-            <Routes>
-              <Route path="/" element={<Layout mode={mode} />}>
-                <Route index element={<Home mode={mode} />} />
+    <StationConfigProvider>
+      <UploadStatusProvider>
+        <WaveMetadataLinksProvider>
+          <UnsavedChangesProvider>
+            <Router initialEntries={['/']}>
+              <Routes>
+                <Route path="/" element={<Layout mode={mode} />}>
+                  <Route index element={<Home mode={mode} />} />
 
-                {/* Capture routes — conditional on scanner mode */}
-                {mode === 'cylinderscan' && (
-                  <>
-                    <Route
-                      path="camera-settings"
-                      element={<CameraSettings />}
-                    />
-                    <Route path="capture-scan" element={<CaptureScan />} />
-                    <Route path="accessions" element={<Accessions />} />
-                  </>
-                )}
+                  {/* Capture routes — conditional on scanner mode */}
+                  {mode === 'cylinderscan' && (
+                    <>
+                      <Route
+                        path="camera-settings"
+                        element={<CameraSettings />}
+                      />
+                      <Route path="capture-scan" element={<CaptureScan />} />
+                      <Route path="accessions" element={<Accessions />} />
+                    </>
+                  )}
 
-                {mode === 'graviscan' && (
-                  <>
-                    <Route
-                      path="configure-scanner"
-                      element={<ConfigureScanner />}
-                    />
-                    <Route path="capture-scan" element={<GraviScan />} />
-                    <Route
-                      path="browse-graviscans"
-                      element={<BrowseGraviScans />}
-                    />
-                    <Route
-                      path="graviscan-experiment/:experimentId"
-                      element={<ExperimentDetail />}
-                    />
-                    <Route
-                      path="metadata"
-                      element={
-                        <Suspense fallback={<div>Loading...</div>}>
-                          <Metadata />
-                        </Suspense>
-                      }
-                    />
-                  </>
-                )}
+                  {mode === 'graviscan' && (
+                    <>
+                      <Route
+                        path="configure-scanner"
+                        element={<ConfigureScanner />}
+                      />
+                      <Route path="capture-scan" element={<GraviScan />} />
+                      <Route
+                        path="browse-graviscans"
+                        element={<BrowseGraviScans />}
+                      />
+                      <Route
+                        path="graviscan-experiment/:experimentId"
+                        element={<ExperimentDetail />}
+                      />
+                      <Route
+                        path="metadata"
+                        element={
+                          <Suspense fallback={<div>Loading...</div>}>
+                            <Metadata />
+                          </Suspense>
+                        }
+                      />
+                    </>
+                  )}
 
-                {/* Data entry routes — available for all modes */}
-                <Route path="scientists" element={<Scientists />} />
-                <Route path="phenotypers" element={<Phenotypers />} />
-                <Route
-                  path="experiments"
-                  element={<Experiments mode={mode} />}
-                />
+                  {/* Data entry routes — available for all modes */}
+                  <Route path="scientists" element={<Scientists />} />
+                  <Route path="phenotypers" element={<Phenotypers />} />
+                  <Route
+                    path="experiments"
+                    element={<Experiments mode={mode} />}
+                  />
 
-                {/* Browse routes — always visible */}
-                <Route path="browse-scans" element={<BrowseScans />} />
-                <Route path="scan/:scanId" element={<ScanPreview />} />
-                <Route path="export" element={<Export />} />
+                  {/* Browse routes — always visible */}
+                  <Route path="browse-scans" element={<BrowseScans />} />
+                  <Route path="scan/:scanId" element={<ScanPreview />} />
+                  <Route path="export" element={<Export />} />
 
-                {/* Config */}
-                <Route
-                  path="machine-config"
-                  element={<MachineConfiguration />}
-                />
+                  {/* Config */}
+                  <Route
+                    path="machine-config"
+                    element={<MachineConfiguration />}
+                  />
 
-                {/* Catch-all redirect */}
-                <Route path="*" element={<Navigate to="/" />} />
-              </Route>
-            </Routes>
-          </Router>
-        </UnsavedChangesProvider>
-      </WaveMetadataLinksProvider>
-    </UploadStatusProvider>
+                  {/* Catch-all redirect */}
+                  <Route path="*" element={<Navigate to="/" />} />
+                </Route>
+              </Routes>
+            </Router>
+          </UnsavedChangesProvider>
+        </WaveMetadataLinksProvider>
+      </UploadStatusProvider>
+    </StationConfigProvider>
   );
 }

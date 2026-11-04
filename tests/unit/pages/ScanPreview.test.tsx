@@ -13,6 +13,7 @@ import {
 import '@testing-library/jest-dom';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ScanPreview } from '../../../src/renderer/ScanPreview';
+import { StationConfigProvider } from '../../../src/renderer/contexts/StationConfigContext';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -75,7 +76,8 @@ function renderPage() {
       <Routes>
         <Route path="/scan/:scanId" element={<ScanPreview />} />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
+    { wrapper: StationConfigProvider }
   );
 }
 

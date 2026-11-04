@@ -13,6 +13,7 @@ import { UploadAllBar } from './components/UploadAllBar';
 import { countUploadStatuses } from '../utils/upload-status';
 import { pathToFileUrl } from '../utils/file-url';
 import { isAbsolutePath } from '../utils/scan-path';
+import { useStationConfig } from './contexts/StationConfigContext';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -48,33 +49,15 @@ export function BrowseScans() {
   );
   const [batchUploadInProgress, setBatchUploadInProgress] = useState(false);
 
-  // Thumbnail resolution state — mirrors ScanPreview.tsx's existing pattern
-  const [scansDir, setScansDir] = useState('');
-  // Scans can load (via fetchScans, a separate IPC round-trip) before this
-  // config load resolves; gating thumbnail rendering on this flag avoids
-  // building a URL against an empty scansDir and permanently blacklisting
-  // the row in thumbnailErrors for what would only be a transient ordering
-  // issue, not a genuinely missing image.
-  const [configLoaded, setConfigLoaded] = useState(false);
+  // Thumbnails resolve against the station's scans folder, loaded once at app
+  // start (#477). Without it, no URL is built: one against an empty folder would
+  // fail and stay in thumbnailErrors.
+  const { config: stationConfig } = useStationConfig();
+  const scansDir = stationConfig?.scans_dir ?? '';
+  const configLoaded = scansDir !== '';
   const [thumbnailErrors, setThumbnailErrors] = useState<Set<string>>(
     new Set()
   );
-
-  useEffect(() => {
-    const loadConfig = async () => {
-      try {
-        const { config } = await window.electron.config.get();
-        if (config.scans_dir) {
-          setScansDir(config.scans_dir);
-        }
-      } catch (err) {
-        console.error('Failed to load machine config:', err);
-      } finally {
-        setConfigLoaded(true);
-      }
-    };
-    loadConfig();
-  }, []);
 
   const totalPages = Math.ceil(total / pageSize);
 

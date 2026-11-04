@@ -25,6 +25,7 @@ import {
   useUnsavedChanges,
 } from '../../src/renderer/contexts/UnsavedChangesContext';
 import { toIsoDate } from '../../src/utils/wave-dates';
+import { StationConfigProvider } from '../../src/renderer/contexts/StationConfigContext';
 
 // Capture Scan loads the session, config, waves and plants in a chain, which can take
 // longer than the default 1 s to settle (and a test longer than 5 s) when the whole
@@ -42,6 +43,7 @@ const sownDaysAgo = (days: number) => {
 
 // Mocks for window.electron APIs
 const mockConfigGet = vi.fn();
+const mockConfigReload = vi.fn();
 const mockCameraGetStatus = vi.fn();
 const mockCameraGetSettings = vi.fn();
 const mockScannerInitialize = vi.fn();
@@ -124,7 +126,7 @@ beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
   win.electron = {
-    config: { get: mockConfigGet },
+    config: { get: mockConfigGet, reload: mockConfigReload },
     camera: {
       getStatus: mockCameraGetStatus,
       getSettings: mockCameraGetSettings,
@@ -213,7 +215,8 @@ function renderCaptureScan() {
         <CaptureScan />
         <NavigationBlockProbe />
       </UnsavedChangesProvider>
-    </MemoryRouter>
+    </MemoryRouter>,
+    { wrapper: StationConfigProvider }
   );
 }
 
@@ -776,27 +779,103 @@ describe('CaptureScan Config Integration', () => {
     expect(initArgs.daq.seconds_per_rot).toBe(5.0);
   });
 
-  it('1.8.4 falls back to defaults when config returns no num_frames', async () => {
+  /** Render with the plant filled in, without starting a scan. */
+  async function fillPlantOnly() {
+    renderCaptureScan();
+    await waitFor(() => expect(mockSessionGet).toHaveBeenCalled());
+    const plantIdInput = await screen.findByPlaceholderText('e.g., PLANT_001');
+    await act(async () => {
+      fireEvent.change(plantIdInput, { target: { value: 'PLANT-001' } });
+    });
+  }
+
+  const startButton = () => screen.getByRole('button', { name: /start scan/i });
+
+  it("1.8.4 doesn't scan with frames and rotation of its own when the station has none (#477)", async () => {
     mockConfigGet.mockResolvedValue({
       config: {
         scanner_mode: 'cylinderscan',
         scanner_name: 'TestScanner',
-        scans_dir: '~/.bloom/scans',
+        scans_dir: '/scans',
         camera_ip_address: 'mock',
         // num_frames and seconds_per_rot are NOT in config
       },
     });
+    await fillPlantOnly();
 
-    await fillFormAndStartScan();
+    expect(
+      await screen.findByText(
+        'This station has no frame count. Set it in Machine Configuration.'
+      )
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Frames and rotation: not set')
+    ).toBeInTheDocument();
+    expect(startButton()).toBeDisabled();
+    expect(mockScannerInitialize).not.toHaveBeenCalled();
+  });
 
-    await waitFor(() => {
-      expect(mockScannerInitialize).toHaveBeenCalled();
+  it("doesn't scan as CaptureScan-UI when the station has no scanner name (#477)", async () => {
+    mockConfigGet.mockResolvedValue({
+      config: {
+        scanner_mode: 'cylinderscan',
+        scanner_name: '  ',
+        scans_dir: '/scans',
+        num_frames: 72,
+        seconds_per_rot: 7,
+      },
     });
+    await fillPlantOnly();
 
-    const initArgs = mockScannerInitialize.mock.calls[0][0];
-    // Should fall back to defaults: 72 frames, 7.0 seconds
-    expect(initArgs.daq.num_frames).toBe(72);
-    expect(initArgs.daq.seconds_per_rot).toBe(7.0);
+    expect(
+      await screen.findByText(
+        'This station has no scanner name. Set it in Machine Configuration.'
+      )
+    ).toBeInTheDocument();
+    expect(startButton()).toBeDisabled();
+    expect(
+      screen.getByRole('link', { name: 'Open Machine Configuration' })
+    ).toHaveAttribute('href', '/machine-config');
+  });
+
+  it("shows why the settings couldn't be read, and scans once Retry reads them (#477)", async () => {
+    mockConfigGet.mockResolvedValue({
+      config: { scanner_mode: 'cylinderscan', scanner_name: '', scans_dir: '' },
+      loadError:
+        "Couldn't read this station's settings (~/.bloom/.env): EACCES",
+    });
+    mockConfigReload.mockResolvedValue({
+      config: {
+        scanner_mode: 'cylinderscan',
+        scanner_name: 'PBIOBScanner',
+        scans_dir: '/scans',
+        num_frames: 72,
+        seconds_per_rot: 7,
+      },
+      loadError: null,
+    });
+    await fillPlantOnly();
+
+    expect(await screen.findByText(/EACCES/)).toBeInTheDocument();
+    expect(startButton()).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    });
+    expect(mockConfigReload).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(startButton()).not.toBeDisabled());
+    expect(
+      screen.queryByTestId('station-config-notice')
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/72 frames, ~7s rotation/)).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(startButton());
+    });
+    await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
+    const init = mockScannerInitialize.mock.calls[0][0];
+    expect(init.metadata.scanner_name).toBe('PBIOBScanner');
+    expect(init.output_path).toMatch(/^\/scans\//);
   });
 });
 

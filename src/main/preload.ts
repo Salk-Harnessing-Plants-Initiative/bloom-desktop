@@ -432,6 +432,7 @@ const databaseAPI: DatabaseAPI = {
  */
 const configAPI: ConfigAPI = {
   get: () => ipcRenderer.invoke('config:get'),
+  reload: () => ipcRenderer.invoke('config:reload'),
   set: (config: MachineConfig) => ipcRenderer.invoke('config:set', config),
   testCamera: (ipAddress: string) =>
     ipcRenderer.invoke('config:test-camera', ipAddress),

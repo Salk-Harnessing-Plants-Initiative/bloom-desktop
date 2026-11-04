@@ -17,6 +17,7 @@ import type {
   UploadAllDone,
   UploadAllProgress,
 } from '../../../src/types/upload-all';
+import { StationConfigProvider } from '../../../src/renderer/contexts/StationConfigContext';
 
 const scan = {
   id: 'scan-1',
@@ -95,7 +96,8 @@ async function startUploadAll() {
   render(
     <MemoryRouter>
       <BrowseScans />
-    </MemoryRouter>
+    </MemoryRouter>,
+    { wrapper: StationConfigProvider }
   );
   fireEvent.click(await screen.findByText('Upload all (1)'));
 }
@@ -153,7 +155,8 @@ describe('Browse Scans while Upload all runs', () => {
     render(
       <MemoryRouter>
         <BrowseScans />
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: StationConfigProvider }
     );
     await screen.findByRole('option', { name: /Exp 2/ });
 
@@ -221,7 +224,8 @@ describe('Browse Scans while Upload all runs', () => {
     render(
       <MemoryRouter>
         <BrowseScans />
-      </MemoryRouter>
+      </MemoryRouter>,
+      { wrapper: StationConfigProvider }
     );
     await screen.findByText('Upload all (1)');
     fireEvent.click(screen.getByRole('button', { name: 'Upload to Bloom' }));

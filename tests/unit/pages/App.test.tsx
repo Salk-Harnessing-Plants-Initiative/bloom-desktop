@@ -189,13 +189,37 @@ describe('App routing', () => {
     expect(screen.getAllByText('Camera Settings').length).toBeGreaterThan(0);
   });
 
+  it("shows why the settings couldn't be read, not first-run setup, when the file exists but can't be read (#485)", async () => {
+    mockUseAppMode.mockReturnValue({
+      mode: '',
+      isLoading: false,
+      loadError:
+        "Couldn't read this station's settings file (/home/x/.bloom/.env): EBUSY",
+      retry: vi.fn(),
+    });
+
+    render(<App />);
+
+    expect(screen.getByTestId('station-settings-unreadable')).toHaveTextContent(
+      /EBUSY/
+    );
+    expect(screen.queryByText('Machine Configuration')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Scanner Name/i)).not.toBeInTheDocument();
+  });
+
   it('renders the shared Browse Scans link in cylinderscan mode', async () => {
     mockUseAppMode.mockReturnValue({ mode: 'cylinderscan', isLoading: false });
 
     render(<App />);
 
+    // The sidebar link, and the Home workflow's step, appear together once the
+    // station's settings have loaded (#477).
     await waitFor(() => {
-      expect(screen.getByText('Browse Scans')).toBeInTheDocument();
+      expect(
+        screen
+          .getAllByRole('link', { name: /Browse Scans/ })
+          .some((link) => link.getAttribute('href') === '/browse-scans')
+      ).toBe(true);
     });
   });
 
