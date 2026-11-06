@@ -364,6 +364,32 @@ scan_worker subprocess: `[libusb-filter] endpoint recovery: on`. If
 this is missing, the shim didn't load (check `LD_PRELOAD` env var
 and that `libusb-filter.so` exists at the expected path).
 
+## Testing GraviScan on a Mac (mock mode)
+
+`npm run start:app:graviscan:mock` runs GraviScan without scanners: the
+Python scan workers run with `--mock` and write generated images, and
+everything else (scan loop, file names, scan log, UI) behaves as on the
+rig.
+
+By default mock mode reports 2 scanners. To choose how many mock scanners
+exist and which are plugged in, create `~/.bloom/graviscan-mock.json`:
+
+```json
+{
+  "scanners": [
+    { "port": "1-1", "present": true },
+    { "port": "1-2", "present": true },
+    { "port": "1-3", "present": false }
+  ]
+}
+```
+
+The file is read on every scanner detection, so editing it while the app
+runs simulates plugging a scanner in (`"present": true`) or unplugging it
+(`"present": false`). Scanners are matched to saved scanners by port.
+Delete the file to go back to the default. It is only read when
+`GRAVISCAN_MOCK=true`.
+
 ## Contributing
 
 Please see migration issues in the [Issues](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues) tab. All PRs should:
