@@ -26,9 +26,11 @@ export type {
   SettingsRow,
 } from './experiment-camera-settings-db';
 import {
+  GAMMA_ONE_DECIMAL,
   NOTE_REQUIRED,
   SETTINGS_CHANGED_MEANWHILE,
   cameraValuesError,
+  gammaHasOneDecimal,
   groupScansBySettings,
   referenceList,
   sameCameraValues,
@@ -81,6 +83,8 @@ async function infos(
     ...values(row),
     note: row.note,
     set_by_name: nameOf(row.set_by_phenotyper_id),
+    // Saving always names a phenotyper; only the install's copy has none.
+    copied_from_scans: row.set_by_phenotyper_id === null,
     created_at: row.createdAt.toISOString(),
     last_confirmed_at: row.last_confirmed_at?.toISOString() ?? null,
     last_confirmed_by_name: row.last_confirmed_by_phenotyper_id
@@ -173,7 +177,7 @@ export async function listHistory(
   }
 }
 
-/** "Used before in this experiment": each setting its live scans used, and saved ones. */
+/** "Previous camera settings used in this experiment": each setting its live scans used, and saved ones. */
 export async function listReference(
   deps: CameraSettingsDeps,
   experimentId: string
@@ -238,7 +242,7 @@ export async function listReference(
 }
 
 /**
- * Confirm and continue. Unchanged values update the current row's last check; changed
+ * Save settings. Unchanged values update the current row's last check; changed
  * values add a row, already checked, and need a note unless they are the first.
  */
 export async function confirmSettings(
@@ -256,7 +260,9 @@ export async function confirmSettings(
     gain: input.gain,
     gamma: input.gamma,
   };
-  const invalid = cameraValuesError(entered);
+  // Gamma's one decimal is checked below, only for new settings: the current ones
+  // can be confirmed as they are.
+  const invalid = cameraValuesError(entered, { oneDecimalGamma: false });
   if (invalid) return { success: false, error: invalid };
   if (note.length > MAX_REASON_LENGTH) {
     return {
@@ -295,6 +301,7 @@ export async function confirmSettings(
         return null;
       }
       if (current && !note) return NOTE_REQUIRED;
+      if (!gammaHasOneDecimal(entered.gamma)) return GAMMA_ONE_DECIMAL;
       await tx.experimentCameraSettings.create({
         data: {
           experiment_id: experimentId,

@@ -459,7 +459,7 @@ export interface DatabaseAPI {
     history: (
       experimentId: string
     ) => Promise<DatabaseResponse<ExperimentCameraSettingsInfo[]>>;
-    /** "Used before in this experiment", most recently used first. */
+    /** "Previous camera settings used in this experiment", most recently used first. */
     reference: (
       experimentId: string
     ) => Promise<DatabaseResponse<CameraSettingsReference[]>>;

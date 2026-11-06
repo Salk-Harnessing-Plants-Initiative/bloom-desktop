@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
+  GAMMA_ONE_DECIMAL,
   cameraValuesError,
+  gammaHasOneDecimal,
   groupScansBySettings,
   referenceList,
   roundGamma,
@@ -204,5 +206,22 @@ describe('groupScansBySettings', () => {
 
   it('is empty without scans', () => {
     expect(groupScansBySettings([])).toEqual([]);
+  });
+});
+
+describe('gamma to one decimal place', () => {
+  it('accepts one decimal place, and float noise from storage', () => {
+    for (const gamma of [0.5, 0.9, 1, 1.1, 2, 1.100000023841858]) {
+      expect(gammaHasOneDecimal(gamma)).toBe(true);
+    }
+  });
+
+  it('refuses a second decimal place', () => {
+    for (const gamma of [1.04, 1.01, 1.001, 0.55]) {
+      expect(gammaHasOneDecimal(gamma)).toBe(false);
+    }
+    expect(
+      cameraValuesError({ exposure_time: 7400, gain: 250, gamma: 1.04 })
+    ).toBe(GAMMA_ONE_DECIMAL);
   });
 });

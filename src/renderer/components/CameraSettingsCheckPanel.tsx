@@ -1,13 +1,14 @@
 /**
- * Set camera settings for <experiment> (#483): shown on Capture Scan before scanning when
- * the experiment has no camera settings, or this phenotyper hasn't checked them today.
+ * Set camera settings for <experiment> (#483), on Camera Settings: when the experiment
+ * has no camera settings, this phenotyper hasn't checked them today, or to edit them.
  * The values start at the current settings; the live preview follows them, and the
- * settings used before in the experiment can be clicked to fill them in. Confirming
+ * previous camera settings used in the experiment can be applied with one click. Confirming
  * unchanged values needs no note; a change does, except for an experiment's first.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { CameraSettingsForm } from '../../components/CameraSettingsForm';
+import { cameraSettingsErrors } from '../../types/camera';
 import { ReferenceLine, changedTodayText } from './CameraSettingsReferenceLine';
 import {
   STARTING_CAMERA_VALUES,
@@ -28,7 +29,7 @@ export const PREVIEW_DELAY_MS = 500;
 export interface CameraSettingsCheckPanelProps {
   experimentName: string;
   status: ExperimentCameraSettingsStatus;
-  /** "Used before in this experiment", most recently used first. */
+  /** "Previous camera settings used in this experiment", most recently used first. */
   reference: CameraSettingsReference[];
   /** Where scan images are, for the thumbnails. */
   scansDir: string;
@@ -36,6 +37,12 @@ export interface CameraSettingsCheckPanelProps {
   onPreview: (values: CameraValues) => void;
   /** Saves; resolves to an error to show, or null once saved. */
   onConfirm: (values: CameraValues, note: string) => Promise<string | null>;
+  /** The confirm button's text. */
+  confirmLabel?: string;
+  /** Show the "Set camera settings for …" heading (a page may have its own). */
+  showTitle?: boolean;
+  /** One column (fields, note, then the previous settings), for a narrow space beside a preview. */
+  stacked?: boolean;
 }
 
 /** Only the three settings the panel keeps (the form also passes the camera IP). */
@@ -56,6 +63,9 @@ export function CameraSettingsCheckPanel({
   scansDir,
   onPreview,
   onConfirm,
+  confirmLabel = 'Save settings',
+  showTitle = true,
+  stacked = false,
 }: CameraSettingsCheckPanelProps) {
   const current = status.current;
   const [values, setValues] = useState<CameraValues>(() =>
@@ -82,8 +92,17 @@ export function CameraSettingsCheckPanel({
     setError(null);
   };
 
-  const invalid = cameraValuesError(values);
   const changed = current !== null && !sameCameraValues(values, current);
+  // New settings take one decimal of gamma; the current ones can be confirmed as
+  // they are (e.g. 1.05 from scans taken before that rule).
+  const invalid = cameraValuesError(values, {
+    oneDecimalGamma: current === null || changed,
+  });
+  // The form shows its own range errors under each field; these rules it doesn't know.
+  const ruleError =
+    invalid && Object.keys(cameraSettingsErrors(values)).length === 0
+      ? invalid
+      : null;
   const noteMissing = changed && note.trim() === '';
 
   // The preview restarts the camera stream: wait until the values stop changing. Only
@@ -113,21 +132,17 @@ export function CameraSettingsCheckPanel({
 
   return (
     <section
-      className="mb-6 rounded-lg border-2 border-amber-300 bg-amber-50 p-4"
-      aria-labelledby="camera-check-title"
+      className={`mb-6 rounded-lg border-2 p-4 ${
+        current ? 'border-gray-200 bg-white' : 'border-amber-300 bg-amber-50'
+      }`}
+      aria-label={`Set camera settings for ${experimentName}`}
       data-testid="camera-settings-check-panel"
     >
-      <h3
-        id="camera-check-title"
-        className="text-lg font-semibold text-gray-900"
-      >
-        Set camera settings for {experimentName}
-      </h3>
-      <p className="mt-1 text-sm text-gray-700">
-        {current
-          ? 'Check the live preview with a plant in the scanner. If it looks right, confirm. If not, change the settings and say why.'
-          : 'This experiment has no camera settings yet. Set them with a plant in the scanner, using the live preview.'}
-      </p>
+      {showTitle && (
+        <h3 className="text-lg font-semibold text-gray-900">
+          Set camera settings for {experimentName}
+        </h3>
+      )}
 
       {status.changedToday && (
         <p
@@ -139,31 +154,30 @@ export function CameraSettingsCheckPanel({
         </p>
       )}
 
-      <div className="mt-4 grid gap-6 lg:grid-cols-2">
+      <div className={`mt-4 grid gap-6 ${stacked ? '' : 'lg:grid-cols-2'}`}>
         <div>
           <CameraSettingsForm
             settings={values}
             onChange={change}
             showActions={false}
           />
-          <label className="mt-4 block text-sm font-medium text-gray-700">
-            Note{' '}
-            <span className="font-normal text-gray-500">
-              {current ? '(needed when you change the settings)' : '(optional)'}
-            </span>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm font-normal"
-              placeholder={current ? 'e.g. Roots too dark at 7,300 µs' : ''}
-            />
-          </label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            aria-label="Note"
+            className="mt-4 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+            placeholder={
+              current
+                ? 'Note, needed if you change them, e.g. Roots too dark at 7,300 µs'
+                : 'Optional note…'
+            }
+          />
         </div>
 
         <div>
           <h4 className="text-sm font-medium text-gray-700">
-            Used before in this experiment
+            Previous camera settings used in this experiment
           </h4>
           {reference.length === 0 ? (
             <p className="mt-2 text-sm text-gray-500">
@@ -172,7 +186,7 @@ export function CameraSettingsCheckPanel({
           ) : (
             <ul
               className="mt-2 max-h-72 divide-y divide-gray-200 overflow-y-auto rounded border border-gray-200 bg-white"
-              aria-label="Camera settings used before in this experiment"
+              aria-label="Previous camera settings used in this experiment"
             >
               {reference.map((line) => (
                 <ReferenceLine
@@ -192,6 +206,14 @@ export function CameraSettingsCheckPanel({
           {error}
         </p>
       )}
+      {ruleError && (
+        <p
+          className="mt-3 text-sm font-medium text-red-600"
+          data-testid="camera-values-error"
+        >
+          {ruleError}
+        </p>
+      )}
       {noteMissing && !invalid && (
         <p className="mt-3 text-sm text-amber-900">
           You changed the settings: add a note saying why.
@@ -204,7 +226,7 @@ export function CameraSettingsCheckPanel({
           disabled={!!invalid || noteMissing || saving}
           className="rounded-lg bg-green-600 px-5 py-2 font-semibold text-white shadow hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
         >
-          {saving ? 'Saving…' : 'Confirm and continue'}
+          {saving ? 'Saving…' : confirmLabel}
         </button>
       </div>
     </section>

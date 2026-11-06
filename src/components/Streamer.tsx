@@ -37,6 +37,12 @@ export interface StreamerProps {
   showFps?: boolean;
 
   /**
+   * Scale to the width of the container, keeping width:height, instead of a fixed size
+   * @default false
+   */
+  fitWidth?: boolean;
+
+  /**
    * Callback when streaming starts successfully
    */
   onStreamStart?: () => void;
@@ -57,6 +63,7 @@ export const Streamer: React.FC<StreamerProps> = ({
   width = 640,
   height = 480,
   showFps = true,
+  fitWidth = false,
   onStreamStart,
   onStreamStop,
   onError,
@@ -229,7 +236,13 @@ export const Streamer: React.FC<StreamerProps> = ({
   }, [settings, handleFrame, onStreamStart, onStreamStop, onError]);
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
+    <div
+      style={{
+        position: 'relative',
+        display: fitWidth ? 'block' : 'inline-block',
+        width: fitWidth ? '100%' : undefined,
+      }}
+    >
       {/* Canvas is always in the DOM so ref is available for first draw.
           Hidden until first frame via display:none, then shown. */}
       <canvas
@@ -241,13 +254,15 @@ export const Streamer: React.FC<StreamerProps> = ({
           border: '1px solid #ccc',
           display: hasFirstFrame ? 'block' : 'none',
           backgroundColor: '#000',
+          ...(fitWidth ? { width: '100%', height: 'auto' } : {}),
         }}
       />
       {!hasFirstFrame && (
         <div
           style={{
-            width,
-            height,
+            ...(fitWidth
+              ? { width: '100%', aspectRatio: `${width} / ${height}` }
+              : { width, height }),
             border: '1px solid #ccc',
             display: 'flex',
             alignItems: 'center',

@@ -25,6 +25,7 @@ import {
   useUnsavedChanges,
 } from '../../src/renderer/contexts/UnsavedChangesContext';
 import { toIsoDate } from '../../src/utils/wave-dates';
+import { experimentCameraSettingsMock } from './helpers/experiment-camera-settings-mock';
 
 // Capture Scan loads the session, config, waves and plants in a chain, which can take
 // longer than the default 1 s to settle (and a test longer than 5 s) when the whole
@@ -182,6 +183,7 @@ beforeEach(() => {
         getRecent: mockGetRecentScans,
         checkDuplicate: mockCheckDuplicate,
       },
+      experimentCameraSettings: experimentCameraSettingsMock(),
       experiments: {
         get: mockExperimentGet,
         getAccession: mockExperimentGetAccession,

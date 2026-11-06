@@ -10,6 +10,7 @@ import {
   fireEvent,
   waitFor,
 } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { MachineConfiguration } from '../../../src/renderer/MachineConfiguration';
 
 // Mock window.electron.config
@@ -20,6 +21,8 @@ const mockConfigAPI = {
   browseDirectory: vi.fn(),
   exists: vi.fn(),
   fetchScanners: vi.fn(),
+  // The mode the app is running in (first run: none).
+  getMode: vi.fn().mockResolvedValue({ mode: '' }),
 };
 
 // Mock window.electron.camera / window.electron.python — the Hardware
@@ -89,7 +92,7 @@ beforeEach(() => {
 
 describe('MachineConfiguration — Scanner Mode', () => {
   it('scanner mode selector is the first visible field', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Scanner Mode')).toBeInTheDocument();
@@ -101,7 +104,7 @@ describe('MachineConfiguration — Scanner Mode', () => {
   });
 
   it('CylinderScan fields visible when mode is cylinderscan', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Scanner Mode')).toBeInTheDocument();
@@ -137,7 +140,7 @@ describe('MachineConfiguration — Scanner Mode', () => {
       hasCredentials: false,
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Scanner Mode')).toBeInTheDocument();
@@ -163,7 +166,7 @@ describe('MachineConfiguration — Scanner Mode', () => {
   });
 
   it('switching mode hides cylinder-specific fields', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Hardware')).toBeInTheDocument();
@@ -197,7 +200,7 @@ describe('MachineConfiguration — Scanner Mode', () => {
 
     mockConfigAPI.set.mockResolvedValue({ success: true });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Scanner Mode')).toBeInTheDocument();
@@ -217,7 +220,7 @@ describe('MachineConfiguration — Scanner Mode', () => {
 
 describe('MachineConfiguration — Restart Required Notice', () => {
   it('shows a persistent restart-required notice when scanner_mode changes and save succeeds', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Scanner Mode')).toBeInTheDocument();
@@ -234,7 +237,7 @@ describe('MachineConfiguration — Restart Required Notice', () => {
   });
 
   it('does not show the restart-required notice when a non-mode field changes and save succeeds', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByLabelText(/Scans Directory/i)).toBeInTheDocument();
@@ -262,7 +265,7 @@ describe('MachineConfiguration — Restart Required Notice', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
     try {
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await vi.waitFor(() => {
         expect(screen.getByText('Scanner Mode')).toBeInTheDocument();
@@ -290,7 +293,7 @@ describe('MachineConfiguration — Restart Required Notice', () => {
   });
 
   it('dismissing the restart-required notice removes it', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Scanner Mode')).toBeInTheDocument();
@@ -313,7 +316,7 @@ describe('MachineConfiguration — Restart Required Notice', () => {
   });
 
   it('does not stack the generic save toast on top of a still-visible, not-yet-dismissed restart-required notice', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Scanner Mode')).toBeInTheDocument();

@@ -6,6 +6,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { useAppMode } from './hooks/useAppMode';
 import type { MachineConfig, Scanner } from '../main/config-store';
 import type { DetectedCamera } from '../types/camera';
 import type { HardwareStatus } from '../types/electron';
@@ -27,6 +29,9 @@ interface FormErrors {
 
 export function MachineConfiguration() {
   // Form state
+  // The mode the app is running in, not the one being edited: on first run (and
+  // until a restart after a mode change) no Camera Settings page is routed.
+  const { mode: runningMode } = useAppMode();
   const [formState, setFormState] = useState<FormState>('loading');
 
   // Unified config state (includes credentials)
@@ -854,6 +859,24 @@ export function MachineConfiguration() {
                 )}
                 {cameraTestStatus === 'error' && (
                   <p className="text-red-600 text-sm mt-1">{cameraTestError}</p>
+                )}
+
+                {/* The station's own camera settings (#483): for developers, not
+                    operators, whose settings belong to each experiment. Only while
+                    the app runs in CylinderScan mode, where that page exists. */}
+                {runningMode === 'cylinderscan' && (
+                  <p className="text-sm mt-3">
+                    <Link
+                      to="/camera-settings?station=1"
+                      className="text-lime-700 hover:text-lime-800"
+                    >
+                      Station camera settings →
+                    </Link>
+                    <span className="block text-gray-500">
+                      This scanner&apos;s default settings, used for the preview
+                      before an experiment is chosen.
+                    </span>
+                  </p>
                 )}
 
                 {/* Help text (collapsible) — relocated verbatim from

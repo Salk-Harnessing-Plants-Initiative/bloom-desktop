@@ -28,14 +28,38 @@ export function sameCameraValues(a: CameraValues, b: CameraValues): boolean {
   );
 }
 
-/** Why the values can't be saved, or null. Exposure is stored as a whole number of µs. */
+export const GAMMA_ONE_DECIMAL = 'Gamma can have one decimal place, e.g. 1.1.';
+
+/** Allowance for float noise (e.g. 1.100000023841858 from 32-bit storage), well below 0.01. */
+const GAMMA_DECIMAL_TOLERANCE = 1e-4;
+
+/** True when gamma has at most one decimal place (1.1, not 1.04). */
+export function gammaHasOneDecimal(gamma: number): boolean {
+  return (
+    Math.abs(gamma * 10 - Math.round(gamma * 10)) < GAMMA_DECIMAL_TOLERANCE
+  );
+}
+
+/**
+ * Why the values can't be saved, or null. Exposure is stored as a whole number of µs.
+ * Gamma is shown with one decimal, so new settings can have only one: otherwise 1.04
+ * and 1.0 would look the same. Settings an experiment already has (e.g. 1.05, copied
+ * from scans taken before this rule) can still be confirmed as they are, so checking
+ * them never forces a change mid-experiment: pass oneDecimalGamma: false for those.
+ * (Only for experiment settings: the station's saved settings keep the form's
+ * limits, so an existing camera-settings.json stays valid.)
+ */
 export function cameraValuesError(
-  values: Partial<CameraValues>
+  values: Partial<CameraValues>,
+  { oneDecimalGamma = true }: { oneDecimalGamma?: boolean } = {}
 ): string | null {
   const errors = Object.values(cameraSettingsErrors(values));
   if (errors.length > 0) return errors.join(' ');
   if (!Number.isInteger(values.exposure_time)) {
     return 'Exposure must be a whole number of µs.';
+  }
+  if (oneDecimalGamma && !gammaHasOneDecimal(values.gamma as number)) {
+    return GAMMA_ONE_DECIMAL;
   }
   return null;
 }
@@ -95,7 +119,7 @@ export function groupScansBySettings(
 }
 
 /**
- * "Used before in this experiment": the experiment's scan settings, plus saved settings
+ * "Previous camera settings used in this experiment": the experiment's scan settings, plus saved settings
  * no scan used yet, most recently used first. Groups whose gamma differs only by float
  * noise are merged.
  */

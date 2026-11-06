@@ -154,6 +154,7 @@ describe('getStatus', () => {
       exposure_time: 7400,
       note: 'Roots too dark',
       set_by_name: 'Ana',
+      copied_from_scans: false,
     });
   });
 
@@ -243,6 +244,8 @@ describe('getStatus', () => {
     const result = await getStatus({ db, now: () => at(4, 9) }, 'kcs', BEN);
     expect(result.data?.changedToday).toBeNull();
     expect(result.data?.current?.set_by_name).toBe('admin');
+    // Capture Scan says "set from earlier scans" for these, not "set by admin".
+    expect(result.data?.current?.copied_from_scans).toBe(true);
   });
 
   it('rejects a missing experiment id', async () => {
@@ -366,6 +369,40 @@ describe('confirmSettings', () => {
     expect(
       await confirmSettings({ db, now }, { ...input, currentSettingsId: null })
     ).toEqual({ success: false, error: SETTINGS_CHANGED_MEANWHILE });
+  });
+
+  it('refuses new settings with two decimal places of gamma without writing', async () => {
+    const { db, raw } = fakeDb([row('r1', 7400, at(1, 9))]);
+    const result = await confirmSettings(
+      { db, now },
+      { ...input, gamma: 1.04, note: 'tweak' }
+    );
+    expect(result).toEqual({
+      success: false,
+      error: 'Gamma can have one decimal place, e.g. 1.1.',
+    });
+    expect(raw.experimentCameraSettings.create).not.toHaveBeenCalled();
+    expect(raw.experimentCameraSettings.update).not.toHaveBeenCalled();
+  });
+
+  it('confirms current settings with two decimals of gamma as they are (from scans before the rule)', async () => {
+    const { db, raw } = fakeDb([
+      row('r1', 7400, at(1, 9), {
+        gamma: 1.05,
+        set_by_phenotyper_id: null,
+        note: 'Copied from latest scan (2026-10-20)',
+      }),
+    ]);
+    const result = await confirmSettings(
+      { db, now },
+      { ...input, gamma: 1.05, phenotyperId: BEN }
+    );
+    expect(result.success).toBe(true);
+    expect(raw.experimentCameraSettings.create).not.toHaveBeenCalled();
+    expect(raw.experimentCameraSettings.update).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      data: { last_confirmed_at: now(), last_confirmed_by_phenotyper_id: BEN },
+    });
   });
 
   it('rejects out-of-range values without writing', async () => {

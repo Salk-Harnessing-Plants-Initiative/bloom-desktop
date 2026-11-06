@@ -16,6 +16,11 @@ export interface ExperimentCameraSettingsInfo extends CameraValues {
   note: string;
   /** Who saved it; "admin" for the rows copied from scans when the update was installed. */
   set_by_name: string | null;
+  /**
+   * Copied from the experiment's scans when the update was installed: no phenotyper
+   * set it, and created_at is the install time, not when it was first used.
+   */
+  copied_from_scans: boolean;
   created_at: string;
   last_confirmed_at: string | null;
   last_confirmed_by_name: string | null;
@@ -40,7 +45,7 @@ export interface ExperimentCameraSettingsStatus {
   changedToday: CameraSettingsChangedToday | null;
 }
 
-/** One line of "Used before in this experiment". */
+/** One line of "Previous camera settings used in this experiment". */
 export interface CameraSettingsReference extends CameraValues {
   scan_count: number;
   /** ISO times of the first and latest scan; null for saved settings no scan used yet. */
@@ -51,7 +56,7 @@ export interface CameraSettingsReference extends CameraValues {
   is_current: boolean;
 }
 
-/** Confirm and continue: the values on the panel, and the settings it was opened with. */
+/** Save settings: the values on the panel, and the settings it was opened with. */
 export interface ConfirmCameraSettingsInput extends CameraValues {
   experimentId: string;
   phenotyperId: string;

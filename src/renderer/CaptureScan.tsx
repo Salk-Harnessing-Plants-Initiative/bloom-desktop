@@ -5,7 +5,7 @@
  * Integrates camera preview, scanner control, and metadata input.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   MetadataForm,
@@ -14,7 +14,6 @@ import {
   RecentScansPreview,
   ScanSummary,
   Streamer,
-  CameraSettingsForm,
   ScanNotSavedWarning,
 } from '../components';
 import type { UnsavedScan } from '../components';
@@ -37,6 +36,8 @@ import {
 } from '../utils/metadata-validation';
 import { useWaveDateFields } from './hooks/useWaveDateFields';
 import { useUnsavedChanges } from './contexts/UnsavedChangesContext';
+import { useExperimentCameraSettings } from './hooks/useExperimentCameraSettings';
+import { ExperimentCameraSummary } from './components/ExperimentCameraSummary';
 
 export function CaptureScan() {
   const navigate = useNavigate();
@@ -59,7 +60,6 @@ export function CaptureScan() {
     DEFAULT_CAMERA_SETTINGS
   );
   const [cameraConfigured, setCameraConfigured] = useState(false);
-  const [showCameraSettings, setShowCameraSettings] = useState(false);
 
   // Machine config state
   const [scannerName, setScannerName] = useState('CaptureScan-UI');
@@ -68,6 +68,32 @@ export function CaptureScan() {
   const [scanSecondsPerRot, setScanSecondsPerRot] = useState<number | null>(
     null
   );
+
+  // The selected experiment's camera settings (#483): scans use them once the
+  // phenotyper has checked them today, on Camera Settings. The station's saved
+  // settings only fill the preview before then.
+  const experimentCamera = useExperimentCameraSettings(
+    metadata.experimentId,
+    metadata.phenotyper
+  );
+  const experimentCameraValues = experimentCamera.needsCheck
+    ? null
+    : experimentCamera.checkedValues;
+  const experimentReady = experimentCameraValues !== null;
+  // A stable object, so the preview stream only restarts when a value changes.
+  const activeCameraSettings: CameraSettings = useMemo(
+    () =>
+      experimentCameraValues
+        ? { ...cameraSettings, ...experimentCameraValues }
+        : cameraSettings,
+    [
+      cameraSettings,
+      experimentCameraValues?.exposure_time,
+      experimentCameraValues?.gain,
+      experimentCameraValues?.gamma,
+    ]
+  );
+  const showPreview = cameraConfigured || experimentCameraValues !== null;
 
   // Scanning state
   const [isScanning, setIsScanning] = useState(false);
@@ -529,7 +555,7 @@ export function CaptureScan() {
   const isFormValid = Object.keys(errors).length === 0;
   const canStartScan =
     isFormValid &&
-    cameraConfigured &&
+    experimentReady &&
     !isScanning &&
     !barcodeValidationError &&
     !duplicateScanWarning &&
@@ -575,7 +601,8 @@ export function CaptureScan() {
       const secondsPerRot = scanSecondsPerRot ?? 7.0;
 
       const init = await window.electron.scanner.initialize({
-        camera: cameraSettings,
+        // The experiment's checked settings, never the station's saved ones (#483).
+        camera: activeCameraSettings,
         daq: {
           ...DEFAULT_DAQ_SETTINGS,
           num_frames: numFrames,
@@ -762,6 +789,20 @@ export function CaptureScan() {
                 errors={shownErrors}
                 onBarcodeValidationChange={handleBarcodeValidationChange}
                 waveNote={waveNote}
+                experimentNote={
+                  <ExperimentCameraSummary
+                    camera={experimentCamera}
+                    chosen={
+                      metadata.experimentId.trim() !== '' &&
+                      metadata.phenotyper.trim() !== ''
+                    }
+                    scanning={isScanning}
+                    settingsLink={`/camera-settings?${new URLSearchParams({
+                      experiment: metadata.experimentId,
+                      phenotyper: metadata.phenotyper,
+                    })}`}
+                  />
+                }
                 plantAgeReadOnly
                 plantAgeNote={plantAgeNote}
                 plantAgeLabel={
@@ -796,81 +837,25 @@ export function CaptureScan() {
                 </div>
               )}
 
-              {/* Camera Settings Review Panel (Collapsible) */}
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <button
-                  onClick={() => setShowCameraSettings(!showCameraSettings)}
-                  className="flex items-center justify-between w-full text-left"
-                >
-                  <span className="text-sm font-medium text-gray-700">
-                    Camera Settings{' '}
-                    {cameraConfigured ? (
-                      <span className="text-green-600">✓</span>
-                    ) : (
-                      <span className="text-red-600">⚠</span>
-                    )}
-                  </span>
-                  <svg
-                    className={`h-5 w-5 text-gray-400 transform transition-transform ${
-                      showCameraSettings ? 'rotate-180' : ''
-                    }`}
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 9l-7 7-7-7"
-                    />
-                  </svg>
-                </button>
-
-                {showCameraSettings && (
-                  <div className="mt-4">
-                    {cameraConfigured ? (
-                      <CameraSettingsForm
-                        settings={cameraSettings}
-                        onChange={(partial) =>
-                          setCameraSettings((prev) => ({ ...prev, ...partial }))
-                        }
-                        readOnly={true}
-                        showActions={false}
-                      />
-                    ) : (
-                      <div className="text-sm text-gray-600">
-                        <p className="mb-2">
-                          Camera not configured. Please configure camera
-                          settings first.
-                        </p>
-                        <Link
-                          to="/camera-settings"
-                          className="text-lime-700 hover:text-lime-800 font-medium"
-                        >
-                          Go to Camera Settings →
-                        </Link>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
               {/* Scan Parameters (read-only from Machine Configuration) */}
               <div className="mt-4 text-sm text-gray-500">
                 {scanNumFrames ?? 72} frames, ~{scanSecondsPerRot ?? 7.0}s
                 rotation
-                {cameraConfigured && (
+                {experimentReady && (
                   <span data-testid="camera-settings-summary">
                     {' '}
                     · Exposure{' '}
                     {formatCameraSetting(
                       'exposure_time',
-                      cameraSettings.exposure_time
+                      activeCameraSettings.exposure_time
                     )}{' '}
-                    µs · Gain {formatCameraSetting('gain', cameraSettings.gain)}{' '}
-                    · Gamma{' '}
-                    {formatCameraSetting('gamma', cameraSettings.gamma ?? 1)}
+                    µs · Gain{' '}
+                    {formatCameraSetting('gain', activeCameraSettings.gain)} ·
+                    Gamma{' '}
+                    {formatCameraSetting(
+                      'gamma',
+                      activeCameraSettings.gamma ?? 1
+                    )}
                   </span>
                 )}
               </div>
@@ -902,13 +887,11 @@ export function CaptureScan() {
                     {barcodeValidationError}
                   </p>
                 )}
-                {!cameraConfigured &&
-                  isFormValid &&
-                  !barcodeValidationError && (
-                    <p className="text-sm text-red-600 mt-2">
-                      Camera not configured
-                    </p>
-                  )}
+                {!experimentReady && isFormValid && !barcodeValidationError && (
+                  <p className="text-sm text-red-600 mt-2">
+                    Set or verify the camera settings first
+                  </p>
+                )}
                 {startScanHold && (
                   <p className="text-sm text-red-600 mt-2">{startScanHold}</p>
                 )}
@@ -961,13 +944,13 @@ export function CaptureScan() {
                     />
                   )}
                 </div>
-              ) : cameraConfigured ? (
+              ) : showPreview ? (
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
                     Live Preview
                   </h3>
                   <Streamer
-                    settings={cameraSettings}
+                    settings={activeCameraSettings}
                     width={800}
                     height={600}
                     showFps={true}

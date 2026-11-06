@@ -47,6 +47,8 @@ export interface MetadataFormProps {
   plantAgeLabel?: string;
   /** Shown under the wave number, e.g. the box asking for its germination date */
   waveNote?: ReactNode;
+  /** Shown under the experiment, e.g. its camera settings (#483). */
+  experimentNote?: ReactNode;
 }
 
 export function MetadataForm({
@@ -59,6 +61,7 @@ export function MetadataForm({
   plantAgeNote,
   plantAgeLabel = 'Plant Age (Days)',
   waveNote,
+  experimentNote,
 }: MetadataFormProps) {
   // State for experiment's accession ID (fetched when experiment changes)
   const [experimentAccessionId, setExperimentAccessionId] = useState<
@@ -200,6 +203,7 @@ export function MetadataForm({
         {errors.experimentId && (
           <p className={errorClassName}>{errors.experimentId}</p>
         )}
+        {experimentNote}
       </div>
 
       {/* Wave Number */}

@@ -26,6 +26,7 @@ const current: ExperimentCameraSettingsInfo = {
   gamma: 1,
   note: 'Roots too dark',
   set_by_name: 'Ana',
+  copied_from_scans: false,
   created_at: new Date(2026, 10, 3, 10, 15).toISOString(),
   last_confirmed_at: new Date(2026, 10, 3, 10, 15).toISOString(),
   last_confirmed_by_name: 'Ana',
@@ -78,7 +79,7 @@ function renderPanel(
 const numberBoxes = () =>
   screen.getAllByRole('spinbutton') as HTMLInputElement[];
 const confirmButton = () =>
-  screen.getByRole('button', { name: 'Confirm and continue' });
+  screen.getByRole('button', { name: 'Save settings' });
 const noteBox = () => screen.getByRole('textbox');
 
 afterEach(() => {
@@ -95,8 +96,7 @@ describe('CameraSettingsCheckPanel', () => {
   it('starts a new experiment at 10000 / 100 / 1, with an optional note and an empty list', () => {
     renderPanel({ status: status({ current: null }) });
     expect(numberBoxes().map((b) => b.value)).toEqual(['10000', '100', '1']);
-    expect(screen.getByText(/no camera settings yet/)).toBeInTheDocument();
-    expect(screen.getByText('(optional)')).toBeInTheDocument();
+    expect(noteBox()).toHaveAttribute('placeholder', 'Optional note…');
     expect(screen.getByText(/first setting/)).toBeInTheDocument();
     expect(confirmButton()).toBeEnabled();
   });
@@ -130,6 +130,40 @@ describe('CameraSettingsCheckPanel', () => {
         'Roots too dark'
       )
     );
+  });
+
+  it('confirms current settings with two decimals of gamma as they are, but not new ones', () => {
+    // e.g. copied from scans taken before the one-decimal rule.
+    const { onConfirm } = renderPanel({
+      status: status({ current: { ...current, gamma: 1.05 } }),
+    });
+    expect(screen.queryByTestId('camera-values-error')).not.toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
+    fireEvent.click(confirmButton());
+    expect(onConfirm).toHaveBeenCalledWith(
+      { exposure_time: 7400, gain: 250, gamma: 1.05 },
+      ''
+    );
+
+    // A change must take one decimal.
+    fireEvent.change(numberBoxes()[2], { target: { value: '1.04' } });
+    expect(screen.getByTestId('camera-values-error')).toHaveTextContent(
+      'Gamma can have one decimal place, e.g. 1.1.'
+    );
+  });
+
+  it('says gamma can have one decimal place, and waits', () => {
+    renderPanel();
+    fireEvent.change(numberBoxes()[2], { target: { value: '1.04' } });
+    fireEvent.change(noteBox(), { target: { value: 'tweak' } });
+    expect(screen.getByTestId('camera-values-error')).toHaveTextContent(
+      'Gamma can have one decimal place, e.g. 1.1.'
+    );
+    expect(confirmButton()).toBeDisabled();
+
+    fireEvent.change(numberBoxes()[2], { target: { value: '1.1' } });
+    expect(screen.queryByTestId('camera-values-error')).not.toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
   });
 
   it("can't confirm values outside the limits", () => {
@@ -177,8 +211,10 @@ describe('CameraSettingsCheckPanel', () => {
         }),
       ],
     });
+    // The whole date line, so a range ("Oct 20, 2026 – Oct 20, 2026") fails.
+    expect(screen.getByText('1 scan · Oct 20, 2026')).toBeInTheDocument();
     expect(screen.getByTestId('camera-reference-line')).toHaveTextContent(
-      /1 scan · Oct 20, 2026$/
+      /Use these$/
     );
   });
 

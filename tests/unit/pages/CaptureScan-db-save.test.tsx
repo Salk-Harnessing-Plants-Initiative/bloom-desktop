@@ -26,6 +26,7 @@ vi.mock('../../../src/components/Streamer', () => ({
 }));
 import type { ScanResult } from '../../../src/types/scanner';
 import { toIsoDate } from '../../../src/utils/wave-dates';
+import { experimentCameraSettingsMock } from '../helpers/experiment-camera-settings-mock';
 
 /** Local "YYYY-MM-DD" `days` ago, by calendar arithmetic so DST can't shift it. */
 const sownDaysAgo = (days: number) => {
@@ -112,6 +113,7 @@ beforeEach(() => {
           .fn()
           .mockResolvedValue({ success: true, data: false }),
       },
+      experimentCameraSettings: experimentCameraSettingsMock(),
       experiments: {
         list: vi.fn().mockResolvedValue({ success: true, data: [] }),
         get: vi.fn().mockResolvedValue({

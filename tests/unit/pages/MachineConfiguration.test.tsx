@@ -6,6 +6,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { MachineConfiguration } from '../../../src/renderer/MachineConfiguration';
 
 // Mock window.electron.config
@@ -16,6 +17,7 @@ const mockConfigAPI = {
   browseDirectory: vi.fn(),
   exists: vi.fn(),
   fetchScanners: vi.fn(),
+  getMode: vi.fn(),
 };
 
 // Mock window.electron.camera (camera auto-detection, relocated from
@@ -61,6 +63,7 @@ beforeEach(() => {
   };
 
   // Default mock implementations
+  mockConfigAPI.getMode.mockResolvedValue({ mode: 'cylinderscan' });
   mockConfigAPI.get.mockResolvedValue({
     config: {
       scanner_mode: 'cylinderscan',
@@ -108,7 +111,7 @@ describe('MachineConfiguration Page', () => {
         hasCredentials: false,
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByText(/Machine Configuration/i)).toBeInTheDocument();
@@ -123,7 +126,7 @@ describe('MachineConfiguration Page', () => {
     it('falls back to the hardcoded default bloom_api_url when config.get() rejects', async () => {
       mockConfigAPI.get.mockRejectedValue(new Error('IPC failure'));
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
@@ -159,7 +162,7 @@ describe('MachineConfiguration Page', () => {
         scanners: [{ name: 'TestScanner' }, { name: 'OtherScanner' }],
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       // Should immediately show config form (no login screen)
       await waitFor(() => {
@@ -176,7 +179,7 @@ describe('MachineConfiguration Page', () => {
     });
 
     it('should pre-fill form with saved values', async () => {
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       // Should pre-fill hardware and API fields
       await waitFor(() => {
@@ -192,7 +195,7 @@ describe('MachineConfiguration Page', () => {
     });
 
     it('shows the saved password as a blank field with a keep-existing hint (#391)', async () => {
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       const password = await screen.findByLabelText(/Password/i);
       expect(password).toHaveValue('');
@@ -203,7 +206,7 @@ describe('MachineConfiguration Page', () => {
     });
 
     it('requires the password again when the Bloom server is changed (#391)', async () => {
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       const url = await screen.findByDisplayValue(
         'https://api.bloom.salk.edu/proxy'
@@ -222,7 +225,7 @@ describe('MachineConfiguration Page', () => {
     });
 
     it('requires the password again when the username is changed (#391)', async () => {
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       fireEvent.change(await screen.findByLabelText(/Username/i), {
         target: { value: 'other@salk.edu' },
@@ -242,7 +245,7 @@ describe('MachineConfiguration Page', () => {
             'Enter the password for this Bloom server and account',
         },
       });
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
       await screen.findByLabelText(/Password/i);
 
       fireEvent.click(
@@ -262,7 +265,7 @@ describe('MachineConfiguration Page', () => {
         success: true,
         scanners: [{ name: 'TestScanner' }],
       });
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       const password = await screen.findByLabelText(/Password/i);
       fireEvent.change(password, { target: { value: 'typed-password' } });
@@ -287,7 +290,7 @@ describe('MachineConfiguration Page', () => {
         success: true,
         scanners: [{ name: 'TestScanner' }],
       });
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       const button = await screen.findByRole('button', {
         name: /Fetch Scanners from Bloom/i,
@@ -323,7 +326,7 @@ describe('MachineConfiguration Page', () => {
     });
 
     it('asks for a password and keeps Fetch scanners disabled until one is typed (#391)', async () => {
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       const password = await screen.findByLabelText(/Password/i);
       expect(password).toHaveAttribute('placeholder', 'Enter password');
@@ -347,7 +350,7 @@ describe('MachineConfiguration Page', () => {
     });
 
     it('should display all configuration fields', async () => {
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
@@ -393,7 +396,7 @@ describe('MachineConfiguration Page', () => {
         ],
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       // Should directly show config form with pre-populated values
       await waitFor(() => {
@@ -410,7 +413,7 @@ describe('MachineConfiguration Page', () => {
     it('should save configuration when Save is clicked', async () => {
       mockConfigAPI.set.mockResolvedValue({ success: true });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
@@ -460,7 +463,7 @@ describe('MachineConfiguration Page', () => {
         },
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       // Wait for config form to load
       await waitFor(() => {
@@ -533,7 +536,7 @@ describe('MachineConfiguration Page', () => {
         ],
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       // Wait for config form to load
       await waitFor(() => {
@@ -589,10 +592,37 @@ describe('MachineConfiguration Page', () => {
       });
     });
 
+    it('links to the station camera settings, for developers (#483)', async () => {
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
+
+      expect(
+        await screen.findByRole('link', { name: 'Station camera settings →' })
+      ).toHaveAttribute('href', '/camera-settings?station=1');
+    });
+
+    it.each([
+      ['first run', ''],
+      ['a GraviScan app being switched to CylinderScan', 'graviscan'],
+    ])(
+      'hides the station camera settings link on %s, where that page is not routed',
+      async (_case, runningMode) => {
+        mockConfigAPI.getMode.mockResolvedValue({ mode: runningMode });
+        render(<MachineConfiguration />, { wrapper: MemoryRouter });
+
+        // The Hardware section shows (the form's mode is CylinderScan), but no link.
+        await waitFor(() =>
+          expect(screen.getByLabelText(/Camera IP/i)).toBeInTheDocument()
+        );
+        expect(
+          screen.queryByRole('link', { name: /Station camera settings/ })
+        ).not.toBeInTheDocument();
+      }
+    );
+
     it('should test camera connection when Test Connection is clicked', async () => {
       mockConfigAPI.testCamera.mockResolvedValue({ success: true });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Camera IP/i)).toBeInTheDocument();
@@ -609,7 +639,7 @@ describe('MachineConfiguration Page', () => {
     it('should show success message when camera test succeeds', async () => {
       mockConfigAPI.testCamera.mockResolvedValue({ success: true });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Camera IP/i)).toBeInTheDocument();
@@ -628,7 +658,7 @@ describe('MachineConfiguration Page', () => {
         error: 'Connection refused',
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Camera IP/i)).toBeInTheDocument();
@@ -662,7 +692,7 @@ describe('MachineConfiguration Page', () => {
     it('should open directory browser when Browse is clicked', async () => {
       mockConfigAPI.browseDirectory.mockResolvedValue('/selected/path');
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scans Directory/i)).toBeInTheDocument();
@@ -678,7 +708,7 @@ describe('MachineConfiguration Page', () => {
     it('should update field when directory is selected', async () => {
       mockConfigAPI.browseDirectory.mockResolvedValue('/selected/path');
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scans Directory/i)).toHaveValue(
@@ -698,7 +728,7 @@ describe('MachineConfiguration Page', () => {
     it('should not change field when browser is cancelled', async () => {
       mockConfigAPI.browseDirectory.mockResolvedValue(null);
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scans Directory/i)).toHaveValue(
@@ -746,7 +776,7 @@ describe('MachineConfiguration Page', () => {
         ],
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       // Wait for form to render
       await waitFor(() => {
@@ -773,7 +803,7 @@ describe('MachineConfiguration Page', () => {
         hasCredentials: false,
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         const dropdown = screen.getByLabelText(/Scanner Name/i);
@@ -796,7 +826,7 @@ describe('MachineConfiguration Page', () => {
         hasCredentials: false,
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
@@ -820,7 +850,7 @@ describe('MachineConfiguration Page', () => {
         hasCredentials: false,
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(
@@ -832,7 +862,7 @@ describe('MachineConfiguration Page', () => {
 
   describe('Fetch Scanners Button', () => {
     it('should display "Fetch Scanners from Bloom" button', async () => {
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(
@@ -856,7 +886,7 @@ describe('MachineConfiguration Page', () => {
         hasCredentials: false,
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         const button = screen.getByRole('button', {
@@ -881,7 +911,7 @@ describe('MachineConfiguration Page', () => {
         hasCredentials: false,
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       // Wait for form to load
       await waitFor(() => {
@@ -931,7 +961,7 @@ describe('MachineConfiguration Page', () => {
         ],
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(
@@ -990,7 +1020,7 @@ describe('MachineConfiguration Page', () => {
           )
       );
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(
@@ -1057,7 +1087,7 @@ describe('MachineConfiguration Page', () => {
         ],
       });
 
-      render(<MachineConfiguration />);
+      render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
       await waitFor(() => {
         expect(
@@ -1090,7 +1120,7 @@ describe('MachineConfiguration Page', () => {
 
 describe('MachineConfiguration color palette', () => {
   it('uses focus:ring-lime-500 on text inputs, not blue', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByLabelText(/Scanner Name/i)).toBeInTheDocument();
@@ -1122,7 +1152,7 @@ describe('MachineConfiguration color palette', () => {
       hasCredentials: true,
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(
@@ -1146,7 +1176,7 @@ describe('MachineConfiguration color palette', () => {
 
 describe('MachineConfiguration scanner-mode radio color', () => {
   it('uses text-lime-700 (accent color) on the scanner-mode radio buttons, not blue', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('CylinderScan')).toBeInTheDocument();
@@ -1164,7 +1194,7 @@ describe('MachineConfiguration scanner-mode radio color', () => {
 
 describe('MachineConfiguration Hardware section — camera detection (#338)', () => {
   it('(a) detects cameras on mount and always includes the mock camera in the dropdown', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(mockCameraAPI.detectCameras).toHaveBeenCalled();
@@ -1176,7 +1206,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
   });
 
   it('the manual "Detect Cameras" button re-triggers detection on demand', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(mockCameraAPI.detectCameras).toHaveBeenCalledTimes(1);
@@ -1196,7 +1226,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
       error: 'Camera subprocess unavailable',
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(
@@ -1230,7 +1260,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
       ],
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('acA2000-50gm (10.0.0.77)')).toBeInTheDocument();
@@ -1258,7 +1288,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
   });
 
   it('(c) choosing Manual Entry reveals a free-text input that still saves via config.set', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByText('Mock Camera')).toBeInTheDocument();
@@ -1288,7 +1318,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
       cameras: [],
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(mockCameraAPI.detectCameras).toHaveBeenCalled();
@@ -1305,7 +1335,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
   it('(e) a rejected camera:detect-cameras promise also falls back to manual entry without throwing', async () => {
     mockCameraAPI.detectCameras.mockRejectedValue(new Error('IPC failure'));
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(mockCameraAPI.detectCameras).toHaveBeenCalled();
@@ -1334,7 +1364,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
       hasCredentials: false,
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(mockCameraAPI.detectCameras).toHaveBeenCalled();
@@ -1383,7 +1413,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
       ],
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     // Both conditions must hold in the SAME poll: a transient manual-entry
     // <input> can briefly carry the same value before the detection effect
@@ -1399,7 +1429,7 @@ describe('MachineConfiguration Hardware section — camera detection (#338)', ()
 
 describe('MachineConfiguration Hardware Diagnostics (#339)', () => {
   it('(h) Check Hardware invokes python:check-hardware and displays the result', async () => {
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(
@@ -1423,7 +1453,7 @@ describe('MachineConfiguration Hardware Diagnostics (#339)', () => {
   it('(i) Restart Python confirms before restarting, and only restarts if confirmed', async () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(
@@ -1449,7 +1479,7 @@ describe('MachineConfiguration Hardware Diagnostics (#339)', () => {
   it('surfaces an error when python:check-hardware rejects', async () => {
     mockPythonAPI.checkHardware.mockRejectedValue(new Error('IPC failure'));
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(
@@ -1468,7 +1498,7 @@ describe('MachineConfiguration Hardware Diagnostics (#339)', () => {
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     mockPythonAPI.restart.mockRejectedValue(new Error('restart IPC failure'));
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(
@@ -1492,7 +1522,7 @@ describe('MachineConfiguration Hardware Diagnostics (#339)', () => {
       error: 'Python executable not found',
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(
@@ -1517,7 +1547,7 @@ describe('MachineConfiguration Hardware Diagnostics (#339)', () => {
       cameras: [],
     });
 
-    render(<MachineConfiguration />);
+    render(<MachineConfiguration />, { wrapper: MemoryRouter });
 
     await waitFor(() => {
       expect(screen.getByLabelText(/Camera IP/i)).toHaveAttribute(

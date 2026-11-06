@@ -107,7 +107,7 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
         </div>
         {fieldError('exposure_time')}
         <p className="text-xs text-gray-500">
-          Lower = darker image, faster capture. Higher = brighter, slower.
+          Higher = brighter, slower capture
         </p>
       </div>
 
@@ -139,9 +139,8 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
         </div>
         {fieldError('gain')}
         <p className="text-xs text-gray-500">
-          GainRaw ({CAMERA_SETTING_LIMITS.gain.min}–
-          {CAMERA_SETTING_LIMITS.gain.max}). Amplifies image brightness. Higher
-          = more noise.
+          Range {CAMERA_SETTING_LIMITS.gain.min}–
+          {CAMERA_SETTING_LIMITS.gain.max}. Higher = brighter, noisier
         </p>
       </div>
 
@@ -173,8 +172,7 @@ export const CameraSettingsForm: React.FC<CameraSettingsFormProps> = ({
         </div>
         {fieldError('gamma')}
         <p className="text-xs text-gray-500">
-          Adjusts tone curve. 1.0 = linear. {'<'}1.0 = darker shadows, {'>'}1.0
-          = brighter shadows.
+          1.0 = linear. {'>'}1 lifts shadows
         </p>
       </div>
 

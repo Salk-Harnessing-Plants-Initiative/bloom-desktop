@@ -23,6 +23,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import '@testing-library/jest-dom';
 import { CaptureScan } from '../../../src/renderer/CaptureScan';
+import { experimentCameraSettingsMock } from '../helpers/experiment-camera-settings-mock';
 
 const mockCheckIdleReset = vi.fn().mockResolvedValue(false);
 const mockOnIdleReset = vi.fn().mockReturnValue(vi.fn());
@@ -110,6 +111,7 @@ beforeEach(() => {
         getMostRecentScanDate: mockGetMostRecentScanDate,
         checkDuplicate: mockCheckDuplicate,
       },
+      experimentCameraSettings: experimentCameraSettingsMock(),
       experiments: {
         list: mockExperimentsList,
       },
@@ -161,24 +163,7 @@ describe('CaptureScan color palette (camera-not-configured state)', () => {
     );
   });
 
-  it('uses lime on the "Go to Camera Settings" link, not blue', async () => {
-    renderCaptureScan();
-
-    await waitFor(() => {
-      expect(mockCameraGetStatus).toHaveBeenCalled();
-    });
-
-    // The link lives inside the collapsible "Camera Settings" panel
-    const toggle = await screen.findByText(/Camera Settings/);
-    fireEvent.click(toggle);
-
-    const link = await screen.findByText('Go to Camera Settings →');
-    expect(link.className).toContain('text-lime-700');
-    expect(link.className).toContain('hover:text-lime-800');
-    expect(link.className).not.toMatch(/text-blue-600|hover:text-blue-800/);
-  });
-
-  it('streams with settings saved on the station, without Apply, and without passing on their source', async () => {
+  it("previews with the station's saved settings before an experiment is chosen, without passing on their source", async () => {
     mockCameraGetSettings.mockResolvedValue({
       exposure_time: 12000,
       gain: 120,
@@ -200,34 +185,38 @@ describe('CaptureScan color palette (camera-not-configured state)', () => {
       exposure_time: 12000,
     });
     expect(startStream.mock.calls[0][0]).not.toHaveProperty('source');
-    // The carried-over values are shown before Start Scan.
-    expect(screen.getByTestId('camera-settings-summary')).toHaveTextContent(
-      /Exposure 12,000 µs · Gain 120 · Gamma 1\.2/
+    // Scans use the experiment's checked settings, not these (#483).
+    expect(
+      screen.queryByTestId('camera-settings-summary')
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
+      'choose the experiment and phenotyper first'
     );
   });
 
-  it.each([
-    ['Configure Camera', false],
-    ['Go to Camera Settings →', true],
-  ])('"%s" opens Camera Settings', async (text, inPanel) => {
-    render(
-      <MemoryRouter initialEntries={['/capture-scan']}>
-        <Routes>
-          <Route path="/capture-scan" element={<CaptureScan />} />
-          <Route
-            path="/camera-settings"
-            element={<p>Camera Settings page</p>}
-          />
-        </Routes>
-      </MemoryRouter>
-    );
-    await waitFor(() => expect(mockCameraGetStatus).toHaveBeenCalled());
-    if (inPanel) fireEvent.click(await screen.findByText(/Camera Settings/));
+  it.each([['Configure Camera']])(
+    '"%s" opens Camera Settings',
+    async (text) => {
+      render(
+        <MemoryRouter initialEntries={['/capture-scan']}>
+          <Routes>
+            <Route path="/capture-scan" element={<CaptureScan />} />
+            <Route
+              path="/camera-settings"
+              element={<p>Camera Settings page</p>}
+            />
+          </Routes>
+        </MemoryRouter>
+      );
+      await waitFor(() => expect(mockCameraGetStatus).toHaveBeenCalled());
 
-    fireEvent.click(await screen.findByText(text));
+      fireEvent.click(await screen.findByText(text));
 
-    expect(await screen.findByText('Camera Settings page')).toBeInTheDocument();
-  });
+      expect(
+        await screen.findByText('Camera Settings page')
+      ).toBeInTheDocument();
+    }
+  );
 
   it('leaves the amber warning banners and green Start Scan button unchanged (regression guard)', async () => {
     mockCheckIdleReset.mockResolvedValue(true);
