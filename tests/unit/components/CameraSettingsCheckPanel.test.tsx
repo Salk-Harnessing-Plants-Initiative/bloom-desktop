@@ -78,7 +78,7 @@ function renderPanel(
 const numberBoxes = () =>
   screen.getAllByRole('spinbutton') as HTMLInputElement[];
 const confirmButton = () =>
-  screen.getByRole('button', { name: 'Confirm and continue' });
+  screen.getByRole('button', { name: 'Save settings' });
 const noteBox = () => screen.getByRole('textbox');
 
 afterEach(() => {
@@ -95,8 +95,7 @@ describe('CameraSettingsCheckPanel', () => {
   it('starts a new experiment at 10000 / 100 / 1, with an optional note and an empty list', () => {
     renderPanel({ status: status({ current: null }) });
     expect(numberBoxes().map((b) => b.value)).toEqual(['10000', '100', '1']);
-    expect(screen.getByText(/no camera settings yet/)).toBeInTheDocument();
-    expect(screen.getByText('(optional)')).toBeInTheDocument();
+    expect(noteBox()).toHaveAttribute('placeholder', 'Optional note…');
     expect(screen.getByText(/first setting/)).toBeInTheDocument();
     expect(confirmButton()).toBeEnabled();
   });
@@ -191,8 +190,10 @@ describe('CameraSettingsCheckPanel', () => {
         }),
       ],
     });
+    // The whole date line, so a range ("Oct 20, 2026 – Oct 20, 2026") fails.
+    expect(screen.getByText('1 scan · Oct 20, 2026')).toBeInTheDocument();
     expect(screen.getByTestId('camera-reference-line')).toHaveTextContent(
-      /1 scan · Oct 20, 2026$/
+      /Use these$/
     );
   });
 

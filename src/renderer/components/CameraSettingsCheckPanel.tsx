@@ -2,7 +2,7 @@
  * Set camera settings for <experiment> (#483): shown on Capture Scan before scanning when
  * the experiment has no camera settings, or this phenotyper hasn't checked them today.
  * The values start at the current settings; the live preview follows them, and the
- * settings used before in the experiment can be clicked to fill them in. Confirming
+ * settings used before in the experiment can be applied with one click. Confirming
  * unchanged values needs no note; a change does, except for an experiment's first.
  */
 
@@ -63,7 +63,7 @@ export function CameraSettingsCheckPanel({
   scansDir,
   onPreview,
   onConfirm,
-  confirmLabel = 'Confirm and continue',
+  confirmLabel = 'Save settings',
   showTitle = true,
   stacked = false,
 }: CameraSettingsCheckPanelProps) {
@@ -128,7 +128,9 @@ export function CameraSettingsCheckPanel({
 
   return (
     <section
-      className="mb-6 rounded-lg border-2 border-amber-300 bg-amber-50 p-4"
+      className={`mb-6 rounded-lg border-2 p-4 ${
+        current ? 'border-gray-200 bg-white' : 'border-amber-300 bg-amber-50'
+      }`}
       aria-label={`Set camera settings for ${experimentName}`}
       data-testid="camera-settings-check-panel"
     >
@@ -137,11 +139,6 @@ export function CameraSettingsCheckPanel({
           Set camera settings for {experimentName}
         </h3>
       )}
-      <p className="mt-1 text-sm text-gray-700">
-        {current
-          ? 'Check the live preview with a plant in the scanner. If it looks right, confirm. If not, change the settings and say why.'
-          : 'This experiment has no camera settings yet. Set them with a plant in the scanner, using the live preview.'}
-      </p>
 
       {status.changedToday && (
         <p
@@ -160,19 +157,18 @@ export function CameraSettingsCheckPanel({
             onChange={change}
             showActions={false}
           />
-          <label className="mt-4 block text-sm font-medium text-gray-700">
-            Note{' '}
-            <span className="font-normal text-gray-500">
-              {current ? '(needed when you change the settings)' : '(optional)'}
-            </span>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm font-normal"
-              placeholder={current ? 'e.g. Roots too dark at 7,300 µs' : ''}
-            />
-          </label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            aria-label="Note"
+            className="mt-4 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+            placeholder={
+              current
+                ? 'Note, needed if you change them, e.g. Roots too dark at 7,300 µs'
+                : 'Optional note…'
+            }
+          />
         </div>
 
         <div>

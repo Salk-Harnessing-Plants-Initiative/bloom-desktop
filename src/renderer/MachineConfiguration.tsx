@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import type { MachineConfig, Scanner } from '../main/config-store';
 import type { DetectedCamera } from '../types/camera';
 import type { HardwareStatus } from '../types/electron';
@@ -854,6 +855,24 @@ export function MachineConfiguration() {
                 )}
                 {cameraTestStatus === 'error' && (
                   <p className="text-red-600 text-sm mt-1">{cameraTestError}</p>
+                )}
+
+                {/* The station's own camera settings (#483): for developers, not
+                    operators, whose settings belong to each experiment. Not on first
+                    run, when no other page can open yet. */}
+                {originalConfig?.scanner_mode === 'cylinderscan' && (
+                  <p className="text-sm mt-3">
+                    <Link
+                      to="/camera-settings?station=1"
+                      className="text-lime-700 hover:text-lime-800"
+                    >
+                      Station camera settings →
+                    </Link>
+                    <span className="block text-gray-500">
+                      This scanner&apos;s default settings, used for the preview
+                      before an experiment is chosen.
+                    </span>
+                  </p>
                 )}
 
                 {/* Help text (collapsible) — relocated verbatim from

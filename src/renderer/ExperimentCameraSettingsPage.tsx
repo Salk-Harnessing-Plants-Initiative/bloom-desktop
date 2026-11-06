@@ -1,8 +1,9 @@
 /**
  * Camera Settings for one experiment (#483), opened from Capture Scan when the
  * experiment's settings need a check, or with Change. The operator sets them with the
- * live preview beside them and the settings used before in the experiment; Confirm and
- * return goes back to Capture Scan, where the experiment and phenotyper are still chosen.
+ * live preview beside them and the settings used before in the experiment. Save settings
+ * goes back to Capture Scan, where the experiment and phenotyper are still chosen; Cancel
+ * goes back without saving.
  */
 
 import { useMemo, useState } from 'react';
@@ -45,28 +46,24 @@ export function ExperimentCameraSettingsPage({
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="mb-2 text-3xl font-bold text-gray-800">
+            <h1 className="mb-2 flex items-center gap-3 text-3xl font-bold text-gray-800">
               Camera settings for {camera.experimentName || 'this experiment'}
+              {camera.status && camera.status.current === null && (
+                <span className="rounded bg-amber-100 px-2 py-0.5 text-sm font-medium text-amber-800">
+                  Not set
+                </span>
+              )}
             </h1>
             <p className="text-gray-600">
-              These are this experiment&apos;s settings: every scan of it uses
-              them. Check the live preview with a plant in the scanner.
+              Every scan in this experiment uses these settings.
             </p>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <Link
-              to={BACK_TO_CAPTURE_SCAN}
-              className="whitespace-nowrap rounded-md border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 hover:bg-gray-50"
-            >
-              Back to Capture Scan
-            </Link>
-            <Link
-              to="/camera-settings?station=1"
-              className="text-sm text-gray-500 underline hover:text-gray-700"
-            >
-              Station camera settings
-            </Link>
-          </div>
+          <Link
+            to={BACK_TO_CAPTURE_SCAN}
+            className="whitespace-nowrap rounded-md border border-gray-300 bg-white px-4 py-2 font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </Link>
         </div>
 
         {/* Settings in a narrow column, the preview filling the rest. */}
@@ -94,7 +91,7 @@ export function ExperimentCameraSettingsPage({
                 scansDir={scansDir}
                 onPreview={setPreview}
                 onConfirm={confirm}
-                confirmLabel="Confirm and return to Capture Scan"
+                confirmLabel="Save settings"
                 showTitle={false}
                 stacked
               />

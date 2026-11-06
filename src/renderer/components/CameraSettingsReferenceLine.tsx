@@ -90,6 +90,7 @@ export function ReferenceLine({
         onClick={onPick}
         className="flex w-full items-center gap-3 rounded px-2 py-2 text-left hover:bg-lime-50"
         data-testid="camera-reference-line"
+        title="Fill in these values"
       >
         {line.latest_image_path && !imageFailed ? (
           <img
@@ -112,6 +113,12 @@ export function ReferenceLine({
             </span>
           )}
           <span className="block text-xs text-gray-500">{used}</span>
+        </span>
+        <span
+          aria-hidden="true"
+          className="rounded border border-lime-700 px-2 py-0.5 text-xs font-medium text-lime-800"
+        >
+          Use these
         </span>
       </button>
     </li>

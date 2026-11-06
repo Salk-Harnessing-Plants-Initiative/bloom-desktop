@@ -256,7 +256,7 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     ).toBeInTheDocument();
     fireEvent.click(
       await screen.findByRole('button', {
-        name: 'Confirm and return to Capture Scan',
+        name: 'Save settings',
       })
     );
     await waitFor(() =>
@@ -277,7 +277,7 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
       timeout: START_ENABLED_TIMEOUT_MS,
     });
     expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
-      /Camera set: 7,400 µs · Gain 250 · Gamma 1\.0 · Edit/
+      /Camera set by Demo Phenotyper \(\w+ \d+\): 7,400 µs · Gain 250 · Gamma 1\.0 · Edit/
     );
 
     fireEvent.click(startButton());
@@ -308,17 +308,29 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     );
   });
 
+  it('says the settings came from earlier scans when no phenotyper set them (backfill)', async () => {
+    setCameraApi({
+      ...CHECKED_TODAY,
+      current: {
+        ...KCS_SETTINGS,
+        set_by_name: null,
+      },
+    });
+    renderPage();
+    expect(
+      await screen.findByText(/Camera set from earlier scans: 7,400 µs/)
+    ).toBeInTheDocument();
+  });
+
   it('goes back to Capture Scan without saving from Camera Settings', async () => {
     setCameraApi(CHECKED_TODAY);
     renderPage();
     fireEvent.click(await screen.findByRole('link', { name: 'Edit' }));
-    fireEvent.click(
-      await screen.findByRole('link', { name: 'Back to Capture Scan' })
-    );
+    fireEvent.click(await screen.findByRole('link', { name: 'Cancel' }));
     // Back on Capture Scan, with the experiment's settings still in use.
     await waitFor(() =>
       expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
-        'Camera set: 7,400 µs'
+        /Camera set by Demo Phenotyper \(\w+ \d+\): 7,400 µs/
       )
     );
     expect(cameraApi.confirm).not.toHaveBeenCalled();
@@ -337,7 +349,7 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     await waitFor(() =>
       expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
-        'Camera set: 7,400 µs'
+        /Camera set by Demo Phenotyper \(\w+ \d+\): 7,400 µs/
       )
     );
   });
@@ -355,7 +367,7 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     ).toHaveAttribute('href', SETTINGS_LINK);
   });
 
-  it('opens the chosen experiment from the sidebar, with a link to the station page', async () => {
+  it('opens the chosen experiment from the sidebar, with no link to the station page', async () => {
     setCameraApi(CHECKED_TODAY);
     render(
       <MemoryRouter initialEntries={['/camera-settings']}>
@@ -368,18 +380,40 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     expect(
       await screen.findByRole('heading', { name: 'Camera settings for KCS' })
     ).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole('link', { name: 'Station camera settings' })
-    );
+    // The station's settings are for developers, on Machine Configuration.
     expect(
-      await screen.findByRole('heading', {
-        name: 'Camera Settings & Live Preview',
-      })
-    ).toBeInTheDocument();
+      screen.queryByRole('link', { name: /Station camera settings/ })
+    ).not.toBeInTheDocument();
   });
 
-  it('opens the station page from the sidebar when nothing is chosen', async () => {
+  it.each([
+    ['badges an experiment with no settings yet as Not set', null, true],
+    ['shows no badge once the experiment has settings', 'saved', false],
+  ])('%s', async (_name, saved, badge) => {
+    setCameraApi(
+      saved
+        ? CHECKED_TODAY
+        : { current: null, confirmedToday: false, changedToday: null }
+    );
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/camera-settings?experiment=exp-1&phenotyper=pheno-1',
+        ]}
+      >
+        <Routes>
+          <Route path="/camera-settings" element={<CameraSettings />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    // The form shows in both cases.
+    expect(await screen.findAllByRole('spinbutton')).toHaveLength(3);
+    expect(
+      screen.getByRole('heading', { level: 1 }).textContent?.includes('Not set')
+    ).toBe(badge);
+  });
+
+  it('says to choose an experiment when none is chosen, keeping the preview', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).electron.session.get = vi.fn().mockResolvedValue({
       phenotyperId: null,
@@ -396,9 +430,18 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
       </MemoryRouter>
     );
     expect(
-      await screen.findByRole('heading', {
-        name: 'Camera Settings & Live Preview',
-      })
+      await screen.findByText('No experiment selected.')
     ).toBeInTheDocument();
+    // No settings to edit without an experiment.
+    expect(screen.queryAllByRole('spinbutton')).toHaveLength(0);
+    expect(
+      screen.getByRole('link', { name: 'Go to Capture Scan' })
+    ).toHaveAttribute('href', '/capture-scan');
+    expect(
+      screen.getByRole('heading', { name: 'Live Preview' })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /Station camera settings/ })
+    ).not.toBeInTheDocument();
   });
 });

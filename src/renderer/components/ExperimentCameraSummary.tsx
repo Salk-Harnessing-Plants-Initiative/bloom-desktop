@@ -1,6 +1,7 @@
 /**
  * Capture Scan's line about the selected experiment's camera settings (#483): what
- * scans will use and when they were checked, with Change; or why scanning waits.
+ * scans will use, who set them and when they were checked, with Edit; or why
+ * scanning waits.
  */
 
 import { Link } from 'react-router-dom';
@@ -15,6 +16,24 @@ export interface ExperimentCameraSummaryProps {
   scanning: boolean;
   /** Camera Settings for this experiment and phenotyper. */
   settingsLink: string;
+}
+
+/** "Nov 3" */
+function dayOf(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+/**
+ * "set by Ana Lopez (Nov 3)". Settings copied from earlier scans when the app was
+ * updated have no phenotyper, and their date is the update's, so neither is shown.
+ */
+export function setByText(setByName: string | null, createdAt: string): string {
+  return setByName
+    ? `set by ${setByName} (${dayOf(createdAt)})`
+    : 'set from earlier scans';
 }
 
 function checkedAt(iso: string | null): string {
@@ -121,8 +140,9 @@ export function ExperimentCameraSummary({
       <span className="text-green-700" aria-hidden="true">
         ✓{' '}
       </span>
-      Camera set: {formatCameraSetting('exposure_time', values.exposure_time)}{' '}
-      µs · Gain {formatCameraSetting('gain', values.gain)} · Gamma{' '}
+      Camera {setByText(current.set_by_name, current.created_at)}:{' '}
+      {formatCameraSetting('exposure_time', values.exposure_time)} µs · Gain{' '}
+      {formatCameraSetting('gain', values.gain)} · Gamma{' '}
       {formatCameraSetting('gamma', values.gamma)}
       {scanning ? null : (
         <>

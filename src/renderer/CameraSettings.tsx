@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ExperimentCameraSettingsPage } from './ExperimentCameraSettingsPage';
+import { NoExperimentCameraSettings } from './NoExperimentCameraSettings';
 import { useCaptureScanChoice } from './hooks/useCaptureScanChoice';
 import { Streamer } from '../components/Streamer';
 import { CameraSettingsForm } from '../components/CameraSettingsForm';
@@ -28,7 +29,8 @@ const APPLIED_MESSAGE_MS = 4000;
 /**
  * Camera Settings (#483): one experiment's settings when opened from Capture Scan's
  * link (?experiment=…&phenotyper=…), or from the sidebar while an experiment and a
- * phenotyper are chosen on Capture Scan. Otherwise, or with ?station=1, the station's.
+ * phenotyper are chosen on Capture Scan. With none chosen, a pointer to Capture Scan.
+ * The station's own settings are at ?station=1.
  */
 export function CameraSettings() {
   const [params] = useSearchParams();
@@ -43,8 +45,9 @@ export function CameraSettings() {
       />
     );
   }
+  if (station) return <StationCameraSettings />;
   // Still asking which experiment is chosen: show nothing rather than flash the
-  // station page.
+  // empty state.
   if (chosen === undefined) return null;
   if (chosen) {
     return (
@@ -54,7 +57,7 @@ export function CameraSettings() {
       />
     );
   }
-  return <StationCameraSettings />;
+  return <NoExperimentCameraSettings />;
 }
 
 function StationCameraSettings() {
