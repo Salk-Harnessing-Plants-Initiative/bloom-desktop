@@ -13,9 +13,12 @@ import '@testing-library/jest-dom';
 import { CaptureScan } from '../../../src/renderer/CaptureScan';
 import { CameraSettings } from '../../../src/renderer/CameraSettings';
 
-// The live preview needs the camera streaming API; it is not under test here
+// The live preview needs the camera streaming API; only the settings it gets are
+// checked here.
 vi.mock('../../../src/components/Streamer', () => ({
-  Streamer: () => null,
+  Streamer: ({ settings }: { settings?: { exposure_time?: number } }) => (
+    <div data-testid="streamer" data-exposure={settings?.exposure_time ?? ''} />
+  ),
 }));
 import { toIsoDate } from '../../../src/utils/wave-dates';
 import {
@@ -279,6 +282,16 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     expect(screen.getByTestId('experiment-camera-summary')).toHaveTextContent(
       /Camera set by Demo Phenotyper \(\w+ \d+\): 7,400 µs · Gain 250 · Gamma 1\.0 · Edit/
     );
+    // The line by Start Scan and the preview show the experiment's values too.
+    expect(screen.getByTestId('camera-settings-summary')).toHaveTextContent(
+      /Exposure 7,400 µs · Gain 250 · Gamma 1\.0/
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId('streamer')).toHaveAttribute(
+        'data-exposure',
+        '7400'
+      )
+    );
 
     fireEvent.click(startButton());
     await waitFor(() => expect(mockScannerInitialize).toHaveBeenCalled());
@@ -313,7 +326,9 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
       ...CHECKED_TODAY,
       current: {
         ...KCS_SETTINGS,
-        set_by_name: null,
+        // As the handler returns them: no phenotyper, named "admin".
+        set_by_name: 'admin',
+        copied_from_scans: true,
       },
     });
     renderPage();
@@ -413,6 +428,71 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     ).toBe(badge);
   });
 
+  it('stays on Camera Settings and says why when the save fails, e.g. someone else changed them meanwhile', async () => {
+    setCameraApi(NOT_CHECKED_TODAY);
+    const changedMeanwhile =
+      "This experiment's camera settings were just changed. Check them again.";
+    cameraApi.confirm.mockResolvedValue({
+      success: false,
+      error: changedMeanwhile,
+    });
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/camera-settings?experiment=exp-1&phenotyper=pheno-1',
+        ]}
+      >
+        <Routes>
+          <Route path="/camera-settings" element={<CameraSettings />} />
+          <Route path="/capture-scan" element={<p>Capture Scan page</p>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Save settings' })
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      changedMeanwhile
+    );
+    expect(screen.queryByText('Capture Scan page')).not.toBeInTheDocument();
+    // The new settings are loaded to check again.
+    await waitFor(() => expect(cameraApi.status).toHaveBeenCalledTimes(2));
+  });
+
+  it('counts working on Camera Settings as activity, so the idle reset does not clear Capture Scan', async () => {
+    setCameraApi(CHECKED_TODAY);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sessionSet = (window as any).electron.session.set;
+    render(
+      <MemoryRouter
+        initialEntries={[
+          '/camera-settings?experiment=exp-1&phenotyper=pheno-1',
+        ]}
+      >
+        <Routes>
+          <Route path="/camera-settings" element={<CameraSettings />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const [exposure] = await screen.findAllByRole('spinbutton');
+    // Only Camera Settings is mounted, so any call is the page's own.
+    await waitFor(() => expect(sessionSet).toHaveBeenCalledWith({}));
+    sessionSet.mockClear();
+
+    fireEvent.change(exposure, { target: { value: '7500' } });
+    await waitFor(() => expect(sessionSet).toHaveBeenCalledWith({}), {
+      timeout: START_ENABLED_TIMEOUT_MS,
+    });
+    sessionSet.mockClear();
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note' }), {
+      target: { value: 'Roots too dark' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(sessionSet).toHaveBeenCalledWith({});
+  });
+
   it('says to choose an experiment when none is chosen, keeping the preview', async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).electron.session.get = vi.fn().mockResolvedValue({
@@ -437,9 +517,13 @@ describe('Capture Scan and the experiment camera settings (#483)', () => {
     expect(
       screen.getByRole('link', { name: 'Go to Capture Scan' })
     ).toHaveAttribute('href', '/capture-scan');
-    expect(
-      screen.getByRole('heading', { name: 'Live Preview' })
-    ).toBeInTheDocument();
+    // The preview runs, with the station's saved settings.
+    await waitFor(() =>
+      expect(screen.getByTestId('streamer')).toHaveAttribute(
+        'data-exposure',
+        '12000'
+      )
+    );
     expect(
       screen.queryByRole('link', { name: /Station camera settings/ })
     ).not.toBeInTheDocument();

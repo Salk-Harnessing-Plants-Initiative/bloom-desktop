@@ -21,6 +21,8 @@ const mockConfigAPI = {
   browseDirectory: vi.fn(),
   exists: vi.fn(),
   fetchScanners: vi.fn(),
+  // The mode the app is running in (first run: none).
+  getMode: vi.fn().mockResolvedValue({ mode: '' }),
 };
 
 // Mock window.electron.camera / window.electron.python — the Hardware

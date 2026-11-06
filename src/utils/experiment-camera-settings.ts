@@ -42,19 +42,25 @@ export function gammaHasOneDecimal(gamma: number): boolean {
 
 /**
  * Why the values can't be saved, or null. Exposure is stored as a whole number of µs.
- * Gamma is shown with one decimal, so it can have only one: otherwise 1.04 and 1.0
- * would look the same. (Only for experiment settings: the station's saved settings
- * keep the form's limits, so an existing camera-settings.json stays valid.)
+ * Gamma is shown with one decimal, so new settings can have only one: otherwise 1.04
+ * and 1.0 would look the same. Settings an experiment already has (e.g. 1.05, copied
+ * from scans taken before this rule) can still be confirmed as they are, so checking
+ * them never forces a change mid-experiment: pass oneDecimalGamma: false for those.
+ * (Only for experiment settings: the station's saved settings keep the form's
+ * limits, so an existing camera-settings.json stays valid.)
  */
 export function cameraValuesError(
-  values: Partial<CameraValues>
+  values: Partial<CameraValues>,
+  { oneDecimalGamma = true }: { oneDecimalGamma?: boolean } = {}
 ): string | null {
   const errors = Object.values(cameraSettingsErrors(values));
   if (errors.length > 0) return errors.join(' ');
   if (!Number.isInteger(values.exposure_time)) {
     return 'Exposure must be a whole number of µs.';
   }
-  if (!gammaHasOneDecimal(values.gamma as number)) return GAMMA_ONE_DECIMAL;
+  if (oneDecimalGamma && !gammaHasOneDecimal(values.gamma as number)) {
+    return GAMMA_ONE_DECIMAL;
+  }
   return null;
 }
 

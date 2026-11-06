@@ -23,8 +23,12 @@ export function NoExperimentCameraSettings() {
       .then((saved) => {
         if (!cancelled) setPreview(saved ? withoutSource(saved) : null);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         // The preview is only a camera check: without saved settings it still runs.
+        console.error(
+          '[CameraSettings] Could not read the station settings:',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
         if (!cancelled) setPreview(null);
       });
     return () => {

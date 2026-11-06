@@ -10,8 +10,12 @@ export function useStationScansDir(): string {
       .then(({ config }) => {
         if (!cancelled) setScansDir(config.scans_dir ?? '');
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         // No thumbnails without it; the list still shows the settings.
+        console.error(
+          '[CameraSettings] Could not read the scans folder:',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
       });
     return () => {
       cancelled = true;

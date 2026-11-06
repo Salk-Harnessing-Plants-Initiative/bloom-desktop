@@ -77,9 +77,23 @@ test.afterEach(async () => {
 
 test.describe('Camera Settings Apply', () => {
   test('confirms the settings were applied and shows when', async () => {
+    // With no experiment chosen on Capture Scan, the sidebar's Camera Settings has
+    // nothing to edit (#483).
     await window.click('text=Camera Settings');
+    await expect(window.getByText('No experiment selected.')).toBeVisible();
+
+    // The station's own settings are reached from Machine Configuration.
+    await window.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+Shift+Comma' : 'Control+Shift+Comma'
+    );
     await expect(
-      window.getByRole('heading', { name: /Camera Settings/ })
+      window.getByRole('heading', { name: 'Machine Configuration' })
+    ).toBeVisible();
+    await window
+      .getByRole('link', { name: 'Station camera settings →' })
+      .click();
+    await expect(
+      window.getByRole('heading', { name: 'Camera Settings & Live Preview' })
     ).toBeVisible();
     await expect(window.getByText('Not applied yet')).toBeVisible();
 

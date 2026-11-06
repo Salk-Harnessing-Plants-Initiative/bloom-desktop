@@ -17,6 +17,7 @@ const mockConfigAPI = {
   browseDirectory: vi.fn(),
   exists: vi.fn(),
   fetchScanners: vi.fn(),
+  getMode: vi.fn(),
 };
 
 // Mock window.electron.camera (camera auto-detection, relocated from
@@ -62,6 +63,7 @@ beforeEach(() => {
   };
 
   // Default mock implementations
+  mockConfigAPI.getMode.mockResolvedValue({ mode: 'cylinderscan' });
   mockConfigAPI.get.mockResolvedValue({
     config: {
       scanner_mode: 'cylinderscan',
@@ -597,6 +599,25 @@ describe('MachineConfiguration Page', () => {
         await screen.findByRole('link', { name: 'Station camera settings →' })
       ).toHaveAttribute('href', '/camera-settings?station=1');
     });
+
+    it.each([
+      ['first run', ''],
+      ['a GraviScan app being switched to CylinderScan', 'graviscan'],
+    ])(
+      'hides the station camera settings link on %s, where that page is not routed',
+      async (_case, runningMode) => {
+        mockConfigAPI.getMode.mockResolvedValue({ mode: runningMode });
+        render(<MachineConfiguration />, { wrapper: MemoryRouter });
+
+        // The Hardware section shows (the form's mode is CylinderScan), but no link.
+        await waitFor(() =>
+          expect(screen.getByLabelText(/Camera IP/i)).toBeInTheDocument()
+        );
+        expect(
+          screen.queryByRole('link', { name: /Station camera settings/ })
+        ).not.toBeInTheDocument();
+      }
+    );
 
     it('should test camera connection when Test Connection is clicked', async () => {
       mockConfigAPI.testCamera.mockResolvedValue({ success: true });

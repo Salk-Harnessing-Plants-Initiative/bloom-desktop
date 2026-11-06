@@ -15,6 +15,7 @@ export const CHECKED_TODAY_STATUS: ExperimentCameraSettingsStatus = {
     gamma: 1,
     note: 'Initial settings',
     set_by_name: 'Demo Phenotyper',
+    copied_from_scans: false,
     created_at: new Date().toISOString(),
     last_confirmed_at: new Date().toISOString(),
     last_confirmed_by_name: 'Demo Phenotyper',

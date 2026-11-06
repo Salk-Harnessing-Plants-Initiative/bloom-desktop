@@ -26,6 +26,7 @@ const current: ExperimentCameraSettingsInfo = {
   gamma: 1,
   note: 'Roots too dark',
   set_by_name: 'Ana',
+  copied_from_scans: false,
   created_at: new Date(2026, 10, 3, 10, 15).toISOString(),
   last_confirmed_at: new Date(2026, 10, 3, 10, 15).toISOString(),
   last_confirmed_by_name: 'Ana',
@@ -128,6 +129,26 @@ describe('CameraSettingsCheckPanel', () => {
         { exposure_time: 7900, gain: 250, gamma: 1 },
         'Roots too dark'
       )
+    );
+  });
+
+  it('confirms current settings with two decimals of gamma as they are, but not new ones', () => {
+    // e.g. copied from scans taken before the one-decimal rule.
+    const { onConfirm } = renderPanel({
+      status: status({ current: { ...current, gamma: 1.05 } }),
+    });
+    expect(screen.queryByTestId('camera-values-error')).not.toBeInTheDocument();
+    expect(confirmButton()).toBeEnabled();
+    fireEvent.click(confirmButton());
+    expect(onConfirm).toHaveBeenCalledWith(
+      { exposure_time: 7400, gain: 250, gamma: 1.05 },
+      ''
+    );
+
+    // A change must take one decimal.
+    fireEvent.change(numberBoxes()[2], { target: { value: '1.04' } });
+    expect(screen.getByTestId('camera-values-error')).toHaveTextContent(
+      'Gamma can have one decimal place, e.g. 1.1.'
     );
   });
 

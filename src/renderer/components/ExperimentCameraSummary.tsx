@@ -7,6 +7,7 @@
 import { Link } from 'react-router-dom';
 import { formatCameraSetting } from '../../types/camera';
 import type { ExperimentCameraSettings } from '../hooks/useExperimentCameraSettings';
+import type { ExperimentCameraSettingsInfo } from '../../types/experiment-camera-settings';
 
 export interface ExperimentCameraSummaryProps {
   camera: ExperimentCameraSettings;
@@ -27,13 +28,19 @@ function dayOf(iso: string): string {
 }
 
 /**
- * "set by Ana Lopez (Nov 3)". Settings copied from earlier scans when the app was
- * updated have no phenotyper, and their date is the update's, so neither is shown.
+ * "set by Ana Lopez (Nov 3)", or "set from earlier scans" for settings copied from
+ * the experiment's scans when the update was installed: no phenotyper set those, and
+ * their date is the install's.
  */
-export function setByText(setByName: string | null, createdAt: string): string {
-  return setByName
-    ? `set by ${setByName} (${dayOf(createdAt)})`
-    : 'set from earlier scans';
+export function setByText(
+  settings: Pick<
+    ExperimentCameraSettingsInfo,
+    'set_by_name' | 'copied_from_scans' | 'created_at'
+  >
+): string {
+  if (settings.copied_from_scans) return 'set from earlier scans';
+  const who = settings.set_by_name ?? 'unknown';
+  return `set by ${who} (${dayOf(settings.created_at)})`;
 }
 
 function checkedAt(iso: string | null): string {
@@ -140,7 +147,7 @@ export function ExperimentCameraSummary({
       <span className="text-green-700" aria-hidden="true">
         ✓{' '}
       </span>
-      Camera {setByText(current.set_by_name, current.created_at)}:{' '}
+      Camera {setByText(current)}:{' '}
       {formatCameraSetting('exposure_time', values.exposure_time)} µs · Gain{' '}
       {formatCameraSetting('gain', values.gain)} · Gamma{' '}
       {formatCameraSetting('gamma', values.gamma)}

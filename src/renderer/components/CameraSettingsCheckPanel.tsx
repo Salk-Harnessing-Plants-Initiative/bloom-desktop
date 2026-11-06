@@ -1,8 +1,8 @@
 /**
- * Set camera settings for <experiment> (#483): shown on Capture Scan before scanning when
- * the experiment has no camera settings, or this phenotyper hasn't checked them today.
+ * Set camera settings for <experiment> (#483), on Camera Settings: when the experiment
+ * has no camera settings, this phenotyper hasn't checked them today, or to edit them.
  * The values start at the current settings; the live preview follows them, and the
- * settings used before in the experiment can be applied with one click. Confirming
+ * previous camera settings used in the experiment can be applied with one click. Confirming
  * unchanged values needs no note; a change does, except for an experiment's first.
  */
 
@@ -92,13 +92,17 @@ export function CameraSettingsCheckPanel({
     setError(null);
   };
 
-  const invalid = cameraValuesError(values);
+  const changed = current !== null && !sameCameraValues(values, current);
+  // New settings take one decimal of gamma; the current ones can be confirmed as
+  // they are (e.g. 1.05 from scans taken before that rule).
+  const invalid = cameraValuesError(values, {
+    oneDecimalGamma: current === null || changed,
+  });
   // The form shows its own range errors under each field; these rules it doesn't know.
   const ruleError =
     invalid && Object.keys(cameraSettingsErrors(values)).length === 0
       ? invalid
       : null;
-  const changed = current !== null && !sameCameraValues(values, current);
   const noteMissing = changed && note.trim() === '';
 
   // The preview restarts the camera stream: wait until the values stop changing. Only

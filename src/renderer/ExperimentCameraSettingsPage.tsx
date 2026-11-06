@@ -1,12 +1,12 @@
 /**
- * Camera Settings for one experiment (#483), opened from Capture Scan when the
- * experiment's settings need a check, or with Change. The operator sets them with the
- * live preview beside them and the settings used before in the experiment. Save settings
+ * Camera Settings for one experiment (#483), opened from Capture Scan's Add, Verify or
+ * Edit, or from the sidebar. The operator sets them with the live preview beside them
+ * and the previous camera settings used in the experiment. Save settings
  * goes back to Capture Scan, where the experiment and phenotyper are still chosen; Cancel
  * goes back without saving.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Streamer } from '../components/Streamer';
 import type { CameraValues } from '../types/experiment-camera-settings';
@@ -20,6 +20,20 @@ export interface ExperimentCameraSettingsPageProps {
 }
 
 export const BACK_TO_CAPTURE_SCAN = '/capture-scan';
+
+/**
+ * Working here counts as activity: without this, the 10-minute idle reset would clear
+ * Capture Scan while someone tunes the settings. An empty update changes nothing in
+ * the session but restarts its idle timer.
+ */
+function keepSessionActive(): void {
+  window.electron.session.set({}).catch((error: unknown) => {
+    console.error(
+      '[CameraSettings] Could not keep the session active:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
+  });
+}
 
 export function ExperimentCameraSettingsPage({
   experimentId,
@@ -35,7 +49,13 @@ export function ExperimentCameraSettingsPage({
     [preview?.exposure_time, preview?.gain, preview?.gamma]
   );
 
+  // The preview follows the values once they stop changing: each change is activity.
+  useEffect(() => {
+    if (previewSettings) keepSessionActive();
+  }, [previewSettings]);
+
   const confirm = async (values: CameraValues, note: string) => {
+    keepSessionActive();
     const error = await camera.confirm(values, note);
     if (!error) navigate(BACK_TO_CAPTURE_SCAN);
     return error;

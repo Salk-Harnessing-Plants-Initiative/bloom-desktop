@@ -34,8 +34,12 @@ export function useCaptureScanChoice(
             : null
         );
       })
-      .catch(() => {
-        // Without the session, the station page is shown.
+      .catch((error: unknown) => {
+        // Without the session, Camera Settings says to choose an experiment.
+        console.error(
+          '[CameraSettings] Could not read the Capture Scan choice:',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
         if (!cancelled) setChoice(null);
       });
     return () => {
