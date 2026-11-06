@@ -24,6 +24,7 @@ import {
 } from './daq';
 import { ScannerAPI } from './scanner';
 import type { SpeciesAPI } from './species';
+import type { ExperimentScanCount, ExperimentScanDay } from './scan-groups';
 import type {
   CameraSettingsReference,
   ConfirmCameraSettingsInput,
@@ -497,6 +498,12 @@ export interface DatabaseAPI {
       // Overload 2: Legacy list (simple array)
       (filters?: ScanFilters): Promise<DatabaseResponse<ScanWithRelations[]>>;
     };
+    /** Export Scans: scan counts per experiment, without the scans (#436). */
+    experimentCounts: () => Promise<DatabaseResponse<ExperimentScanCount[]>>;
+    /** Export Scans: the local days one experiment has scans on, newest first. */
+    experimentDays: (
+      experimentId: string
+    ) => Promise<DatabaseResponse<ExperimentScanDay[]>>;
     get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;
     create: (data: ScanCreateData) => Promise<DatabaseResponse<Scan>>;
     checkDuplicate: (

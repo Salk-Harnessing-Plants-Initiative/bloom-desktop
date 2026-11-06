@@ -1,158 +1,20 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import type {
-  ScanSummary,
-  ScansExportFailure,
-  ScansExportProgress,
-} from '../types/database';
-
-type ResultBanner =
-  | {
-      type: 'success';
-      exportedScans: number;
-      exportedFiles: number;
-      skippedFiles: number;
-    }
-  | {
-      type: 'partial';
-      exportedScans: number;
-      exportedFiles: number;
-      skippedFiles: number;
-      failedScans: ScansExportFailure[];
-    }
-  | { type: 'error'; message: string };
-
-interface ScanGroup {
-  key: string;
-  label: string;
-  scans: ScanSummary[];
-}
-
-function dayKey(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate()
-  ).padStart(2, '0')}`;
-}
-
-function dayLabel(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function timestampLabel(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function groupScans(scans: ScanSummary[]): ScanGroup[] {
-  const groups = new Map<string, ScanGroup>();
-  for (const scan of scans) {
-    const key = `${scan.experiment_id}__${dayKey(scan.capture_date)}`;
-    const existing = groups.get(key);
-    if (existing) {
-      existing.scans.push(scan);
-    } else {
-      groups.set(key, {
-        key,
-        label: `${scan.experiment?.name ?? 'Unknown experiment'} — ${dayLabel(
-          scan.capture_date
-        )}`,
-        scans: [scan],
-      });
-    }
-  }
-  return Array.from(groups.values()).sort((a, b) =>
-    a.label.localeCompare(b.label)
-  );
-}
-
-// Summaries carry no image rows, so a page can hold many (MAX_SUMMARY_PAGE_SIZE).
-const SCANS_PAGE_SIZE = 1000;
-// Defense-in-depth only: at SCANS_PAGE_SIZE (1,000) per page this covers 5M scans, far beyond any
-// real lab's scan count. Guards against an infinite fetch loop if
-// `db:scans:list`'s pagination ever regresses (e.g. a miscounted `total`)
-// rather than silently spinning forever.
-const MAX_SCAN_PAGES = 5000;
-
-/** Fetches every non-deleted scan across all scanners, looping over `db:scans:list`'s
- * paginated branch (which already filters `deleted: false`, unlike the legacy branch). */
-async function fetchAllScans(
-  onProgress?: (loaded: number, total: number) => void
-): Promise<ScanSummary[]> {
-  let page = 1;
-  const all: ScanSummary[] = [];
-
-  while (page <= MAX_SCAN_PAGES) {
-    const result = await window.electron.database.scans.list({
-      page,
-      pageSize: SCANS_PAGE_SIZE,
-      summary: true,
-    });
-    if (!result.success) {
-      throw new Error(result.error || 'Failed to load scans');
-    }
-    const data = result.data;
-    all.push(...data.scans);
-    onProgress?.(all.length, data.total);
-    if (all.length >= data.total || data.scans.length === 0) return all;
-    page++;
-  }
-
-  throw new Error(
-    `Scan list pagination did not terminate after ${MAX_SCAN_PAGES} pages`
-  );
-}
-
-function GroupHeaderCheckbox({
-  allSelected,
-  someSelected,
-  onChange,
-}: {
-  allSelected: boolean;
-  someSelected: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (ref.current) {
-      ref.current.indeterminate = someSelected && !allSelected;
-    }
-  }, [someSelected, allSelected]);
-
-  return (
-    <input
-      ref={ref}
-      type="checkbox"
-      checked={allSelected}
-      onChange={(e) => onChange(e.target.checked)}
-      className="w-4 h-4 rounded border-gray-300"
-      aria-label="Select all scans in group"
-    />
-  );
-}
+import { useEffect, useState, useCallback } from 'react';
+import type { ScansExportProgress } from '../types/database';
+import type { ExperimentScanCount } from '../types/scan-groups';
+import { ExportExperimentList } from './components/export/ExportExperimentList';
+import { useExportScanTree } from './hooks/useExportScanTree';
+import {
+  ExportResultBanner,
+  type ResultBanner,
+} from './components/export/ExportResultBanner';
 
 export function Export() {
-  const [scans, setScans] = useState<ScanSummary[]>([]);
+  // Experiments with their scan counts: all the page loads when it opens (#436).
+  const [experiments, setExperiments] = useState<ExperimentScanCount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadProgress, setLoadProgress] = useState<{
-    loaded: number;
-    total: number;
-  } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedScanIds, setSelectedScanIds] = useState<Set<string>>(
-    new Set()
-  );
+  const tree = useExportScanTree();
+  const selectedScanIds = tree.selected;
   const [destinationDir, setDestinationDir] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ScansExportProgress | null>(null);
@@ -162,16 +24,17 @@ export function Export() {
     let cancelled = false;
     (async () => {
       try {
-        setIsLoading(true);
-        setLoadError(null);
-        const all = await fetchAllScans((loaded, total) => {
-          if (!cancelled) setLoadProgress({ loaded, total });
-        });
-        if (!cancelled) setScans(all);
+        const result = await window.electron.database.scans.experimentCounts();
+        if (cancelled) return;
+        if (!result.success || !result.data) {
+          setLoadError(result.error || 'Failed to load experiments');
+          return;
+        }
+        setExperiments(result.data);
       } catch (err) {
         if (!cancelled) {
           setLoadError(
-            err instanceof Error ? err.message : 'Failed to load scans'
+            err instanceof Error ? err.message : 'Failed to load experiments'
           );
         }
       } finally {
@@ -194,38 +57,22 @@ export function Export() {
     return () => unsubscribe();
   }, [exporting]);
 
-  const groups = useMemo(() => groupScans(scans), [scans]);
-
-  const handleSelectScan = (scanId: string, checked: boolean) => {
-    setSelectedScanIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(scanId);
-      else next.delete(scanId);
-      return next;
-    });
-  };
-
-  const handleSelectGroup = (group: ScanGroup, checked: boolean) => {
-    setSelectedScanIds((prev) => {
-      const next = new Set(prev);
-      for (const scan of group.scans) {
-        if (checked) next.add(scan.id);
-        else next.delete(scan.id);
-      }
-      return next;
-    });
-  };
-
   const handlePickDestination = async () => {
     const picked = await window.electron.config.browseDirectory();
     if (picked) setDestinationDir(picked);
   };
 
+  // A ticked experiment or day is loading its scans: wait for the whole selection.
+  const selecting = tree.pending > 0;
   const canExport =
-    !exporting && selectedScanIds.size > 0 && destinationDir !== null;
+    !exporting &&
+    !selecting &&
+    selectedScanIds.size > 0 &&
+    destinationDir !== null;
 
   const handleExport = useCallback(async () => {
-    if (exporting || selectedScanIds.size === 0 || !destinationDir) return;
+    if (exporting || selecting || selectedScanIds.size === 0 || !destinationDir)
+      return;
 
     // The completion banner (in particular a `partial` banner's failed-scan
     // list) is the only record of what failed in the last run — nothing is
@@ -276,7 +123,7 @@ export function Export() {
           skippedFiles: data.skippedFiles,
         });
       }
-      setSelectedScanIds(new Set());
+      tree.clearSelection();
     } catch (err) {
       console.error('Error exporting scans:', err);
       setResultBanner({
@@ -286,7 +133,13 @@ export function Export() {
     } finally {
       setExporting(false);
     }
-  }, [exporting, selectedScanIds, destinationDir]);
+  }, [
+    exporting,
+    selecting,
+    selectedScanIds,
+    destinationDir,
+    tree.clearSelection,
+  ]);
 
   return (
     <div className="p-6">
@@ -329,92 +182,10 @@ export function Export() {
       )}
 
       {resultBanner && (
-        <div
-          className={`mb-4 p-4 border rounded-lg ${
-            resultBanner.type === 'error'
-              ? 'bg-red-50 border-red-200'
-              : resultBanner.type === 'partial'
-                ? 'bg-yellow-50 border-yellow-200'
-                : 'bg-green-50 border-green-200'
-          }`}
-        >
-          {resultBanner.type === 'error' ? (
-            <p className="text-sm text-red-600">{resultBanner.message}</p>
-          ) : (
-            <>
-              {resultBanner.exportedScans === 0 &&
-              resultBanner.skippedFiles === 0 ? (
-                resultBanner.type === 'success' ? (
-                  // Nothing was exported, skipped, or failed at all — the
-                  // selection resolved to zero processable scans (e.g. they
-                  // were deleted elsewhere between page load and export).
-                  // Without this branch, the default wording below would
-                  // read as a false "0 scans exported (already present)"
-                  // success claim with no indication anything is wrong.
-                  <p className="text-sm text-gray-800">
-                    No scans were exported — the selected scans may no longer
-                    exist. Try refreshing the page and re-selecting.
-                  </p>
-                ) : // Partial export where every selected scan failed outright
-                // (0 exported, 0 skipped): the failed-scan list below
-                // already says everything useful — a "0 scans already
-                // exported" summary here would just be confusing noise on
-                // top of it.
-                null
-              ) : (
-                <p className="text-sm text-gray-800">
-                  {resultBanner.exportedFiles === 0 ? (
-                    // Nothing new was copied this run — every file already
-                    // existed at the destination. Saying "exported (already
-                    // present)" here would be self-contradictory (did it
-                    // export or not?), so this phrasing avoids pairing those
-                    // two words in the same clause.
-                    <>
-                      {resultBanner.exportedScans} scan
-                      {resultBanner.exportedScans === 1 ? '' : 's'} already
-                      exported — all {resultBanner.skippedFiles} file
-                      {resultBanner.skippedFiles === 1 ? '' : 's'} already
-                      present
-                    </>
-                  ) : (
-                    <>
-                      {resultBanner.exportedScans} scan
-                      {resultBanner.exportedScans === 1 ? '' : 's'} exported (
-                      {resultBanner.exportedFiles} file
-                      {resultBanner.exportedFiles === 1 ? '' : 's'}),{' '}
-                      {resultBanner.skippedFiles} file
-                      {resultBanner.skippedFiles === 1 ? '' : 's'} skipped
-                      (already exist)
-                    </>
-                  )}
-                </p>
-              )}
-              {resultBanner.type === 'partial' && (
-                <div className="mt-2">
-                  <p className="text-sm font-medium text-red-700">
-                    {resultBanner.failedScans.length} scan
-                    {resultBanner.failedScans.length === 1 ? '' : 's'} failed:
-                  </p>
-                  <ul className="list-disc list-inside text-sm text-red-600">
-                    {resultBanner.failedScans.map((f) => (
-                      <li key={f.scanId}>
-                        {f.experimentName} — {timestampLabel(f.captureDate)}:{' '}
-                        {f.reason}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => setResultBanner(null)}
-            className="mt-2 text-xs text-gray-500 hover:text-gray-700 underline"
-          >
-            Dismiss
-          </button>
-        </div>
+        <ExportResultBanner
+          banner={resultBanner}
+          onDismiss={() => setResultBanner(null)}
+        />
       )}
 
       <div className="mb-4 flex items-center justify-between">
@@ -443,68 +214,23 @@ export function Export() {
               className="h-8 w-8 animate-spin rounded-full border-4 border-lime-200 border-t-lime-700"
             />
             <p className="text-sm font-medium text-gray-700">
-              {loadProgress && loadProgress.total > 0
-                ? `Loading scans… ${loadProgress.loaded.toLocaleString()} of ${loadProgress.total.toLocaleString()}`
-                : 'Loading scans…'}
+              Loading experiments…
             </p>
           </div>
-        ) : groups.length === 0 ? (
+        ) : experiments.length === 0 ? (
           <div className="h-96 flex items-center justify-center">
-            <p className="text-sm text-gray-500">No scans to export</p>
+            <p className="text-sm text-gray-500">
+              {loadError
+                ? 'Experiments could not be loaded'
+                : 'No scans to export'}
+            </p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-100">
-            {groups.map((group) => {
-              const allSelected = group.scans.every((s) =>
-                selectedScanIds.has(s.id)
-              );
-              const someSelected = group.scans.some((s) =>
-                selectedScanIds.has(s.id)
-              );
-              return (
-                <div key={group.key}>
-                  <div className="px-4 py-3 bg-gray-50 flex items-center gap-3">
-                    <GroupHeaderCheckbox
-                      allSelected={allSelected}
-                      someSelected={someSelected}
-                      onChange={(checked) => handleSelectGroup(group, checked)}
-                    />
-                    <span className="text-sm font-medium text-gray-700">
-                      {group.label} ({group.scans.length} scan
-                      {group.scans.length === 1 ? '' : 's'})
-                    </span>
-                  </div>
-                  <div className="divide-y divide-gray-50">
-                    {group.scans.map((scan) => (
-                      <div
-                        key={scan.id}
-                        className="px-4 py-2 pl-10 flex items-center gap-3 text-sm"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedScanIds.has(scan.id)}
-                          onChange={(e) =>
-                            handleSelectScan(scan.id, e.target.checked)
-                          }
-                          className="w-4 h-4 rounded border-gray-300"
-                        />
-                        <span className="text-gray-700">{scan.plant_id}</span>
-                        <span className="text-gray-500">
-                          {timestampLabel(scan.capture_date)}
-                        </span>
-                        <span
-                          className="text-xs text-gray-400"
-                          title="Capturing scanner — shown because this list is not scoped to the current machine's scanner"
-                        >
-                          {scan.scanner_name}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <ExportExperimentList
+            experiments={experiments}
+            tree={tree}
+            disabled={exporting}
+          />
         )}
       </div>
     </div>

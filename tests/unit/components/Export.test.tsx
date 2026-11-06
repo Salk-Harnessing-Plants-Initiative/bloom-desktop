@@ -1,17 +1,17 @@
 /**
  * Unit Tests: Export page
  *
- * Covers behaviors with no existing precedent to lean on (tri-state
- * group-header checkbox, per-group scan-count label, the pilot's
- * "stuck on Exporting... forever" regression, distinct failed-vs-skipped
- * banner detail, the disconnect warning, discrete progress updates, and
- * progress-listener cleanup on unmount) per tasks.md section 3.
+ * The export itself: the pilot's "stuck on Exporting... forever" regression,
+ * distinct failed-vs-skipped banner detail, the disconnect warning, discrete
+ * progress updates, and progress-listener cleanup on unmount. The experiment,
+ * day and scan list is in Export-list.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { Export } from '../../../src/renderer/Export';
+import { mockScans } from '../helpers/export-scans-mock';
 
 function makeScan(
   id: string,
@@ -51,13 +51,9 @@ function makeScan(
   };
 }
 
+/** Mocks the station's scans: experiment counts, their days, and a day's scans. */
 function mockList(scans: ReturnType<typeof makeScan>[]) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const win = global.window as any;
-  win.electron.database.scans.list = vi.fn().mockResolvedValue({
-    success: true,
-    data: { scans, total: scans.length, page: 1, pageSize: 100 },
-  });
+  mockScans(window, scans);
 }
 
 function getDb() {
@@ -85,100 +81,22 @@ beforeEach(() => {
   getConfig().browseDirectory = vi.fn().mockResolvedValue('/fake/destination');
 });
 
+/** Ticks Experiment A, which selects its scans once they have loaded. */
+async function selectExperimentA(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(
+    screen.getByRole('checkbox', { name: 'Select all scans in Experiment A' })
+  );
+  await waitFor(() =>
+    expect(screen.queryByText('0 scans selected')).not.toBeInTheDocument()
+  );
+}
+
 async function pickDestination(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('button', { name: 'Choose Destination' }));
   await screen.findByText('/fake/destination');
 }
 
 describe('Export page', () => {
-  it('group-header checkbox is indeterminate when only some scans in the group are selected, checked when all are', async () => {
-    const user = userEvent.setup();
-    mockList([makeScan('a'), makeScan('b')]);
-    render(<Export />);
-
-    await screen.findByText(/Experiment A/);
-    const groupCheckbox = screen.getByLabelText('Select all scans in group');
-    const scanCheckboxes = screen
-      .getAllByRole('checkbox')
-      .filter((cb) => cb !== groupCheckbox);
-    expect(scanCheckboxes).toHaveLength(2);
-
-    await user.click(scanCheckboxes[0]);
-    expect(groupCheckbox).not.toBeChecked();
-    expect((groupCheckbox as HTMLInputElement).indeterminate).toBe(true);
-
-    await user.click(scanCheckboxes[1]);
-    expect(groupCheckbox).toBeChecked();
-    expect((groupCheckbox as HTMLInputElement).indeterminate).toBe(false);
-  });
-
-  it('clicking the group-header checkbox selects every scan in the group, and clicking it again deselects them all', async () => {
-    const user = userEvent.setup();
-    mockList([makeScan('a'), makeScan('b'), makeScan('c')]);
-    render(<Export />);
-
-    await screen.findByText(/Experiment A/);
-    const groupCheckbox = screen.getByLabelText('Select all scans in group');
-    const scanCheckboxes = screen
-      .getAllByRole('checkbox')
-      .filter((cb) => cb !== groupCheckbox);
-    expect(scanCheckboxes).toHaveLength(3);
-
-    await user.click(groupCheckbox);
-    expect(screen.getByText('3 scans selected')).toBeInTheDocument();
-    for (const cb of scanCheckboxes) {
-      expect(cb).toBeChecked();
-    }
-    expect(groupCheckbox).toBeChecked();
-
-    await user.click(groupCheckbox);
-    expect(screen.getByText('0 scans selected')).toBeInTheDocument();
-    for (const cb of scanCheckboxes) {
-      expect(cb).not.toBeChecked();
-    }
-  });
-
-  it('shows a spinner with how many scans have loaded while it loads', async () => {
-    const firstPage = Array.from({ length: 1000 }, (_, i) => makeScan(`s${i}`));
-    getDb().list = vi
-      .fn()
-      .mockResolvedValueOnce({
-        success: true,
-        data: { scans: firstPage, total: 1500, page: 1, pageSize: 1000 },
-      })
-      // The second page never arrives, so the page stays loading.
-      .mockReturnValueOnce(new Promise(() => undefined));
-    render(<Export />);
-
-    const status = await screen.findByRole('status');
-    expect(status).toHaveTextContent('Loading scans…');
-    expect(status.querySelector('.animate-spin')).not.toBeNull();
-    expect(
-      await screen.findByText('Loading scans… 1,000 of 1,500')
-    ).toBeInTheDocument();
-  });
-
-  it('loads scan summaries (no image rows) in large pages', async () => {
-    mockList([makeScan('a')]);
-    render(<Export />);
-    await screen.findByText(/Experiment A/);
-
-    expect(getDb().list).toHaveBeenCalledWith({
-      page: 1,
-      pageSize: 1000,
-      summary: true,
-    });
-  });
-
-  it('renders the group header with a scan-count label', async () => {
-    mockList([makeScan('a'), makeScan('b'), makeScan('c')]);
-    render(<Export />);
-
-    expect(
-      await screen.findByText(/Experiment A.*\(3 scans\)/)
-    ).toBeInTheDocument();
-  });
-
   it('leaves the export button out of its loading state and shows an error when export() resolves { success: false }', async () => {
     const user = userEvent.setup();
     mockList([makeScan('a')]);
@@ -189,7 +107,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
 
     const exportButton = screen.getByRole('button', { name: /Export 1 scan/ });
@@ -213,7 +131,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
@@ -248,7 +166,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
@@ -291,7 +209,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
@@ -317,7 +235,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
@@ -351,7 +269,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
@@ -385,7 +303,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
     await waitFor(() => {
@@ -393,7 +311,7 @@ describe('Export page', () => {
     });
 
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
     expect(confirmSpy).toHaveBeenCalled();
@@ -420,7 +338,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
@@ -468,7 +386,7 @@ describe('Export page', () => {
     render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
@@ -516,7 +434,7 @@ describe('Export page', () => {
     const { unmount } = render(<Export />);
 
     await screen.findByText(/Experiment A/);
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     await pickDestination(user);
     await user.click(screen.getByRole('button', { name: /Export 1 scan/ }));
 
@@ -544,7 +462,7 @@ describe('Export page', () => {
       screen.getByRole('button', { name: /Export 0 scan/ })
     ).toBeDisabled();
 
-    await user.click(screen.getAllByRole('checkbox')[1]);
+    await selectExperimentA(user);
     expect(screen.getByText('1 scan selected')).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /Export 1 scan/ })

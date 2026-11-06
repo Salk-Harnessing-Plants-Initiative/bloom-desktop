@@ -270,6 +270,11 @@ const databaseAPI: DatabaseAPI = {
   scans: {
     list: (filters?: ScanFilters | PaginatedScanFilters) =>
       ipcRenderer.invoke('db:scans:list', filters),
+    /** Export Scans: scan counts per experiment, without the scans (#436). */
+    experimentCounts: () => ipcRenderer.invoke('db:scans:experimentCounts'),
+    /** Export Scans: the days one experiment has scans on, with counts. */
+    experimentDays: (experimentId: string) =>
+      ipcRenderer.invoke('db:scans:experimentDays', experimentId),
     get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
     create: (data: ScanCreateData) =>
       ipcRenderer.invoke('db:scans:create', data),

@@ -60,6 +60,7 @@ import { fetchBloomSpecies, registerSpeciesHandlers } from './species-handlers';
 import { registerCylinderWaveHandlers } from './cylinder-wave-handlers';
 import { registerCylinderPlantHandlers } from './cylinder-plant-handlers';
 import { registerExperimentCameraSettingsHandlers } from './experiment-camera-settings-handlers';
+import { registerScanGroupsHandlers } from './scan-groups-handlers';
 import {
   loadEnvConfig,
   saveEnvConfig,
@@ -1162,6 +1163,7 @@ app.on('ready', async () => {
     registerCylinderWaveHandlers({ ipcMain, db: getDatabase() });
     registerCylinderPlantHandlers({ ipcMain, db: getDatabase() });
     registerExperimentCameraSettingsHandlers({ ipcMain, db: getDatabase() });
+    registerScanGroupsHandlers({ ipcMain, db: getDatabase() });
     registerScanUploadAllHandlers({
       ipcMain,
       db: getDatabase(),
