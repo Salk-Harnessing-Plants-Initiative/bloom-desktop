@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { ExperimentSearchSelect } from '../components/ExperimentSearchSelect';
 import { Link, useNavigate } from 'react-router-dom';
 import type {
   ScanWithImageSummary,
@@ -338,22 +339,19 @@ export function BrowseScans() {
             >
               Experiment
             </label>
-            <select
+            <ExperimentSearchSelect
               id="experiment-filter"
-              className="w-full p-2 rounded-md bg-white text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-lime-500"
+              experiments={experiments.map((exp) => ({
+                id: exp.id,
+                label: `${exp.species} - ${exp.name}`,
+              }))}
               value={experimentId}
-              onChange={(e) => {
-                setExperimentId(e.target.value);
+              onChange={(id) => {
+                setExperimentId(id);
                 setPage(1);
               }}
-            >
-              <option value="">All Experiments</option>
-              {experiments.map((exp) => (
-                <option key={exp.id} value={exp.id}>
-                  {exp.species} - {exp.name}
-                </option>
-              ))}
-            </select>
+              noneLabel="All Experiments"
+            />
           </div>
 
           {/* Date From Filter */}

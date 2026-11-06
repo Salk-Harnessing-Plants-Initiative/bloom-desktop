@@ -3,7 +3,13 @@
  * (add-cylinderscan-delete-upload-integrity, tasks.md 2.3/2.5/2.7).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { MemoryRouter } from 'react-router-dom';
 import { BrowseScans } from '../../../src/renderer/BrowseScans';
@@ -544,5 +550,47 @@ describe('thumbnail column, rows off screen', () => {
 
     expect(await screen.findByTestId('thumbnail-loading')).toBeInTheDocument();
     expect(screen.queryByAltText(/thumbnail/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('BrowseScans experiment filter', () => {
+  it('can be searched by name, filters the table, and All Experiments clears it (#471)', async () => {
+    mockExperimentsList.mockResolvedValue({
+      success: true,
+      data: [
+        { id: 'kcs', name: 'KCS-drought-2026', species: 'Soybean' },
+        {
+          id: 'weep',
+          name: 'weep6-MBZ-Interaction-EXP1',
+          species: 'Arabidopsis',
+        },
+      ],
+    });
+    renderPage();
+    await screen.findByText('PLANT-001');
+    const filter = screen.getByRole('combobox', { name: 'Experiment' });
+
+    fireEvent.focus(filter);
+    fireEvent.change(filter, { target: { value: 'mbz' } });
+    // Only the experiment list's options (the page size is a select too).
+    expect(
+      within(screen.getByRole('listbox'))
+        .getAllByRole('option')
+        .map((o) => o.textContent)
+    ).toEqual(['All Experiments', 'Arabidopsis - weep6-MBZ-Interaction-EXP1']);
+    fireEvent.mouseDown(screen.getByRole('option', { name: /weep6/ }));
+    await waitFor(() =>
+      expect(mockList).toHaveBeenLastCalledWith(
+        expect.objectContaining({ experimentId: 'weep', page: 1 })
+      )
+    );
+
+    fireEvent.focus(filter);
+    fireEvent.mouseDown(
+      screen.getByRole('option', { name: 'All Experiments' })
+    );
+    await waitFor(() =>
+      expect(mockList.mock.lastCall[0]).not.toHaveProperty('experimentId')
+    );
   });
 });

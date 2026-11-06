@@ -100,6 +100,12 @@ async function startUploadAll() {
   fireEvent.click(await screen.findByText('Upload all (1)'));
 }
 
+/** Picks an experiment in Browse Scans' searchable experiment filter (#471). */
+async function pickExperiment(name: RegExp) {
+  fireEvent.focus(screen.getByRole('combobox', { name: 'Experiment' }));
+  fireEvent.mouseDown(await screen.findByRole('option', { name }));
+}
+
 describe('Browse Scans while Upload all runs', () => {
   it('disables the row Upload and Upload Selected, and enables them again after', async () => {
     await startUploadAll();
@@ -155,11 +161,7 @@ describe('Browse Scans while Upload all runs', () => {
         <BrowseScans />
       </MemoryRouter>
     );
-    await screen.findByRole('option', { name: /Exp 2/ });
-
-    fireEvent.change(screen.getAllByRole('combobox')[0], {
-      target: { value: 'exp-2' },
-    });
+    await pickExperiment(/Exp 2/);
 
     await waitFor(() =>
       expect(api.scans.pendingUploads).toHaveBeenLastCalledWith(
@@ -183,7 +185,6 @@ describe('Browse Scans while Upload all runs', () => {
         data: [{ id: 'exp-2', name: 'Exp 2', species: 'Arabidopsis' }],
       });
     await startUploadAll();
-    await screen.findByRole('option', { name: /Exp 2/ });
     let answerOldReload: (value: unknown) => void = () => undefined;
     list.mockReturnValueOnce(
       new Promise((resolve) => (answerOldReload = resolve))
@@ -201,9 +202,7 @@ describe('Browse Scans while Upload all runs', () => {
         pageSize: 25,
       },
     });
-    fireEvent.change(screen.getAllByRole('combobox')[0], {
-      target: { value: 'exp-2' },
-    });
+    await pickExperiment(/Exp 2/);
     expect(await screen.findByText('NEW-FILTER')).toBeInTheDocument();
 
     await act(async () => answerOldReload(listResponse()));
