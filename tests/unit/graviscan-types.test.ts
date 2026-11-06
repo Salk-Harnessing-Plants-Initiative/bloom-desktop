@@ -195,6 +195,42 @@ describe('GraviScan TypeScript Types', () => {
       expect(config.plates).toHaveLength(1);
       expect(config.plates[0].plate_index).toBe('00');
     });
+
+    it('accepts an optional main-process-only resolveSaneName', async () => {
+      // Function-valued, so it must never cross the preload boundary —
+      // structured clone would throw at runtime. It is safe because the
+      // renderer payload is a separate hand-synced `GraviStartScanParams`
+      // (`electron.d.ts`) and every `ScannerConfig` is constructed inside
+      // the main process. Nothing but convention protects this: `preload.ts`
+      // types `startScan`'s params loosely enough that TypeScript would not
+      // catch a mistake, so it would surface as a runtime clone error.
+      const config: ScannerConfig = {
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+        resolveSaneName: async () => 'epkowa:interpreter:001:008',
+      };
+
+      expect(typeof config.resolveSaneName).toBe('function');
+      await expect(config.resolveSaneName!()).resolves.toBe(
+        'epkowa:interpreter:001:008'
+      );
+      // Not serialisable — the invariant the doc comment states.
+      expect(
+        JSON.parse(JSON.stringify(config)).resolveSaneName
+      ).toBeUndefined();
+    });
+
+    it('allows a synchronous resolveSaneName as well as an async one', () => {
+      const config: ScannerConfig = {
+        scannerId: 'scanner-1',
+        saneName: 'epkowa:interpreter:001:002',
+        plates: [],
+        resolveSaneName: () => 'epkowa:interpreter:001:008',
+      };
+
+      expect(config.resolveSaneName!()).toBe('epkowa:interpreter:001:008');
+    });
   });
 
   describe('ScanCoordinatorLike references shared types', () => {

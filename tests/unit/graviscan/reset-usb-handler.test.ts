@@ -2,8 +2,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+// Complete-replacement factory: every export `scanner-handlers.ts` reaches
+// through this module must appear here or the file fails at import.
+// `buildSaneName` moves into `lsusb-detection.ts` (it was duplicated), and
+// gets a REAL implementation rather than a `vi.fn()` because assertions
+// elsewhere check its output.
 vi.mock('../../../src/main/lsusb-detection', () => ({
   detectEpsonScanners: vi.fn(),
+  detectEpsonScannersAsync: vi.fn(),
+  buildSaneName: (bus: number, device: number) =>
+    `epkowa:interpreter:${String(bus).padStart(3, '0')}:${String(device).padStart(3, '0')}`,
 }));
 
 import { detectEpsonScanners } from '../../../src/main/lsusb-detection';
@@ -198,5 +206,68 @@ describe('resetUsb', () => {
     expect(result.scanners).toEqual([]);
     expect(result.error).toBe('lsusb not found');
     expect(coordinator.initialize).not.toHaveBeenCalled();
+  });
+
+  it('attaches no spawn-time resolver to the configs it re-initializes with', async () => {
+    // design.md Decision 3: `resetUsb` performs its own fresh detection in
+    // the same operation, so re-resolving at spawn time would spawn a second
+    // detection pass per scanner moments after the first — and give each row
+    // a different view of the bus. Only retry and session-start attach one.
+    db.graviScanner.findMany.mockResolvedValue([MOCK_SAVED_SCANNER_1]);
+    mockDetect.mockReturnValue({
+      success: true,
+      scanners: [MOCK_DETECTED_1],
+      count: 1,
+    });
+    const coordinator = createMockCoordinator();
+
+    const resultPromise = resetUsb(coordinator, db);
+    await vi.runAllTimersAsync();
+    await resultPromise;
+
+    expect(coordinator.initialize).toHaveBeenCalledTimes(1);
+    const configs = coordinator.initialize.mock.calls[0][0];
+    expect(configs).toHaveLength(1);
+    expect(configs[0]).not.toHaveProperty('resolveSaneName');
+  });
+
+  it('resolves a duplicate usb_port to the first detected entry in list order', async () => {
+    // design.md Decision 2. `resetUsb` built a Map<usb_port, DetectedScanner>,
+    // and `Map.set` keeps the LAST entry for a duplicate key; the shared
+    // matcher does a linear scan and finds the FIRST. Real detection dedupes
+    // by port so this cannot arise there — but `resetUsb`'s own mock branch
+    // synthesises `usb_port: s.usb_port || \`1-${i + 1}\``, which can
+    // collide. Pinning the order keeps it a specified behaviour rather than
+    // an artefact of a Map's iteration order.
+    db.graviScanner.findMany.mockResolvedValue([MOCK_SAVED_SCANNER_1]);
+    const first: DetectedScanner = {
+      ...MOCK_DETECTED_1,
+      scanner_id: 'first',
+      usb_device: 5,
+    };
+    const second: DetectedScanner = {
+      ...MOCK_DETECTED_1,
+      scanner_id: 'second',
+      usb_device: 9,
+    };
+    mockDetect.mockReturnValue({
+      success: true,
+      scanners: [first, second],
+      count: 2,
+    });
+    const coordinator = createMockCoordinator();
+
+    const resultPromise = resetUsb(coordinator, db);
+    await vi.runAllTimersAsync();
+    await resultPromise;
+
+    expect(db.graviScanner.update).toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { usb_bus: 1, usb_device: 5 },
+    });
+    expect(db.graviScanner.update).not.toHaveBeenCalledWith({
+      where: { id: 's1' },
+      data: { usb_bus: 1, usb_device: 9 },
+    });
   });
 });
