@@ -43,6 +43,7 @@ describe('preload gravi namespace', () => {
       'saveConfig',
       'saveScannersToDB',
       'disableScanner',
+      'setScannerGridMode',
       'getPlatformInfo',
       'validateScanners',
       'validateConfig',
@@ -113,6 +114,15 @@ describe('preload gravi namespace', () => {
       expect(mockInvoke).toHaveBeenCalledWith(
         'graviscan:disable-scanner',
         'scanner-1'
+      );
+    });
+
+    it('setScannerGridMode passes scannerId and gridMode', async () => {
+      await exposedAPI.gravi.setScannerGridMode('scanner-1', '2grid');
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'graviscan:set-scanner-grid-mode',
+        'scanner-1',
+        '2grid'
       );
     });
 

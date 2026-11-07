@@ -25,6 +25,7 @@ vi.mock('../../../src/main/graviscan/scanner-handlers', () => ({
 
 vi.mock('../../../src/main/graviscan/scanner-upsert', () => ({
   disableScannerById: vi.fn().mockResolvedValue({ ok: true }),
+  setScannerGridMode: vi.fn().mockResolvedValue({ ok: true }),
   stopWorkersForDisabledScanners: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -88,6 +89,7 @@ const CHANNELS = [
   'graviscan:save-config',
   'graviscan:save-scanners-db',
   'graviscan:disable-scanner',
+  'graviscan:set-scanner-grid-mode',
   'graviscan:platform-info',
   'graviscan:validate-scanners',
   'graviscan:validate-config',
@@ -164,7 +166,7 @@ describe('registerGraviScanHandlers', () => {
     vi.spyOn(console, 'log').mockImplementation(() => {});
   });
 
-  it('registers all 23 IPC channels', () => {
+  it('registers all 24 IPC channels', () => {
     registerGraviScanHandlers(
       mockIpcMain as any,
       mockDb,
@@ -173,7 +175,7 @@ describe('registerGraviScanHandlers', () => {
       mockGetCoordinator
     );
 
-    expect(mockIpcMain.handle).toHaveBeenCalledTimes(23);
+    expect(mockIpcMain.handle).toHaveBeenCalledTimes(24);
     for (const channel of CHANNELS) {
       expect(mockIpcMain._handlers.has(channel)).toBe(true);
     }
@@ -359,6 +361,66 @@ describe('registerGraviScanHandlers', () => {
       const result = await mockIpcMain._invoke(
         'graviscan:disable-scanner',
         'scanner-1'
+      );
+
+      expect(result).toEqual({ ok: false, error: 'DB unavailable' });
+    });
+  });
+
+  describe('graviscan:set-scanner-grid-mode', () => {
+    beforeEach(() => {
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator
+      );
+    });
+
+    it('delegates to setScannerGridMode with db, coordinator, id, mode', async () => {
+      const coordinator = { isScanning: false };
+      mockGetCoordinator.mockReturnValue(coordinator);
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:set-scanner-grid-mode',
+        'scanner-1',
+        '2grid'
+      );
+
+      expect(scannerUpsert.setScannerGridMode).toHaveBeenCalledWith(
+        mockDb,
+        coordinator,
+        'scanner-1',
+        '2grid'
+      );
+      expect(result).toEqual({ ok: true });
+    });
+
+    it('returns { ok: false, error } surfaced from the helper', async () => {
+      vi.mocked(scannerUpsert.setScannerGridMode).mockResolvedValueOnce({
+        ok: false,
+        error: 'Invalid grid mode: 3grid',
+      });
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:set-scanner-grid-mode',
+        'scanner-1',
+        '3grid'
+      );
+
+      expect(result).toEqual({ ok: false, error: 'Invalid grid mode: 3grid' });
+    });
+
+    it('returns { ok: false, error } when the helper throws', async () => {
+      vi.mocked(scannerUpsert.setScannerGridMode).mockRejectedValueOnce(
+        new Error('DB unavailable')
+      );
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:set-scanner-grid-mode',
+        'scanner-1',
+        '2grid'
       );
 
       expect(result).toEqual({ ok: false, error: 'DB unavailable' });

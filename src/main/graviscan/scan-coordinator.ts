@@ -793,9 +793,9 @@ export class ScanCoordinator
   /**
    * Scan all plates once, orchestrated per-grid.
    *
-   * Iterates grids sequentially: for each grid index, all scanners scan
-   * that grid in parallel (with USB stagger), then we wait for all to
-   * finish before moving to the next grid.
+   * Iterates grids sequentially: for each grid index, every scanner with a
+   * plate at that index scans it (with USB stagger), then we wait for all to
+   * finish before moving to the next grid. Each "row" below is one grid.
    */
   async scanOnce(platesPerScanner: Map<string, PlateConfig[]>): Promise<void> {
     this.state = 'scanning';
@@ -811,19 +811,13 @@ export class ScanCoordinator
       }
     }
 
-    // Group grids by row for 4grid mode (same-row grids scanned together)
-    const gridMode =
-      platesPerScanner.values().next().value?.[0]?.grid_mode || '2grid';
-    const rowGroups: string[][] = [];
-    if (gridMode === '4grid') {
-      const topRow = gridIndices.filter((i) => ['00', '01'].includes(i));
-      const bottomRow = gridIndices.filter((i) => ['10', '11'].includes(i));
-      if (topRow.length > 0) rowGroups.push(topRow);
-      if (bottomRow.length > 0) rowGroups.push(bottomRow);
-    } else {
-      // 2grid: each plate is its own row group
-      for (const gi of gridIndices) rowGroups.push([gi]);
-    }
+    // One grid at a time for every scanner, as on the rig since 2026-04-13:
+    // each plate is scanned at its own grid region, and scanners with
+    // different grid modes can share a cycle (#491). A scanner with no plate
+    // at a grid sits that grid out (see the rowPlates filter below).
+    // Sorted so the grid order does not depend on which scanner is first.
+    gridIndices.sort();
+    const rowGroups: string[][] = gridIndices.map((gi) => [gi]);
 
     console.log(
       `[ScanCoordinator] Cycle ${this.currentCycle}: scanning ${gridIndices.length} grid(s) [${gridIndices.join(', ')}] in ${rowGroups.length} row group(s) across ${this.subprocesses.size} scanner(s)`

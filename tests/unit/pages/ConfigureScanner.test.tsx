@@ -22,6 +22,7 @@ const mockGraviAPI = {
   saveConfig: vi.fn(),
   saveScannersToDB: vi.fn(),
   disableScanner: vi.fn(),
+  setScannerGridMode: vi.fn(),
   getScannerStatus: vi.fn(),
   getScanStatus: vi.fn(),
   resetUsb: vi.fn(),
@@ -128,7 +129,18 @@ describe('ConfigureScanner page', () => {
     ).toBeInTheDocument();
   });
 
-  it('round-trips a valid persisted GraviConfig into the resolution and grid-mode selects on mount', async () => {
+  it('round-trips a valid persisted resolution and shows each scanner its own grid mode, with no global grid selector', async () => {
+    mockGraviAPI.getScannerStatus.mockResolvedValue({
+      success: true,
+      scanners: [
+        makeScannerRow({ gridMode: '2grid' }),
+        makeScannerRow({
+          scannerId: 'scanner-2',
+          displayName: 'Scanner 2',
+          gridMode: '4grid',
+        }),
+      ],
+    });
     render(<ConfigureScanner />);
 
     await waitFor(() => {
@@ -136,9 +148,104 @@ describe('ConfigureScanner page', () => {
         screen.getByLabelText(/resolution/i) as HTMLSelectElement
       ).toHaveValue('600');
     });
-    expect(
-      screen.getByLabelText(/grid mode/i) as HTMLSelectElement
-    ).toHaveValue('4grid');
+    expect(screen.getByLabelText('Grid mode for Scanner 1')).toHaveValue(
+      '2grid'
+    );
+    expect(screen.getByLabelText('Grid mode for Scanner 2')).toHaveValue(
+      '4grid'
+    );
+    expect(screen.queryByLabelText(/^grid mode$/i)).not.toBeInTheDocument();
+  });
+
+  describe('per-scanner grid mode (#491)', () => {
+    beforeEach(() => {
+      mockGraviAPI.getScannerStatus.mockResolvedValue({
+        success: true,
+        scanners: [
+          makeScannerRow({ gridMode: '4grid' }),
+          makeScannerRow({
+            scannerId: 'scanner-2',
+            displayName: 'Scanner 2',
+            gridMode: '4grid',
+          }),
+        ],
+      });
+      mockGraviAPI.setScannerGridMode.mockResolvedValue({ ok: true });
+    });
+
+    it('changing one scanner calls setScannerGridMode and updates only that row', async () => {
+      render(<ConfigureScanner />);
+      await waitFor(() => screen.getByText('Scanner 1'));
+
+      fireEvent.change(screen.getByLabelText('Grid mode for Scanner 1'), {
+        target: { value: '2grid' },
+      });
+
+      await waitFor(() => {
+        expect(mockGraviAPI.setScannerGridMode).toHaveBeenCalledWith(
+          'scanner-1',
+          '2grid'
+        );
+      });
+      await waitFor(() => {
+        expect(screen.getByLabelText('Grid mode for Scanner 1')).toHaveValue(
+          '2grid'
+        );
+      });
+      expect(screen.getByLabelText('Grid mode for Scanner 2')).toHaveValue(
+        '4grid'
+      );
+    });
+
+    it('keeps the previous value and shows the error when the change fails', async () => {
+      mockGraviAPI.setScannerGridMode.mockResolvedValue({
+        ok: false,
+        error: 'Cannot change grid mode while a scan is running',
+      });
+      render(<ConfigureScanner />);
+      await waitFor(() => screen.getByText('Scanner 1'));
+
+      fireEvent.change(screen.getByLabelText('Grid mode for Scanner 1'), {
+        target: { value: '2grid' },
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/failed to change grid mode: cannot change/i)
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByLabelText('Grid mode for Scanner 1')).toHaveValue(
+        '4grid'
+      );
+    });
+
+    it('shows the error when setScannerGridMode throws', async () => {
+      mockGraviAPI.setScannerGridMode.mockRejectedValue(new Error('IPC down'));
+      render(<ConfigureScanner />);
+      await waitFor(() => screen.getByText('Scanner 1'));
+
+      fireEvent.change(screen.getByLabelText('Grid mode for Scanner 1'), {
+        target: { value: '2grid' },
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/failed to change grid mode: ipc down/i)
+        ).toBeInTheDocument();
+      });
+    });
+
+    it('disables every Grid selector during an active scan', async () => {
+      mockGraviAPI.getScanStatus.mockResolvedValue({
+        success: true,
+        data: { isActive: true },
+      });
+      render(<ConfigureScanner />);
+      await waitFor(() => screen.getByText('Scanner 1'));
+
+      expect(screen.getByLabelText('Grid mode for Scanner 1')).toBeDisabled();
+      expect(screen.getByLabelText('Grid mode for Scanner 2')).toBeDisabled();
+    });
   });
 
   it('clicking "Detect Scanners" calls detectScanners() then saveScannersToDB() then re-calls getScannerStatus()', async () => {
@@ -468,35 +575,33 @@ describe('ConfigureScanner page', () => {
     expect(saveButton).not.toBeDisabled();
   });
 
-  it('saving resolution/grid mode calls saveConfig with the selected values', async () => {
+  it('saving resolution sends the stored GraviConfig grid mode back unchanged', async () => {
     render(<ConfigureScanner />);
     await waitFor(() => screen.getByText('Scanner 1'));
 
     fireEvent.change(screen.getByLabelText(/resolution/i), {
       target: { value: '800' },
     });
-    fireEvent.change(screen.getByLabelText(/grid mode/i), {
-      target: { value: '2grid' },
-    });
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => {
       expect(mockGraviAPI.saveConfig).toHaveBeenCalledWith({
         resolution: 800,
-        grid_mode: '2grid',
+        grid_mode: '4grid',
       });
     });
   });
 
-  it('discloses that a saved resolution/grid mode does not yet apply to scans', async () => {
+  it('shows a plain saved message, without the stale "does not yet apply" note', async () => {
     render(<ConfigureScanner />);
     await waitFor(() => screen.getByText('Scanner 1'));
 
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/does not yet apply/i)).toBeInTheDocument();
+      expect(screen.getByText('Configuration saved.')).toBeInTheDocument();
     });
+    expect(screen.queryByText(/does not yet apply/i)).not.toBeInTheDocument();
   });
 
   it('blocks Reset All USB Connections and shows an inline message while a scan is active', async () => {

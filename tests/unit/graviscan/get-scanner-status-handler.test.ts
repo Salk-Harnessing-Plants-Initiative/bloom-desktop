@@ -125,45 +125,51 @@ describe('getScannerStatus', () => {
     );
   });
 
-  describe('gridMode — sourced from the GraviConfig singleton (main has no per-scanner grid_mode field)', () => {
-    it('applies the GraviConfig singleton gridMode to every scanner in the response', async () => {
+  describe("gridMode — each scanner row's own grid_mode (#491)", () => {
+    it('returns a different grid mode per scanner', async () => {
       db.graviScanner.findMany.mockResolvedValue([
-        SAVED_SCANNER_1,
-        SAVED_SCANNER_2,
+        { ...SAVED_SCANNER_1, grid_mode: '2grid' },
+        { ...SAVED_SCANNER_2, grid_mode: '4grid' },
+      ]);
+
+      const result = await getScannerStatus(coordinator, db);
+
+      expect(
+        result.scanners.map((s: any) => [s.scannerId, s.gridMode])
+      ).toEqual([
+        ['s1', '2grid'],
+        ['s2', '4grid'],
+      ]);
+    });
+
+    it('ignores the GraviConfig grid mode', async () => {
+      db.graviScanner.findMany.mockResolvedValue([
+        { ...SAVED_SCANNER_1, grid_mode: '4grid' },
       ]);
       db.graviConfig.findFirst.mockResolvedValue({
         id: 'cfg-1',
-        grid_mode: '4grid',
+        grid_mode: '2grid',
         resolution: 1200,
       });
 
       const result = await getScannerStatus(coordinator, db);
 
-      expect(result.scanners).toHaveLength(2);
-      expect(result.scanners.every((s: any) => s.gridMode === '4grid')).toBe(
-        true
-      );
+      expect(result.scanners[0].gridMode).toBe('4grid');
+      expect(db.graviConfig.findFirst).not.toHaveBeenCalled();
     });
 
-    it("defaults gridMode to '2grid' when no GraviConfig row exists yet", async () => {
-      db.graviScanner.findMany.mockResolvedValue([SAVED_SCANNER_1]);
-      db.graviConfig.findFirst.mockResolvedValue(null);
+    it.each([undefined, null, '', '3grid'])(
+      "falls back to '4grid' for a stored value of %s",
+      async (stored) => {
+        db.graviScanner.findMany.mockResolvedValue([
+          { ...SAVED_SCANNER_1, grid_mode: stored },
+        ]);
 
-      const result = await getScannerStatus(coordinator, db);
+        const result = await getScannerStatus(coordinator, db);
 
-      expect(result.scanners[0].gridMode).toBe('2grid');
-    });
-
-    it('only queries GraviConfig once regardless of scanner count', async () => {
-      db.graviScanner.findMany.mockResolvedValue([
-        SAVED_SCANNER_1,
-        SAVED_SCANNER_2,
-      ]);
-
-      await getScannerStatus(coordinator, db);
-
-      expect(db.graviConfig.findFirst).toHaveBeenCalledTimes(1);
-    });
+        expect(result.scanners[0].gridMode).toBe('4grid');
+      }
+    );
   });
 
   it('returns { success: false, error } when the DB query throws', async () => {

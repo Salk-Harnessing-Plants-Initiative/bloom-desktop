@@ -1422,6 +1422,104 @@ describe('ScanCoordinator', () => {
       expect(firstCall).not.toHaveProperty('scan_ended_at');
     });
 
+    describe('per-scanner grid mode (#491)', () => {
+      function plates(gridMode: '2grid' | '4grid', tag: string): PlateConfig[] {
+        const indices =
+          gridMode === '4grid' ? ['00', '01', '10', '11'] : ['00', '01'];
+        return indices.map((i) => ({
+          plate_index: i,
+          grid_mode: gridMode,
+          resolution: 1200,
+          output_path: `/tmp/scan_st_20260410T120000_cy1_${tag}_${i}.tif`,
+          wave_number: 1,
+        }));
+      }
+
+      async function runMixedCycle(order: 'twoFirst' | 'fourFirst') {
+        vi.useFakeTimers();
+        const coordinator = await createCoordinator();
+        await coordinator.initialize(makeScanners(2));
+        const subs = createdSubprocesses.slice(0, 2);
+        for (const sub of subs) {
+          sub.scan.mockImplementation((sent: PlateConfig[]) => {
+            emitScanCompleteForPlates(sub, sent);
+            setImmediate(() => emitCycleDone(sub));
+          });
+        }
+        const entries: Array<[string, PlateConfig[]]> = [
+          ['scanner-1', plates('2grid', 'S1')],
+          ['scanner-2', plates('4grid', 'S2')],
+        ];
+        if (order === 'fourFirst') entries.reverse();
+        const gridStart = vi.fn();
+        coordinator.on('grid-start', gridStart);
+
+        const scanPromise = coordinator.scanOnce(new Map(entries));
+        for (let i = 0; i < 6; i++) await vi.advanceTimersByTimeAsync(20_000);
+        await scanPromise;
+        vi.useRealTimers();
+
+        const sentBy = (sub: (typeof subs)[number]) =>
+          sub.scan.mock.calls.map(([sent]) => sent as PlateConfig[]);
+        return {
+          s1: sentBy(subs[0]),
+          s2: sentBy(subs[1]),
+          grids: gridStart.mock.calls.map(([e]) => e.gridIndex),
+        };
+      }
+
+      it('sends a 2-grid scanner grids 00/01 and a 4-grid scanner all four, one plate per command', async () => {
+        const { s1, s2, grids } = await runMixedCycle('twoFirst');
+
+        expect(grids).toEqual(['00', '01', '10', '11']);
+        expect(s1.map((sent) => sent.map((p) => p.plate_index))).toEqual([
+          ['00'],
+          ['01'],
+        ]);
+        expect(s2.map((sent) => sent.map((p) => p.plate_index))).toEqual([
+          ['00'],
+          ['01'],
+          ['10'],
+          ['11'],
+        ]);
+      });
+
+      it('gives both scanners the same st_ stamp for a shared grid', async () => {
+        const { s1, s2 } = await runMixedCycle('twoFirst');
+
+        expect(s1[0][0].st_timestamp).toBe(s2[0][0].st_timestamp);
+        expect(s1[1][0].st_timestamp).toBe(s2[1][0].st_timestamp);
+      });
+
+      it('scans the same grid order when the 4-grid scanner is first', async () => {
+        const { s1, s2, grids } = await runMixedCycle('fourFirst');
+
+        expect(grids).toEqual(['00', '01', '10', '11']);
+        expect(s1).toHaveLength(2);
+        expect(s2).toHaveLength(4);
+        expect([...s1, ...s2].every((sent) => sent.length === 1)).toBe(true);
+      });
+
+      it('scans a lone 4-grid scanner one plate at a time', async () => {
+        const coordinator = await createCoordinator();
+        await coordinator.initialize(makeScanners(1));
+        const sub = createdSubprocesses[0];
+        sub.scan.mockImplementation((sent: PlateConfig[]) => {
+          emitScanCompleteForPlates(sub, sent);
+          process.nextTick(() => emitCycleDone(sub));
+        });
+
+        await coordinator.scanOnce(makePlatesMap(['scanner-1'], '4grid'));
+
+        expect(sub.scan).toHaveBeenCalledTimes(4);
+        expect(
+          sub.scan.mock.calls.every(
+            ([sent]) => (sent as PlateConfig[]).length === 1
+          )
+        ).toBe(true);
+      });
+    });
+
     it('logs USB stagger delay between scanners', async () => {
       vi.useFakeTimers();
 
@@ -1600,10 +1698,8 @@ describe('ScanCoordinator', () => {
       const scanError = vi.fn();
       coordinator.on('scan-error', scanError);
 
-      // 4grid gives this one scanner 2 plates per row group (00+01 in the
-      // top row, 10+11 in the bottom row). All 4 plates must be diagnosed,
-      // proving "one line per plate" (not one combined line per row) across
-      // multiple rows, not just within a single one.
+      // 4grid: one plate per row since #491. All 4 plates must be diagnosed,
+      // one line per plate, across the dispatched row and the rows after it.
       //
       // The two rows get there by DIFFERENT routes, which is the point
       // (review round 5, B2). The `exit` payload here is production's
@@ -1611,10 +1707,10 @@ describe('ScanCoordinator', () => {
       // coordinator's identity-guarded eviction at the subprocess `exit`
       // handler silently missed and the dead scanner kept receiving rows
       // that production would never have sent it. With a faithful payload:
-      //   - row 00+01 exits mid-row  -> diagnosed from the row's `exit`
-      //     outcome, via its unreported plates;
-      //   - the scanner is then EVICTED from `this.subprocesses`, so row
-      //     10+11 is never dispatched at all and has no result -> diagnosed
+      //   - row 00 exits mid-row  -> diagnosed from the row's `exit`
+      //     outcome, via its unreported plate;
+      //   - the scanner is then EVICTED from `this.subprocesses`, so rows
+      //     01, 10, 11 are never dispatched and have no result -> diagnosed
       //     by the end-of-row reconciliation against `platesPerScanner`.
       // Before that reconciliation existed this assertion could only ever
       // see 2 in production, and the plates of every row after the failure
@@ -1998,8 +2094,8 @@ describe('ScanCoordinator', () => {
       await coordinator.initialize(makeScanners(1));
       const sub = createdSubprocesses[0];
 
-      // 4grid: the worker dies in row group ['00','01'], is evicted, and
-      // row group ['10','11'] is then never dispatched at all.
+      // 4grid, one grid per row (#491): the worker dies in row ['00'], is
+      // evicted, and rows ['01'], ['10'], ['11'] are never dispatched.
       sub.scan.mockImplementation(() => {
         setImmediate(() =>
           sub.emit('exit', {
@@ -2025,17 +2121,17 @@ describe('ScanCoordinator', () => {
         )
         .map(([msg]) => msg as string);
 
-      const dispatched = lines.filter((m) => /plate 0[01]/.test(m));
-      const neverDispatched = lines.filter((m) => /plate 1[01]/.test(m));
+      const dispatched = lines.filter((m) => /plate 00/.test(m));
+      const neverDispatched = lines.filter((m) => /plate (01|10|11)/.test(m));
 
-      expect(dispatched).toHaveLength(2);
-      expect(neverDispatched).toHaveLength(2);
+      expect(dispatched).toHaveLength(1);
+      expect(neverDispatched).toHaveLength(3);
 
-      // Plates 00/01 WERE sent to the worker, so a partial file may exist.
+      // Plate 00 WAS sent to the worker, so a partial file may exist.
       for (const m of dispatched) {
         expect(m).toContain('re-scan this plate if it is absent');
       }
-      // Plates 10/11 were never sent anywhere.
+      // Plates 01/10/11 were never sent anywhere.
       for (const m of neverDispatched) {
         expect(m).not.toContain('re-scan this plate');
         expect(m).toContain('No image was produced');
@@ -2104,12 +2200,14 @@ describe('ScanCoordinator', () => {
       const sub = createdSubprocesses[0];
 
       sub.scan.mockImplementation((plates: PlateConfig[]) => {
-        // Report ONLY the first plate of the row group; the second never
-        // reports, yet the row still settles `done`.
-        emitScanComplete(sub, {
-          plate_index: plates[0].plate_index,
-          path: plates[0].output_path,
-        });
+        // Rows are one grid each (#491). Grids 01 and 11 never report their
+        // plate, yet the row still settles `done`.
+        if (!plates[0].plate_index.endsWith('1')) {
+          emitScanComplete(sub, {
+            plate_index: plates[0].plate_index,
+            path: plates[0].output_path,
+          });
+        }
         process.nextTick(() => emitCycleDone(sub));
       });
 
