@@ -234,6 +234,34 @@ export function registerGraviScanHandlers(
     }
   );
 
+  /**
+   * Set one scanner's grid mode (per-row Grid selector on Configure
+   * Scanner). Same `{ ok }` contract as `graviscan:disable-scanner`.
+   */
+  ipcMain.handle(
+    'graviscan:set-scanner-grid-mode',
+    async (_event, scannerId: string, gridMode: unknown) => {
+      try {
+        const result = await scannerUpsert.setScannerGridMode(
+          db,
+          getCoordinator(),
+          scannerId,
+          gridMode
+        );
+        if (!result.ok) {
+          const err = (result as { ok: false; error: string }).error;
+          console.warn('[GraviScan:GRID]', err);
+        }
+        return result;
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to set grid mode';
+        console.error('[GraviScan:GRID] Error:', error);
+        return { ok: false as const, error: message };
+      }
+    }
+  );
+
   ipcMain.handle('graviscan:platform-info', () =>
     wrapHandler(() => scannerHandlers.getPlatformInfo())()
   );

@@ -21,7 +21,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { PrismaClient } from '@prisma/client';
-import type { GraviScanner } from '../../types/graviscan';
+import {
+  PLATE_INDICES,
+  type GraviScanner,
+  type GridMode,
+} from '../../types/graviscan';
 import type { ScanCoordinatorLike } from './session-handlers';
 import { scanLog } from './scan-logger';
 
@@ -40,6 +44,18 @@ export interface UpsertScannerPayload {
   usb_port?: string;
   usb_bus?: number;
   usb_device?: number;
+  /** Omitted by detection, so re-detecting a scanner keeps its saved mode. */
+  grid_mode?: GridMode;
+}
+
+/** Grid mode of a newly created row; the schema default, as on the rig. */
+export const DEFAULT_SCANNER_GRID_MODE: GridMode = '4grid';
+
+export function isGridMode(value: unknown): value is GridMode {
+  return (
+    typeof value === 'string' &&
+    Object.prototype.hasOwnProperty.call(PLATE_INDICES, value)
+  );
 }
 
 /**
@@ -150,6 +166,8 @@ export async function upsertScannerRow(
         ...(payloadPortUsable ? { usb_port: payload.usb_port } : {}),
         usb_bus: payload.usb_bus ?? null,
         usb_device: payload.usb_device ?? null,
+        // Omitted rather than defaulted, so the saved mode survives re-detect.
+        ...(payload.grid_mode ? { grid_mode: payload.grid_mode } : {}),
         // Critical fix (final-review #1): re-detecting a scanner MUST
         // re-enable it. Without this, a row disabled by
         // disableStaleScannerRows()/validateConfig()/disableScannerById()
@@ -178,6 +196,7 @@ export async function upsertScannerRow(
       usb_port: payload.usb_port ?? null,
       usb_bus: payload.usb_bus ?? null,
       usb_device: payload.usb_device ?? null,
+      grid_mode: payload.grid_mode ?? DEFAULT_SCANNER_GRID_MODE,
       enabled: true,
     },
   });
@@ -278,6 +297,49 @@ export async function disableScannerById(
     await coordinator.stopScanner(scannerId);
   }
 
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// setScannerGridMode
+// ---------------------------------------------------------------------------
+
+/**
+ * Set one scanner's grid mode. Backs `graviscan:set-scanner-grid-mode`.
+ *
+ * Refused while a scan is running: the session's plates were built from the
+ * mode at start, so changing it mid-session would only change what the next
+ * session uses while the page shows it as current.
+ */
+export async function setScannerGridMode(
+  db: PrismaClient,
+  coordinator: Pick<ScanCoordinatorLike, 'isScanning'> | null,
+  scannerId: string,
+  gridMode: unknown
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!isGridMode(gridMode)) {
+    return { ok: false, error: `Invalid grid mode: ${String(gridMode)}` };
+  }
+  if (coordinator?.isScanning) {
+    return {
+      ok: false,
+      error: 'Cannot change grid mode while a scan is running',
+    };
+  }
+  const row = (await (db as any).graviScanner.findUnique({
+    where: { id: scannerId },
+  })) as GraviScannerRow | null;
+  if (!row) {
+    return { ok: false, error: `Scanner ${scannerId} not found` };
+  }
+  const previous = row.grid_mode;
+  await (db as any).graviScanner.update({
+    where: { id: scannerId },
+    data: { grid_mode: gridMode },
+  });
+  scanLog(
+    `[GraviScan:GRID] scanner ${scannerId} grid mode ${previous} -> ${gridMode}`
+  );
   return { ok: true };
 }
 

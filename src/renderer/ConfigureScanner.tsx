@@ -2,7 +2,7 @@
  * Configure Scanner Page (GraviScan)
  *
  * Hardware setup for GraviScan: detect/save scanners, a global
- * resolution + grid-mode config, USB reset, and per-scanner removal.
+ * resolution, a grid mode per scanner, USB reset, and per-scanner removal.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -13,6 +13,7 @@ import {
   type ScannerStatusRow,
   type DetectedScanner,
 } from '../types/graviscan';
+import { ConfiguredScannersTable } from './components/graviscan/ConfiguredScannersTable';
 
 const STATUS_POLL_INTERVAL_MS = 3000;
 const DEFAULT_RESOLUTION_DPI = 1200;
@@ -25,7 +26,9 @@ export function ConfigureScanner() {
   const [scanActive, setScanActive] = useState(false);
 
   const [resolution, setResolution] = useState<number>(DEFAULT_RESOLUTION_DPI);
-  const [gridMode, setGridMode] = useState<GridMode>('2grid');
+  // Global GraviConfig.grid_mode, sent back unchanged on save. Grid mode is
+  // set per scanner (#491); this value no longer drives scans.
+  const [configGridMode, setConfigGridMode] = useState<GridMode>('2grid');
   const [legacyResolution, setLegacyResolution] = useState<number | null>(null);
   const [resolutionTouched, setResolutionTouched] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -75,7 +78,7 @@ export function ConfigureScanner() {
         setLegacyResolution(config.resolution);
       }
       setResolutionTouched(false);
-      setGridMode(config.grid_mode);
+      setConfigGridMode(config.grid_mode);
     },
     []
   );
@@ -362,7 +365,7 @@ export function ConfigureScanner() {
     try {
       const result = await window.electron.gravi.saveConfig({
         resolution,
-        grid_mode: gridMode,
+        grid_mode: configGridMode,
       });
       if (!mountedRef.current) return;
       if (result.success && result.data.success) {
@@ -381,7 +384,37 @@ export function ConfigureScanner() {
         );
       }
     }
-  }, [resolution, gridMode, legacyResolution, resolutionTouched]);
+  }, [resolution, configGridMode, legacyResolution, resolutionTouched]);
+
+  const handleGridModeChange = useCallback(
+    async (scannerId: string, gridMode: GridMode) => {
+      setSaveError(null);
+      try {
+        const result = await window.electron.gravi.setScannerGridMode(
+          scannerId,
+          gridMode
+        );
+        if (!mountedRef.current) return;
+        if (result.ok) {
+          setScanners((prev) =>
+            prev.map((s) =>
+              s.scannerId === scannerId ? { ...s, gridMode } : s
+            )
+          );
+        } else {
+          const err = (result as { ok: false; error: string }).error;
+          setSaveError(`Failed to change grid mode: ${err}`);
+        }
+      } catch (err) {
+        if (mountedRef.current) {
+          setSaveError(
+            `Failed to change grid mode: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+    },
+    []
+  );
 
   if (loadError) {
     return (
@@ -407,7 +440,8 @@ export function ConfigureScanner() {
         Configure Scanner
       </h1>
       <p className="text-gray-600 mb-8">
-        Detect connected GraviScan scanners and configure resolution/grid mode.
+        Detect connected GraviScan scanners, set each scanner&apos;s grid mode,
+        and configure resolution.
       </p>
 
       {envStatus && (
@@ -440,9 +474,7 @@ export function ConfigureScanner() {
 
       {saveSuccess && (
         <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md mb-4">
-          Configuration saved. Note: this build does not yet apply the saved
-          resolution/grid mode automatically when a scan is started — it has no
-          effect on scans until that wiring lands.
+          Configuration saved.
         </div>
       )}
       {saveError && (
@@ -488,37 +520,17 @@ export function ConfigureScanner() {
             single one.
           </p>
 
-          {scanners.length === 0 ? (
-            <p className="text-gray-500 text-sm">
-              No scanners configured yet. Click Detect Scanners.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <tbody>
-                {scanners.map((s) => (
-                  <tr key={s.scannerId} className="border-t border-gray-100">
-                    <td className="py-2">{s.displayName}</td>
-                    <td className="py-2 text-gray-500">{s.usbPort}</td>
-                    <td className="py-2 capitalize">{s.status}</td>
-                    <td className="py-2 text-right">
-                      <button
-                        onClick={() => handleRemove(s.scannerId)}
-                        disabled={scanActive}
-                        className="px-3 py-1 text-red-600 border border-red-300 rounded-md hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <ConfiguredScannersTable
+            scanners={scanners}
+            scanActive={scanActive}
+            onGridModeChange={handleGridModeChange}
+            onRemove={handleRemove}
+          />
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-4 text-gray-800">
-            Resolution &amp; Grid Mode
+            Resolution
           </h2>
 
           {legacyResolution !== null && (
@@ -555,24 +567,6 @@ export function ConfigureScanner() {
                       : `${r} dpi`}
                   </option>
                 ))}
-              </select>
-            </div>
-
-            <div>
-              <label
-                htmlFor="graviscan-grid-mode"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Grid Mode
-              </label>
-              <select
-                id="graviscan-grid-mode"
-                value={gridMode}
-                onChange={(e) => setGridMode(e.target.value as GridMode)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="2grid">2-grid</option>
-                <option value="4grid">4-grid</option>
               </select>
             </div>
 

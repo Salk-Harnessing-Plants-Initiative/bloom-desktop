@@ -72,6 +72,7 @@ import {
   GetScanStatusResult,
   GraviConfigInput,
   GraviWedgeEvent,
+  GridMode,
   ParsedWorkbook,
   UploadAllScansResult,
   ReadScanImageResult,
@@ -854,6 +855,11 @@ export interface GraviAPI {
    */
   disableScanner: (
     scannerId: string
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Set one scanner's grid mode. Refused while a scan is running. */
+  setScannerGridMode: (
+    scannerId: string,
+    gridMode: GridMode
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   getPlatformInfo: () => Promise<any>;
   validateScanners: (ids: string[]) => Promise<any>;

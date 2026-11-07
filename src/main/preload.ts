@@ -50,7 +50,7 @@ import type {
   UploadAllProgress,
 } from '../types/upload-all';
 // eslint-disable-next-line import/no-unresolved
-import type { GraviWedgeEvent } from '../types/graviscan';
+import type { GraviWedgeEvent, GridMode } from '../types/graviscan';
 import type {
   CylinderWaveCreateInput,
   CylinderWaveDateChangeInput,
@@ -490,6 +490,13 @@ const graviAPI: GraviAPI = {
     ipcRenderer.invoke('graviscan:disable-scanner', scannerId) as Promise<
       { ok: true } | { ok: false; error: string }
     >,
+  /** Set one scanner's grid mode (per-row Grid selector). */
+  setScannerGridMode: (scannerId: string, gridMode: GridMode) =>
+    ipcRenderer.invoke(
+      'graviscan:set-scanner-grid-mode',
+      scannerId,
+      gridMode
+    ) as Promise<{ ok: true } | { ok: false; error: string }>,
   getPlatformInfo: () => ipcRenderer.invoke('graviscan:platform-info'),
   validateScanners: (ids: string[]) =>
     ipcRenderer.invoke('graviscan:validate-scanners', ids),

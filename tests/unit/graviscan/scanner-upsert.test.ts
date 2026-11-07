@@ -3,12 +3,11 @@
  * Increment 9 (stage 3): scanner-upsert.ts helpers.
  *
  * Covers, in the order they were ported from the reference branch:
- *  - upsertScannerRow            (grid_mode persistence fix's refactor —
- *                                 see report for why grid_mode itself is
- *                                 out of scope on this schema)
+ *  - upsertScannerRow            (incl. per-scanner grid_mode, #491)
  *  - disableStaleScannerRows     (#230: disable-not-delete stale rows)
  *  - disableScannerById          (#230 UI half / #234: per-row disable)
  *  - stopWorkersForDisabledScanners (Copilot #20: stop orphan workers)
+ *  - setScannerGridMode          (#491: per-row Grid selector)
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -27,6 +26,7 @@ import {
   disableStaleScannerRows,
   disableScannerById,
   stopWorkersForDisabledScanners,
+  setScannerGridMode,
 } from '../../../src/main/graviscan/scanner-upsert';
 
 interface MockGraviScanner {
@@ -38,6 +38,7 @@ interface MockGraviScanner {
   usb_port: string | null;
   usb_bus: number | null;
   usb_device: number | null;
+  grid_mode: string;
   enabled: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +54,7 @@ function makeRow(overrides: Partial<MockGraviScanner> = {}): MockGraviScanner {
     usb_port: '1-1',
     usb_bus: 1,
     usb_device: 7,
+    grid_mode: '4grid',
     enabled: true,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
@@ -462,6 +464,141 @@ describe('disableScannerById (#230 UI half / #234)', () => {
 
     expect(result.ok).toBe(true);
     expect(db._rows[0].enabled).toBe(false);
+  });
+});
+
+describe('upsertScannerRow — per-scanner grid_mode (#491)', () => {
+  const payload = {
+    name: 'Scanner 1',
+    vendor_id: '04b8',
+    product_id: '013c',
+    usb_port: '1-1',
+    usb_bus: 1,
+    usb_device: 7,
+  };
+
+  it('UPDATE writes a supplied grid_mode', async () => {
+    const db = makeMockDb([makeRow({ id: 'A', grid_mode: '4grid' })]);
+
+    const saved = await upsertScannerRow(db as never, {
+      ...payload,
+      grid_mode: '2grid',
+    });
+
+    expect(saved?.grid_mode).toBe('2grid');
+    expect(db._rows[0].grid_mode).toBe('2grid');
+  });
+
+  it('UPDATE without grid_mode keeps the stored value (re-detect)', async () => {
+    const db = makeMockDb([makeRow({ id: 'A', grid_mode: '2grid' })]);
+
+    await upsertScannerRow(db as never, { ...payload, usb_device: 9 });
+
+    expect(db._rows[0].grid_mode).toBe('2grid');
+    const data = db.graviScanner.update.mock.calls[0][0].data;
+    expect(data).not.toHaveProperty('grid_mode');
+  });
+
+  it('CREATE uses a supplied grid_mode', async () => {
+    const db = makeMockDb([]);
+
+    await upsertScannerRow(db as never, { ...payload, grid_mode: '2grid' });
+
+    expect(db.graviScanner.create.mock.calls[0][0].data.grid_mode).toBe(
+      '2grid'
+    );
+  });
+
+  it("CREATE without grid_mode uses '4grid'", async () => {
+    const db = makeMockDb([]);
+
+    await upsertScannerRow(db as never, payload);
+
+    expect(db.graviScanner.create.mock.calls[0][0].data.grid_mode).toBe(
+      '4grid'
+    );
+  });
+});
+
+describe('setScannerGridMode (#491)', () => {
+  it('sets only the named scanner', async () => {
+    const db = makeMockDb([
+      makeRow({ id: 'A', usb_port: '1-1' }),
+      makeRow({ id: 'B', usb_port: '1-2' }),
+    ]);
+
+    const result = await setScannerGridMode(
+      db as never,
+      { isScanning: false },
+      'A',
+      '2grid'
+    );
+
+    expect(result).toEqual({ ok: true });
+    expect(db._rows.map((r) => [r.id, r.grid_mode])).toEqual([
+      ['A', '2grid'],
+      ['B', '4grid'],
+    ]);
+    expect(scanLog).toHaveBeenCalledWith(
+      expect.stringContaining('scanner A grid mode 4grid -> 2grid')
+    );
+  });
+
+  it('works with a null coordinator', async () => {
+    const db = makeMockDb([makeRow({ id: 'A' })]);
+
+    const result = await setScannerGridMode(db as never, null, 'A', '2grid');
+
+    expect(result).toEqual({ ok: true });
+    expect(db._rows[0].grid_mode).toBe('2grid');
+  });
+
+  it.each(['3grid', '', null, undefined, 'toString', 4])(
+    'rejects %s without writing',
+    async (mode) => {
+      const db = makeMockDb([makeRow({ id: 'A' })]);
+
+      const result = await setScannerGridMode(db as never, null, 'A', mode);
+
+      expect(result.ok).toBe(false);
+      expect((result as { ok: false; error: string }).error).toMatch(
+        /invalid grid mode/i
+      );
+      expect(db.graviScanner.update).not.toHaveBeenCalled();
+    }
+  );
+
+  it('refuses while a scan is running', async () => {
+    const db = makeMockDb([makeRow({ id: 'A' })]);
+
+    const result = await setScannerGridMode(
+      db as never,
+      { isScanning: true },
+      'A',
+      '2grid'
+    );
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; error: string }).error).toMatch(
+      /scan is running/i
+    );
+    expect(db.graviScanner.update).not.toHaveBeenCalled();
+  });
+
+  it('returns an error naming an unknown scanner', async () => {
+    const db = makeMockDb([]);
+
+    const result = await setScannerGridMode(
+      db as never,
+      null,
+      'missing',
+      '2grid'
+    );
+
+    expect(result.ok).toBe(false);
+    expect((result as { ok: false; error: string }).error).toMatch(
+      /missing not found/
+    );
   });
 });
 
