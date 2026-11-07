@@ -801,7 +801,7 @@ export class ScanCoordinator
     this.state = 'scanning';
     this.currentCycle++;
 
-    // Extract unique grid indices across all scanners, preserving order
+    // Unique grid indices across all scanners (sorted below)
     const gridIndices: string[] = [];
     for (const plates of platesPerScanner.values()) {
       for (const plate of plates) {

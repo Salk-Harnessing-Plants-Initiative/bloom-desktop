@@ -1435,7 +1435,11 @@ describe('ScanCoordinator', () => {
         }));
       }
 
-      async function runMixedCycle(order: 'twoFirst' | 'fourFirst') {
+      async function runMixedCycle(
+        order: 'twoFirst' | 'fourFirst',
+        // Plate indices selected on the 2-grid scanner (default: both).
+        twoGridIndices: string[] = ['00', '01']
+      ) {
         vi.useFakeTimers();
         const coordinator = await createCoordinator();
         await coordinator.initialize(makeScanners(2));
@@ -1447,7 +1451,12 @@ describe('ScanCoordinator', () => {
           });
         }
         const entries: Array<[string, PlateConfig[]]> = [
-          ['scanner-1', plates('2grid', 'S1')],
+          [
+            'scanner-1',
+            plates('2grid', 'S1').filter((p) =>
+              twoGridIndices.includes(p.plate_index)
+            ),
+          ],
           ['scanner-2', plates('4grid', 'S2')],
         ];
         if (order === 'fourFirst') entries.reverse();
@@ -1487,6 +1496,8 @@ describe('ScanCoordinator', () => {
       it('gives both scanners the same st_ stamp for a shared grid', async () => {
         const { s1, s2 } = await runMixedCycle('twoFirst');
 
+        expect(s1[0][0].st_timestamp).toMatch(/^\d{8}T\d{6}$/);
+        expect(s1[1][0].st_timestamp).toMatch(/^\d{8}T\d{6}$/);
         expect(s1[0][0].st_timestamp).toBe(s2[0][0].st_timestamp);
         expect(s1[1][0].st_timestamp).toBe(s2[1][0].st_timestamp);
       });
@@ -1498,6 +1509,23 @@ describe('ScanCoordinator', () => {
         expect(s1).toHaveLength(2);
         expect(s2).toHaveLength(4);
         expect([...s1, ...s2].every((sent) => sent.length === 1)).toBe(true);
+      });
+
+      it('scans grids in index order even when the first scanner starts at a later grid', async () => {
+        // Scanner 1 has only plate 01 selected. In first-seen order the cycle
+        // would run 01, 00, 10, 11; sorted it runs 00, 01, 10, 11.
+        const { s1, s2, grids } = await runMixedCycle('twoFirst', ['01']);
+
+        expect(grids).toEqual(['00', '01', '10', '11']);
+        expect(s1.map((sent) => sent.map((p) => p.plate_index))).toEqual([
+          ['01'],
+        ]);
+        expect(s2.map((sent) => sent[0].plate_index)).toEqual([
+          '00',
+          '01',
+          '10',
+          '11',
+        ]);
       });
 
       it('scans a lone 4-grid scanner one plate at a time', async () => {
