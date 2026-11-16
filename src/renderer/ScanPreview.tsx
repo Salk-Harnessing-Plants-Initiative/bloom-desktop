@@ -4,11 +4,13 @@ import type { ScanWithRelations } from '../types/database';
 import { pathToFileUrl } from '../utils/file-url';
 import { isAbsolutePath } from '../utils/scan-path';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { useBloomConnected } from './hooks/useBloomConnected';
 
 // Zoom levels as specified in design.md
 const ZOOM_LEVELS = [1, 1.5, 2, 3];
 
 export function ScanPreview() {
+  const bloomOn = useBloomConnected();
   const { scanId } = useParams<{ scanId: string }>();
   const navigate = useNavigate();
 
@@ -357,18 +359,22 @@ export function ScanPreview() {
               {deleteError && (
                 <span className="text-sm text-red-600">{deleteError}</span>
               )}
-              <span className="text-sm text-gray-600">
-                {getUploadStatus().text}
-              </span>
-              <button
-                type="button"
-                onClick={handleUpload}
-                disabled={isUploading || !getUploadStatus().canUpload}
-                className="px-3 py-1 text-sm border rounded-md bg-lime-700 text-white hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Upload to Bloom"
-              >
-                {isUploading ? 'Uploading...' : 'Upload'}
-              </button>
+              {bloomOn && (
+                <>
+                  <span className="text-sm text-gray-600">
+                    {getUploadStatus().text}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleUpload}
+                    disabled={isUploading || !getUploadStatus().canUpload}
+                    className="px-3 py-1 text-sm border rounded-md bg-lime-700 text-white hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Upload to Bloom"
+                  >
+                    {isUploading ? 'Uploading...' : 'Upload'}
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}

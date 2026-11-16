@@ -14,6 +14,10 @@ export interface UseSpeciesList {
   refresh: () => Promise<void>;
   /** Open Bloom's Species page in the browser. */
   openAddPage: () => Promise<void>;
+  /** Add a species on this computer; resolves to the error, if refused. */
+  add: (name: string) => Promise<string | null>;
+  /** Remove a species on this computer; resolves to the error, if refused. */
+  remove: (name: string) => Promise<string | null>;
 }
 
 /** The species list for new experiments, from Bloom (fetched by the main process). */
@@ -76,6 +80,30 @@ export function useSpeciesList(): UseSpeciesList {
     }
   }, []);
 
+  const edit = useCallback(
+    async (
+      call: () => Promise<{ list: SpeciesList; error?: string }>
+    ): Promise<string | null> => {
+      setMessage(null);
+      try {
+        const result = await call();
+        setList(result.list);
+        return result.error ?? null;
+      } catch (error) {
+        return error instanceof Error ? error.message : 'Unknown error';
+      }
+    },
+    []
+  );
+  const add = useCallback(
+    (name: string) => edit(() => window.electron.species.add(name)),
+    [edit]
+  );
+  const remove = useCallback(
+    (name: string) => edit(() => window.electron.species.remove(name)),
+    [edit]
+  );
+
   return {
     species: list?.species ?? [],
     source: list?.source ?? null,
@@ -84,5 +112,7 @@ export function useSpeciesList(): UseSpeciesList {
     message,
     refresh,
     openAddPage,
+    add,
+    remove,
   };
 }
