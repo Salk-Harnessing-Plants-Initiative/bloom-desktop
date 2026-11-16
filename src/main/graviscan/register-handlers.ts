@@ -26,6 +26,7 @@ import * as excelParser from './excel-parser';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
 import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
 import { isValidWaveNumber } from '../database-handlers';
+import { BLOOM_OFF_MESSAGE, bloomConnectedHere } from '../config-store';
 
 let registered = false;
 
@@ -428,6 +429,10 @@ export function registerGraviScanHandlers(
   );
 
   ipcMain.handle('graviscan:upload-all-scans', () => {
+    // Uploads to Bloom, then backs up to Box: neither while Bloom is off
+    if (!bloomConnectedHere()) {
+      return { success: false, error: BLOOM_OFF_MESSAGE };
+    }
     // Upload guard: reject when scanning
     const coordinator = getCoordinator();
     if (coordinator?.isScanning) {

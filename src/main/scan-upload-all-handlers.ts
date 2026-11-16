@@ -18,6 +18,7 @@ import type {
   UploadAllResult,
   UploadAllStatus,
 } from '../types/upload-all';
+import { BLOOM_OFF_MESSAGE } from './config-store';
 import { scanListWhere, type ScanWhere } from './scan-filters';
 
 /** Frame statuses that mean "not uploaded yet". */
@@ -60,6 +61,8 @@ export interface ScanUploadAllDeps {
   ipcMain: Pick<IpcMain, 'handle'>;
   db: ScanUploadDbLike;
   createUploader: () => UploaderLike;
+  /** Whether this computer uses Bloom; Upload All is refused when it doesn't. */
+  bloomConnected: () => boolean;
   getMainWindow: () => BrowserWindow | null;
 }
 
@@ -212,6 +215,9 @@ export function registerScanUploadAllHandlers(deps: ScanUploadAllDeps) {
       _event,
       filters?: ScanListFilters
     ): Promise<DatabaseResponse<{ total: number }>> => {
+      if (!deps.bloomConnected()) {
+        return { success: false, error: BLOOM_OFF_MESSAGE };
+      }
       if (status.running) {
         return { success: false, error: 'An upload is already running.' };
       }

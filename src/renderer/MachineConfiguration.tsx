@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { isBloomConnected } from '../utils/bloom-connection';
 import type { MachineConfig, Scanner } from '../main/config-store';
 import type { DetectedCamera } from '../types/camera';
 import type { HardwareStatus } from '../types/electron';
@@ -55,6 +56,7 @@ export function MachineConfiguration() {
     config.bloom_scanner_username.trim() ===
       originalConfig.bloom_scanner_username.trim();
   const canKeepSavedPassword = hasSavedPassword && isSavedAccount;
+  const bloomOn = isBloomConnected(config);
   const hasPassword =
     config.bloom_scanner_password.trim() !== '' || canKeepSavedPassword;
 
@@ -64,6 +66,8 @@ export function MachineConfiguration() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showRestartRequiredNotice, setShowRestartRequiredNotice] =
     useState(false);
+  // What the restart notice says changed
+  const [restartReason, setRestartReason] = useState('Scanner Mode');
 
   // Camera test state
   const [cameraTestStatus, setCameraTestStatus] =
@@ -265,9 +269,14 @@ export function MachineConfiguration() {
     setSaveSuccess(false);
     setIsSaving(true);
 
-    const scannerModeChanged =
+    // Mode is read once at start-up; open pages and the species list pick up
+    // a Bloom connection change only after a restart
+    const modeChanged =
       originalConfig !== null &&
       originalConfig.scanner_mode !== config.scanner_mode;
+    const bloomChanged =
+      originalConfig !== null && isBloomConnected(originalConfig) !== bloomOn;
+    const restartNeeded = modeChanged || bloomChanged;
 
     try {
       // Save unified config (credentials included)
@@ -279,12 +288,16 @@ export function MachineConfiguration() {
         setConfig(savedConfig);
         setOriginalConfig(savedConfig);
 
-        if (scannerModeChanged) {
-          // Scanner mode gates the entire app shell (see useAppMode/App.tsx)
-          // and is only ever read once at process startup — unlike the
-          // generic toast, this notice does not auto-clear on a timer; the
-          // admin must explicitly dismiss it, so it isn't missed before
-          // the required restart happens.
+        if (restartNeeded) {
+          // Unlike the generic toast, this notice does not auto-clear on a
+          // timer; the admin must dismiss it, so the restart isn't missed.
+          setRestartReason(
+            modeChanged && bloomChanged
+              ? 'Scanner Mode and Bloom connection'
+              : modeChanged
+                ? 'Scanner Mode'
+                : 'Bloom connection'
+          );
           setShowRestartRequiredNotice(true);
         } else if (!showRestartRequiredNotice) {
           // Don't stack the generic toast on top of a still-visible
@@ -301,6 +314,7 @@ export function MachineConfiguration() {
 
         // UX improvement: If credentials are complete, automatically fetch scanners
         if (
+          bloomOn &&
           config.bloom_scanner_username &&
           hasPassword &&
           config.bloom_anon_key &&
@@ -383,16 +397,17 @@ export function MachineConfiguration() {
 
       {/* Restart-required notice — persistent, dismissible, does NOT
           auto-clear on a timer like the generic save toast below, since a
-          scanner_mode change requires a restart the admin must not miss. */}
+          scanner mode or Bloom connection change requires a restart the
+          admin must not miss. */}
       {showRestartRequiredNotice && (
         <div
           data-testid="restart-required-notice"
           className="sticky top-0 z-10 bg-yellow-50 border-2 border-yellow-500 text-yellow-900 px-4 py-3 rounded-md mb-4 flex items-center justify-between gap-4"
         >
           <span>
-            Scanner Mode changed — restart the application now for this change
-            to take effect. This notice won&apos;t reappear if you navigate away
-            first.
+            {restartReason} changed — restart the application now for this
+            change to take effect. This notice won&apos;t reappear if you
+            navigate away first.
           </span>
           <button
             type="button"
@@ -466,168 +481,200 @@ export function MachineConfiguration() {
           )}
         </div>
 
-        {/* API Credentials Section */}
+        {/* Bloom Connection Section */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-4 text-gray-800">
-            Bloom API Credentials
+            Bloom Connection
           </h2>
-
-          <div className="space-y-4">
-            <div>
-              <label
-                htmlFor="api-url"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                API URL
-              </label>
-              <input
-                id="api-url"
-                type="text"
-                value={config.bloom_api_url}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    bloom_api_url: e.target.value,
-                  }))
-                }
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500 ${
-                  errors.bloom_api_url ? 'border-red-500' : 'border-gray-300'
-                }`}
-                placeholder="https://bloom.salk.edu/api"
-              />
-              {errors.bloom_api_url && (
-                <p className="text-red-600 text-sm mt-1">
-                  {errors.bloom_api_url}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="creds-username"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Username
-              </label>
-              <input
-                id="creds-username"
-                type="email"
-                value={config.bloom_scanner_username}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    bloom_scanner_username: e.target.value,
-                  }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
-                placeholder="scanner@salk.edu"
-              />
-            </div>
-
-            <div>
-              <label
-                htmlFor="creds-password"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Password
-              </label>
-              <input
-                id="creds-password"
-                type="password"
-                value={config.bloom_scanner_password}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    bloom_scanner_password: e.target.value,
-                  }))
-                }
-                className={`w-full px-3 py-2 border ${errors.bloom_scanner_password ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500`}
-                placeholder={
-                  canKeepSavedPassword
-                    ? 'Saved. Leave blank to keep existing'
-                    : hasSavedPassword
-                      ? 'Required for this server/account'
-                      : 'Enter password'
-                }
-              />
-              {errors.bloom_scanner_password && (
-                <p className="text-red-600 text-sm mt-1">
-                  {errors.bloom_scanner_password}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label
-                htmlFor="creds-anonkey"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Anon Key
-              </label>
-              <input
-                id="creds-anonkey"
-                type="text"
-                value={config.bloom_anon_key}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev,
-                    bloom_anon_key: e.target.value,
-                  }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
-                placeholder="eyJhbGci..."
-              />
-            </div>
-
-            {/* Fetch Scanners Button */}
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <button
-                onClick={fetchScanners}
-                disabled={
-                  !config.bloom_scanner_username ||
-                  !hasPassword ||
-                  !config.bloom_anon_key ||
-                  !config.bloom_api_url ||
-                  scannerListLoading
-                }
-                className="w-full px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {scannerListLoading ? (
-                  <>
-                    <svg
-                      className="animate-spin h-5 w-5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Fetching scanners...
-                  </>
-                ) : (
-                  'Fetch Scanners from Bloom'
-                )}
-              </button>
-              {scannerList.length > 0 && !scannerListLoading && (
-                <p className="text-green-600 text-sm mt-2">
-                  ✓ Found {scannerList.length} scanner
-                  {scannerList.length !== 1 ? 's' : ''}
-                </p>
-              )}
-            </div>
-          </div>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={bloomOn}
+              onChange={(e) =>
+                setConfig((prev) => ({
+                  ...prev,
+                  bloom_not_connected: !e.target.checked,
+                }))
+              }
+              className="w-4 h-4 text-lime-700"
+            />
+            <span className="text-gray-700">Connect to Bloom</span>
+          </label>
+          <p className="text-sm text-gray-500 mt-2">
+            {bloomOn
+              ? 'Scans are uploaded to Bloom.'
+              : 'Scans stay on this computer. Nothing is sent to Bloom.'}
+          </p>
         </div>
+
+        {bloomOn && (
+          <>
+            {/* API Credentials Section */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h2 className="text-lg font-semibold mb-4 text-gray-800">
+                Bloom API Credentials
+              </h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label
+                    htmlFor="api-url"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    API URL
+                  </label>
+                  <input
+                    id="api-url"
+                    type="text"
+                    value={config.bloom_api_url}
+                    onChange={(e) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        bloom_api_url: e.target.value,
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500 ${
+                      errors.bloom_api_url
+                        ? 'border-red-500'
+                        : 'border-gray-300'
+                    }`}
+                    placeholder="https://bloom.salk.edu/api"
+                  />
+                  {errors.bloom_api_url && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {errors.bloom_api_url}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="creds-username"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Username
+                  </label>
+                  <input
+                    id="creds-username"
+                    type="email"
+                    value={config.bloom_scanner_username}
+                    onChange={(e) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        bloom_scanner_username: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
+                    placeholder="scanner@salk.edu"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="creds-password"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Password
+                  </label>
+                  <input
+                    id="creds-password"
+                    type="password"
+                    value={config.bloom_scanner_password}
+                    onChange={(e) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        bloom_scanner_password: e.target.value,
+                      }))
+                    }
+                    className={`w-full px-3 py-2 border ${errors.bloom_scanner_password ? 'border-red-500' : 'border-gray-300'} rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500`}
+                    placeholder={
+                      canKeepSavedPassword
+                        ? 'Saved. Leave blank to keep existing'
+                        : hasSavedPassword
+                          ? 'Required for this server/account'
+                          : 'Enter password'
+                    }
+                  />
+                  {errors.bloom_scanner_password && (
+                    <p className="text-red-600 text-sm mt-1">
+                      {errors.bloom_scanner_password}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="creds-anonkey"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Anon Key
+                  </label>
+                  <input
+                    id="creds-anonkey"
+                    type="text"
+                    value={config.bloom_anon_key}
+                    onChange={(e) =>
+                      setConfig((prev) => ({
+                        ...prev,
+                        bloom_anon_key: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500"
+                    placeholder="eyJhbGci..."
+                  />
+                </div>
+
+                {/* Fetch Scanners Button */}
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <button
+                    onClick={fetchScanners}
+                    disabled={
+                      !config.bloom_scanner_username ||
+                      !hasPassword ||
+                      !config.bloom_anon_key ||
+                      !config.bloom_api_url ||
+                      scannerListLoading
+                    }
+                    className="w-full px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {scannerListLoading ? (
+                      <>
+                        <svg
+                          className="animate-spin h-5 w-5"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                        >
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          />
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          />
+                        </svg>
+                        Fetching scanners...
+                      </>
+                    ) : (
+                      'Fetch Scanners from Bloom'
+                    )}
+                  </button>
+                  {scannerList.length > 0 && !scannerListLoading && (
+                    <p className="text-green-600 text-sm mt-2">
+                      ✓ Found {scannerList.length} scanner
+                      {scannerList.length !== 1 ? 's' : ''}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         {/* Station Identity Section */}
         <div className="bg-white p-6 rounded-lg shadow">
@@ -642,7 +689,33 @@ export function MachineConfiguration() {
             >
               Scanner Name
             </label>
-            {scannerListLoading ? (
+            {!bloomOn ? (
+              <>
+                <input
+                  id="scanner-name"
+                  type="text"
+                  value={config.scanner_name}
+                  onChange={(e) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      scanner_name: e.target.value,
+                    }))
+                  }
+                  className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-lime-500 ${
+                    errors.scanner_name ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="e.g. lab-scanner-1"
+                />
+                {errors.scanner_name && (
+                  <p className="text-red-600 text-sm mt-1">
+                    {errors.scanner_name}
+                  </p>
+                )}
+                <p className="text-gray-500 text-sm mt-1">
+                  Letters, numbers, - and _
+                </p>
+              </>
+            ) : scannerListLoading ? (
               <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500">
                 Loading scanners...
               </div>

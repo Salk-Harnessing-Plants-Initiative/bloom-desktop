@@ -22,6 +22,9 @@ import {
   getDefaultConfig,
   fetchScannersFromBloom,
   getGraviScanEnvStatus,
+  isBloomConnected,
+  bloomConnectedHere,
+  BLOOM_OFF_MESSAGE,
   MachineConfig,
   MachineCredentials,
 } from '../../src/main/config-store';
@@ -2093,6 +2096,171 @@ OTHER_VAR=ignored`;
 
       const reloaded = loadEnvConfig(envPath);
       expect(reloaded.graviscan_system_name).toBe('new-name');
+    });
+  });
+
+  // ========================================
+  // BLOOM_NOT_CONNECTED (add-optional-bloom-connection)
+  // ========================================
+
+  describe('BLOOM_NOT_CONNECTED', () => {
+    function config(overrides: Partial<MachineConfig> = {}): MachineConfig {
+      return {
+        ...getDefaultConfig(),
+        scanner_mode: 'cylinderscan',
+        scanner_name: 'Nottingham-Cyl_1',
+        camera_ip_address: 'mock',
+        scans_dir: path.join(testDir, 'scans'),
+        ...overrides,
+      };
+    }
+
+    describe('loading', () => {
+      it('is connected when .env has no BLOOM_NOT_CONNECTED line', () => {
+        fs.writeFileSync(envPath, 'SCANNER_NAME=TestScanner\n');
+        const loaded = loadEnvConfig(envPath);
+        expect(loaded.bloom_not_connected).toBeUndefined();
+        expect(isBloomConnected(loaded)).toBe(true);
+      });
+
+      it.each(['true', 'TRUE', 'True'])(
+        'is off for BLOOM_NOT_CONNECTED=%s',
+        (value) => {
+          fs.writeFileSync(envPath, `BLOOM_NOT_CONNECTED=${value}\n`);
+          const loaded = loadEnvConfig(envPath);
+          expect(loaded.bloom_not_connected).toBe(true);
+          expect(isBloomConnected(loaded)).toBe(false);
+        }
+      );
+
+      it.each(['false', '', 'yes', '1', 'ture'])(
+        'stays connected for BLOOM_NOT_CONNECTED=%s',
+        (value) => {
+          fs.writeFileSync(envPath, `BLOOM_NOT_CONNECTED=${value}\n`);
+          expect(isBloomConnected(loadEnvConfig(envPath))).toBe(true);
+        }
+      );
+    });
+
+    describe('saving', () => {
+      it('writes BLOOM_NOT_CONNECTED=true when Bloom is off', () => {
+        saveEnvConfig(config({ bloom_not_connected: true }), envPath);
+        expect(fs.readFileSync(envPath, 'utf-8')).toMatch(
+          /^BLOOM_NOT_CONNECTED=true$/m
+        );
+      });
+
+      it('writes no BLOOM_NOT_CONNECTED line when Bloom is on', () => {
+        saveEnvConfig(config({ bloom_not_connected: false }), envPath);
+        expect(fs.readFileSync(envPath, 'utf-8')).not.toMatch(
+          /BLOOM_NOT_CONNECTED/
+        );
+      });
+
+      it('removes the line when Bloom is turned back on', () => {
+        saveEnvConfig(config({ bloom_not_connected: true }), envPath);
+        saveEnvConfig(config({ bloom_not_connected: false }), envPath);
+        expect(fs.readFileSync(envPath, 'utf-8')).not.toMatch(
+          /BLOOM_NOT_CONNECTED/
+        );
+      });
+
+      it('load -> save of an existing station .env adds no line', () => {
+        fs.writeFileSync(
+          envPath,
+          'SCANNER_MODE=cylinderscan\nSCANNER_NAME=PBIOBScanner\n'
+        );
+        saveEnvConfig(loadEnvConfig(envPath), envPath);
+        expect(fs.readFileSync(envPath, 'utf-8')).not.toMatch(
+          /BLOOM_NOT_CONNECTED/
+        );
+      });
+
+      it('round-trips Bloom off through load -> save -> load', () => {
+        saveEnvConfig(config({ bloom_not_connected: true }), envPath);
+        saveEnvConfig(loadEnvConfig(envPath), envPath);
+        expect(isBloomConnected(loadEnvConfig(envPath))).toBe(false);
+      });
+    });
+
+    describe('validateConfig', () => {
+      it.each(['cylinderscan', 'graviscan'] as const)(
+        'with Bloom off, skips the Bloom URL in %s mode',
+        (mode) => {
+          const result = validateConfig(
+            config({
+              scanner_mode: mode,
+              bloom_not_connected: true,
+              bloom_api_url: '',
+            })
+          );
+          expect(result.errors.bloom_api_url).toBeUndefined();
+          expect(result.valid).toBe(true);
+        }
+      );
+
+      it('with Bloom on, still rejects an invalid Bloom URL', () => {
+        const result = validateConfig(config({ bloom_api_url: 'not a url' }));
+        expect(result.errors.bloom_api_url).toBe('Invalid URL format');
+      });
+
+      it.each(['Lab Scanner', 'scanner/1', 'cyl.1', 'é-scanner'])(
+        'with Bloom off, rejects the typed name %j',
+        (name) => {
+          const result = validateConfig(
+            config({ bloom_not_connected: true, scanner_name: name })
+          );
+          expect(result.errors.scanner_name).toBe(
+            'Use only letters, numbers, - and _'
+          );
+        }
+      );
+
+      it.each(['cylinderscan', 'graviscan'] as const)(
+        'with Bloom off, accepts letters, digits, - and _ in %s mode',
+        (mode) => {
+          const result = validateConfig(
+            config({
+              scanner_mode: mode,
+              bloom_not_connected: true,
+              scanner_name: 'Nottingham-Cyl_1',
+            })
+          );
+          expect(result.errors.scanner_name).toBeUndefined();
+        }
+      );
+
+      it('with Bloom off, still requires a scanner name', () => {
+        const result = validateConfig(
+          config({ bloom_not_connected: true, scanner_name: '  ' })
+        );
+        expect(result.errors.scanner_name).toBe('Scanner name is required');
+      });
+
+      it('with Bloom on, accepts a Bloom name with a space', () => {
+        const result = validateConfig(config({ scanner_name: 'Lab Scanner' }));
+        expect(result.errors.scanner_name).toBeUndefined();
+      });
+    });
+    describe('bloomConnectedHere', () => {
+      it('reads the .env file it is given', () => {
+        fs.writeFileSync(envPath, 'BLOOM_NOT_CONNECTED=true\n');
+        expect(bloomConnectedHere(envPath)).toBe(false);
+        fs.writeFileSync(envPath, 'SCANNER_NAME=A\n');
+        expect(bloomConnectedHere(envPath)).toBe(true);
+      });
+
+      it('is connected when there is no .env file', () => {
+        expect(bloomConnectedHere(path.join(testDir, 'missing.env'))).toBe(
+          true
+        );
+      });
+
+      it('names the setting in the refusal message', () => {
+        expect(BLOOM_OFF_MESSAGE).toBe(
+          'Bloom is turned off in Machine Configuration'
+        );
+      });
     });
   });
 });

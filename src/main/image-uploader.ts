@@ -18,6 +18,8 @@ import { PrismaClient, Prisma } from '@prisma/client';
 import type { ImageStatus } from '../types/database';
 import { germDay } from '../utils/wave-dates';
 import {
+  BLOOM_OFF_MESSAGE,
+  isBloomConnected,
   loadEnvConfig,
   getScansDir as getConfiguredScansDir,
 } from './config-store';
@@ -150,6 +152,9 @@ export class ImageUploader {
   async authenticate(): Promise<void> {
     // Load credentials from config
     const config = loadEnvConfig(ENV_PATH);
+    if (!isBloomConnected(config)) {
+      throw new Error(BLOOM_OFF_MESSAGE);
+    }
 
     // Validate credentials exist
     if (!config.bloom_scanner_username || !config.bloom_scanner_password) {

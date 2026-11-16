@@ -60,6 +60,11 @@ vi.mock('../../../src/main/graviscan/excel-parser', () => ({
 }));
 
 // Mock fs for realpath validation
+vi.mock('../../../src/main/config-store', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/main/config-store')>()),
+  bloomConnectedHere: vi.fn(() => true),
+}));
+
 vi.mock('fs', () => ({
   realpathSync: vi.fn((p: string) => p), // identity by default
   existsSync: vi.fn(() => true), // "everything exists" by default
@@ -73,6 +78,7 @@ const OUTPUT_DIR = '/home/user/.bloom/graviscan';
 import * as scannerHandlers from '../../../src/main/graviscan/scanner-handlers';
 import * as sessionHandlers from '../../../src/main/graviscan/session-handlers';
 import * as imageHandlers from '../../../src/main/graviscan/image-handlers';
+import * as configStore from '../../../src/main/config-store';
 import * as scannerUpsert from '../../../src/main/graviscan/scanner-upsert';
 import * as verifyPlatesHandlers from '../../../src/main/graviscan/verify-plates';
 import * as excelParser from '../../../src/main/graviscan/excel-parser';
@@ -938,6 +944,19 @@ describe('registerGraviScanHandlers', () => {
       expect(result).toEqual({
         success: false,
         error: 'Cannot upload while scanning is in progress',
+      });
+      expect(imageHandlers.uploadAllScans).not.toHaveBeenCalled();
+    });
+
+    it('refuses without uploading or backing up when Bloom is off', async () => {
+      mockGetCoordinator.mockReturnValue(null);
+      vi.mocked(configStore.bloomConnectedHere).mockReturnValueOnce(false);
+
+      const result = await mockIpcMain._invoke('graviscan:upload-all-scans');
+
+      expect(result).toEqual({
+        success: false,
+        error: 'Bloom is turned off in Machine Configuration',
       });
       expect(imageHandlers.uploadAllScans).not.toHaveBeenCalled();
     });

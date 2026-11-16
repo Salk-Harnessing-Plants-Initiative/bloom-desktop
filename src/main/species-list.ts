@@ -11,7 +11,11 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import type { SpeciesList, SpeciesRefreshResult } from '../types/species';
+import type {
+  SpeciesEditResult,
+  SpeciesList,
+  SpeciesRefreshResult,
+} from '../types/species';
 
 /** The list the app shipped with (from the pilot), used until Bloom has been reached once. */
 export const BUILT_IN_SPECIES = [
@@ -98,6 +102,8 @@ export async function saveSpecies(
 export interface SpeciesStoreDeps {
   /** The saved copy's path. */
   file: string;
+  /** Whether this computer uses Bloom; without it, refresh doesn't fetch. */
+  bloomConnected: () => boolean;
   /** Species common names from Bloom; throws if Bloom can't be reached. */
   fetchFromBloom: () => Promise<string[]>;
   now?: () => Date;
@@ -109,7 +115,14 @@ export interface SpeciesStore {
   current: () => Promise<SpeciesList>;
   /** Fetch from Bloom and save; on failure keep the list in use and say why. */
   refresh: () => Promise<SpeciesRefreshResult>;
+  /** Add a species and save the list (Bloom off only). */
+  add: (name: string) => Promise<SpeciesEditResult>;
+  /** Remove a species and save the list (Bloom off only). */
+  remove: (name: string) => Promise<SpeciesEditResult>;
 }
+
+/** Refusal for local edits while Bloom is the source of the list. */
+export const SPECIES_IN_BLOOM_MESSAGE = 'Species are managed in Bloom';
 
 export function createSpeciesStore(deps: SpeciesStoreDeps): SpeciesStore {
   const now = deps.now ?? (() => new Date());
@@ -152,7 +165,8 @@ export function createSpeciesStore(deps: SpeciesStoreDeps): SpeciesStore {
     }
   }
 
-  function refresh(): Promise<SpeciesRefreshResult> {
+  async function refresh(): Promise<SpeciesRefreshResult> {
+    if (!deps.bloomConnected()) return { list: await current() };
     if (!fetching) {
       fetching = fetchAndSave().finally(() => {
         fetching = null;
@@ -161,5 +175,47 @@ export function createSpeciesStore(deps: SpeciesStoreDeps): SpeciesStore {
     return fetching;
   }
 
-  return { current, refresh };
+  /** Save `species` as this computer's list, or say why it wasn't changed. */
+  async function saveLocal(species: string[]): Promise<SpeciesEditResult> {
+    const before = await current();
+    const list: SpeciesList = {
+      species: cleanSpeciesNames(species),
+      source: 'local',
+      updatedAt: before.updatedAt,
+    };
+    try {
+      await saveSpecies(deps.file, list);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return {
+        list: before,
+        error: `Couldn't save the species list: ${message}`,
+      };
+    }
+    inUse = list;
+    return { list };
+  }
+
+  async function add(name: string): Promise<SpeciesEditResult> {
+    const list = await current();
+    if (deps.bloomConnected()) return { list, error: SPECIES_IN_BLOOM_MESSAGE };
+    const trimmed = name.trim();
+    if (trimmed === '') return { list, error: 'Enter a species name' };
+    const existing = list.species.find(
+      (s) => s.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (existing) return { list, error: `${existing} is already in the list` };
+    return saveLocal([...list.species, trimmed]);
+  }
+
+  async function remove(name: string): Promise<SpeciesEditResult> {
+    const list = await current();
+    if (deps.bloomConnected()) return { list, error: SPECIES_IN_BLOOM_MESSAGE };
+    if (!list.species.includes(name)) {
+      return { list, error: `${name} isn't in the list` };
+    }
+    return saveLocal(list.species.filter((s) => s !== name));
+  }
+
+  return { current, refresh, add, remove };
 }

@@ -13,6 +13,7 @@ import {
   capForDisplay,
   formatDateRange,
 } from './utils/graviExperimentSummary';
+import { useBloomConnected } from './hooks/useBloomConnected';
 
 interface GraviExperimentScan {
   scanner_id: string;
@@ -287,6 +288,7 @@ const EMPTY_FILTERS: Filters = {
 };
 
 export function BrowseGraviScans() {
+  const bloomOn = useBloomConnected();
   const [experiments, setExperiments] = useState<GraviExperimentRow[]>([]);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -606,11 +608,13 @@ export function BrowseGraviScans() {
       </div>
 
       <div className="mb-4 flex items-center gap-3">
-        <BackupToBoxButton
-          scanActive={scanActive}
-          backingUp={backingUp}
-          onClick={handleBackupToBox}
-        />
+        {bloomOn && (
+          <BackupToBoxButton
+            scanActive={scanActive}
+            backingUp={backingUp}
+            onClick={handleBackupToBox}
+          />
+        )}
         {backupMessage && (
           <p className="text-sm text-gray-700 flex items-center gap-2">
             {backupMessage}
