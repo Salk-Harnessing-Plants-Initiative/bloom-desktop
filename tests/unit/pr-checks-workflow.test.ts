@@ -180,6 +180,12 @@ describe('pr-checks.yml all-checks-passed', () => {
     expect(job?.needs).toContain('test-make-linux');
   });
 
+  it('requires the IPC coverage job to pass', () => {
+    const job = loadWorkflow().jobs['all-checks-passed'];
+
+    expect(job?.needs).toContain('test-e2e-coverage');
+  });
+
   it('always runs, so a failed dependency fails it instead of skipping it', () => {
     const job = loadWorkflow().jobs['all-checks-passed'];
 
