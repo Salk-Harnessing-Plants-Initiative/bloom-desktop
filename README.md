@@ -1,6 +1,6 @@
 # bloom-desktop
 
-Electron + React app that runs plant scanners and keeps their scans.
+Desktop app for the Bloom plant phenotyping scanners. It runs the scanner hardware, saves each scan with its plant metadata, and uploads the images to Bloom, or keeps them on the computer when used without Bloom.
 
 <table>
   <tr>
