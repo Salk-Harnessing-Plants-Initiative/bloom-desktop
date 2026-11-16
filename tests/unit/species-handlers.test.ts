@@ -136,6 +136,12 @@ describe('registerSpeciesHandlers', () => {
       refresh: vi.fn().mockResolvedValue({
         list: { species: ['Rice'], source: 'bloom', updatedAt: 'now' },
       }),
+      add: vi.fn().mockResolvedValue({
+        list: { species: ['Lotus', 'Rice'], source: 'local', updatedAt: null },
+      }),
+      remove: vi.fn().mockResolvedValue({
+        list: { species: [], source: 'local', updatedAt: null },
+      }),
     };
     const openExternal = vi.fn().mockResolvedValue(undefined);
     registerSpeciesHandlers({
@@ -154,6 +160,8 @@ describe('registerSpeciesHandlers', () => {
       'species:list',
       'species:refresh',
       'species:openAddPage',
+      'species:add',
+      'species:remove',
     ]);
     expect((await handler('species:list')()).species).toEqual(['Rice']);
     await handler('species:refresh')();
@@ -175,5 +183,30 @@ describe('registerSpeciesHandlers', () => {
       success: false,
       error: 'no browser',
     });
+  });
+});
+
+describe('species:add and species:remove', () => {
+  it('pass the name to the store', async () => {
+    const handle = vi.fn();
+    const store = {
+      current: vi.fn(),
+      refresh: vi.fn(),
+      add: vi.fn().mockResolvedValue({ list: { species: ['Lotus'] } }),
+      remove: vi.fn().mockResolvedValue({ list: { species: [] } }),
+    } as unknown as SpeciesStore;
+    registerSpeciesHandlers({
+      ipcMain: { handle },
+      store,
+      openExternal: vi.fn(),
+    });
+    const handler = (channel: string) =>
+      handle.mock.calls.find((c) => c[0] === channel)![1];
+
+    await handler('species:add')({}, 'Lotus');
+    await handler('species:remove')({}, 'Lotus');
+
+    expect(store.add).toHaveBeenCalledWith('Lotus');
+    expect(store.remove).toHaveBeenCalledWith('Lotus');
   });
 });

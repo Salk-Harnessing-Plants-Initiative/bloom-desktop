@@ -13,7 +13,10 @@ import {
 } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ExperimentForm } from '../../../src/renderer/components/ExperimentForm';
-import { ADD_IN_BLOOM } from '../../../src/renderer/components/SpeciesSelect';
+import {
+  ADD_IN_BLOOM,
+  ADD_LOCAL,
+} from '../../../src/renderer/components/SpeciesSelect';
 
 let list: ReturnType<typeof vi.fn>;
 let refresh: ReturnType<typeof vi.fn>;
@@ -168,5 +171,97 @@ describe('SpeciesSelect', () => {
       name: 'Sorghum_GWAS',
       species: 'Sorghum',
     });
+  });
+});
+
+describe('SpeciesSelect with Bloom off', () => {
+  let add: ReturnType<typeof vi.fn>;
+  let remove: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    add = vi.fn().mockResolvedValue({
+      list: {
+        species: ['Arabidopsis', 'Lotus', 'Rice', 'Sorghum'],
+        source: 'local',
+        updatedAt: null,
+      },
+    });
+    remove = vi.fn().mockResolvedValue({
+      list: { species: ['Rice', 'Sorghum'], source: 'local', updatedAt: null },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+    win.electron.species = { list, refresh, openAddPage, add, remove };
+    win.electron.config = {
+      ...win.electron.config,
+      get: vi.fn().mockResolvedValue({ config: { bloom_not_connected: true } }),
+    };
+  });
+
+  it('offers "Add a species…" instead of Bloom, and no Refresh list', async () => {
+    mount();
+    await waitFor(() =>
+      expect(options()).toEqual([
+        'Arabidopsis',
+        'Rice',
+        'Sorghum',
+        'Add a species…',
+      ])
+    );
+    expect(
+      screen.queryByRole('button', { name: /Refresh list/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('adds a species and chooses it', async () => {
+    mount();
+    await waitFor(() => expect(options()).toContain('Add a species…'));
+
+    fireEvent.change(select(), { target: { value: ADD_LOCAL } });
+    fireEvent.change(screen.getByLabelText('New species name'), {
+      target: { value: 'Lotus' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
+
+    await waitFor(() => expect(select().value).toBe('Lotus'));
+    expect(add).toHaveBeenCalledWith('Lotus');
+    expect(openAddPage).not.toHaveBeenCalled();
+  });
+
+  it('shows why a species was not added', async () => {
+    add.mockResolvedValue({
+      list: {
+        species: ['Arabidopsis', 'Rice', 'Sorghum'],
+        source: 'built-in',
+        updatedAt: null,
+      },
+      error: 'Rice is already in the list',
+    });
+    mount();
+    await waitFor(() => expect(options()).toContain('Add a species…'));
+
+    fireEvent.change(select(), { target: { value: ADD_LOCAL } });
+    fireEvent.change(screen.getByLabelText('New species name'), {
+      target: { value: 'rice' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Add$/ }));
+
+    expect(
+      await screen.findByText('Rice is already in the list')
+    ).toBeInTheDocument();
+  });
+
+  it('removes the chosen species from the list', async () => {
+    mount();
+    await waitFor(() => expect(select().value).toBe('Arabidopsis'));
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', { name: /Remove from list/i })
+      );
+    });
+
+    expect(remove).toHaveBeenCalledWith('Arabidopsis');
+    await waitFor(() => expect(select().value).toBe('Rice'));
   });
 });

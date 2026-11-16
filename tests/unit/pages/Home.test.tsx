@@ -400,3 +400,42 @@ describe('Home page — date-unscoped failed-upload indicator (#104)', () => {
     });
   });
 });
+
+describe('Home with Bloom off', () => {
+  it('shows no upload counts and no failed-upload notice', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (mockConfigAPI as any).get = vi
+      .fn()
+      .mockResolvedValue({ config: { bloom_not_connected: true } });
+    mockGetFailedUploadCount.mockResolvedValue({
+      success: true,
+      data: { failedCount: 2 },
+    });
+    mockGetRecent.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'scan-1',
+          plant_id: 'PLANT-001',
+          capture_date: '2026-08-12T10:00:00.000Z',
+          experiment: { name: 'Exp A' },
+          images: [{ status: 'pending' }],
+        },
+      ],
+    });
+
+    render(
+      <MemoryRouter>
+        <Home mode="cylinderscan" />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('PLANT-001')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByText(/failed upload/i)).not.toBeInTheDocument()
+    );
+    expect(screen.queryByText(/pending/i)).not.toBeInTheDocument();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    delete (mockConfigAPI as any).get;
+  });
+});

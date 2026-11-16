@@ -12,6 +12,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { isBloomConnected } from '../utils/bloom-connection';
+
+export { isBloomConnected };
 
 /**
  * Machine configuration settings (unified - includes credentials)
@@ -78,6 +81,12 @@ export interface MachineConfig {
    * rig in multi-rig fleets.
    */
   graviscan_system_name?: string;
+
+  /**
+   * True when this computer doesn't use Bloom (BLOOM_NOT_CONNECTED=true in .env).
+   * Absent means connected; read it through isBloomConnected().
+   */
+  bloom_not_connected?: boolean;
 }
 
 /**
@@ -357,6 +366,19 @@ export function getGraviScanEnvStatus(config: MachineConfig): {
   };
 }
 
+/** Characters allowed in a scanner name typed while Bloom is off. */
+const TYPED_SCANNER_NAME = /^[A-Za-z0-9_-]+$/;
+
+/** Refusal returned by anything that would contact Bloom while it's off. */
+export const BLOOM_OFF_MESSAGE = 'Bloom is turned off in Machine Configuration';
+
+/** Whether the machine config at `envPath` uses Bloom. */
+export function bloomConnectedHere(
+  envPath: string = path.join(os.homedir(), '.bloom', '.env')
+): boolean {
+  return isBloomConnected(loadEnvConfig(envPath));
+}
+
 export function validateConfig(config: MachineConfig): ValidationResult {
   const errors: ValidationResult['errors'] = {};
 
@@ -370,11 +392,13 @@ export function validateConfig(config: MachineConfig): ValidationResult {
     errors.scanner_mode = 'Scanner mode must be "cylinderscan" or "graviscan"';
   }
 
-  // Validate scanner_name
-  // Note: Dropdown in UI enforces valid scanner names from API
-  // Here we only check that it's not empty
+  // Validate scanner_name: a Bloom name is taken as Bloom has it; a typed one
+  // (Bloom off) is limited to letters, digits, - and _
+  const bloomConnected = isBloomConnected(config);
   if (!config.scanner_name || config.scanner_name.trim() === '') {
     errors.scanner_name = 'Scanner name is required';
+  } else if (!bloomConnected && !TYPED_SCANNER_NAME.test(config.scanner_name)) {
+    errors.scanner_name = 'Use only letters, numbers, - and _';
   }
 
   // CylinderScan-specific field validation (skip for GraviScan)
@@ -441,8 +465,11 @@ export function validateConfig(config: MachineConfig): ValidationResult {
     }
   }
 
-  // Validate bloom_api_url
-  if (!config.bloom_api_url || !isValidURL(config.bloom_api_url)) {
+  // Validate bloom_api_url (only used when Bloom is on)
+  if (
+    bloomConnected &&
+    (!config.bloom_api_url || !isValidURL(config.bloom_api_url))
+  ) {
     errors.bloom_api_url = 'Invalid URL format';
   }
 
@@ -570,6 +597,11 @@ function parseEnvFile(envPath: string): Partial<MachineConfig> {
             // Default ON. Only the case-insensitive string "false" disables.
             envConfig.libusb_endpoint_recovery =
               value.toLowerCase() !== 'false';
+            break;
+          case 'BLOOM_NOT_CONNECTED':
+            // Only "true" turns Bloom off, so a typo can't stop uploads.
+            envConfig.bloom_not_connected =
+              value.toLowerCase() === 'true' ? true : undefined;
             break;
           case 'GRAVISCAN_SYSTEM_NAME':
             // Empty string ⇒ not configured (treat as undefined),
@@ -761,6 +793,11 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
   // slack_webhook_url, only written when explicitly configured, so an
   // unconfigured field is omitted entirely rather than written as an
   // empty assignment.
+  if (!isBloomConnected(merged)) {
+    lines.push('', '# Bloom connection');
+    lines.push('BLOOM_NOT_CONNECTED=true');
+  }
+
   if (merged.graviscan_system_name !== undefined) {
     lines.push('', '# GraviScan System');
     lines.push(`GRAVISCAN_SYSTEM_NAME=${merged.graviscan_system_name}`);

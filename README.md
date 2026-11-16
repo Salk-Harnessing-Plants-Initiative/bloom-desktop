@@ -1,12 +1,68 @@
 # bloom-desktop
 
-Electron-react application for cylinder scanning and upload to bloom.
+Desktop app for the Bloom plant phenotyping scanners. It runs the scanner hardware, saves each scan with its plant metadata, and uploads the images to Bloom, or keeps them on the computer when used without Bloom.
 
-## Project Status
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/icons/icon.png" alt="CylinderScan icon" width="72"><br>
+      <b>CylinderScan</b><br>
+      Rotates a plant in a water-filled cylinder and captures frames with a Basler camera, turned by a stepper motor through an NI-DAQ (Windows stations).<br><br>
+      <img src="docs/user-guide/img/08e_scanning.jpg" alt="CylinderScan: Capture Scan during a scan" width="100%">
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="assets/BloomGraviScanIcon.png" alt="GraviScan icon" width="72"><br>
+      <b>GraviScan</b><br>
+      Captures plant growth over days with continuous, timed scans of plates on Epson V600 flatbed scanners (Linux stations).<br><br>
+      <img src="docs/user-guide/img/graviscan_capture.jpg" alt="GraviScan: two scanners scanning plates" width="100%">
+    </td>
+  </tr>
+</table>
 
-🚧 **In Active Migration** - This repository is being migrated from the [bloom-desktop-pilot](https://github.com/eberrigan/bloom-desktop-pilot/tree/benfica/add-testing) repository with comprehensive testing and FAIR principles.
+<sub>Screenshots show demo data; the GraviScan one uses simulated scanners.</sub>
 
-See [Issue #1](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/1) for the full migration plan.
+Scans are saved locally and can be uploaded to [Bloom](https://bloom.salk.edu) and backed up to Box. It can also run without Bloom (see [Using Bloom Desktop without Bloom](#using-bloom-desktop-without-bloom)).
+
+## User guide
+
+[Bloom Desktop user guide (PDF)](docs/user-guide/Bloom_Desktop_User_Guide.pdf), for CylinderScan operators:
+
+- **Part A**: Salk stations, connected to Bloom.
+- **Part B**: using Bloom Desktop outside Salk, without Bloom.
+- **Source**: [docs/user-guide/user_guide.html](docs/user-guide/user_guide.html)
+
+## Installing
+
+Download the latest release from [Releases](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/releases): `Bloom-Desktop-<version>-Setup.exe` for Windows, `bloom-desktop_<version>_amd64.deb` for Linux. On first start the app opens Machine Configuration (also reachable with Ctrl+Shift+,).
+
+Before the first start:
+
+- **CylinderScan**: install the Basler Pylon SDK and the NI-DAQmx runtime.
+- **GraviScan**: install the Epson `epkowa` SANE driver ([docs/GRAVISCAN_SCANNER_DRIVER_SETUP.md](docs/GRAVISCAN_SCANNER_DRIVER_SETUP.md)).
+- **Moving from bloom-desktop-pilot**: convert its database first ([docs/PILOT_COMPATIBILITY.md](docs/PILOT_COMPATIBILITY.md)).
+
+## Prerequisites
+
+- **Node.js**: >=20.0.0
+- **npm**: >=8.0.0
+- **Python**: >=3.11 (managed via uv)
+- **uv**: Python package manager ([installation instructions](https://docs.astral.sh/uv/getting-started/installation/))
+
+### Hardware Dependencies (for production use)
+
+- **Basler Pylon SDK** and **NI-DAQmx Runtime**: CylinderScan
+- **Epson `epkowa` SANE driver**: GraviScan (Linux; see [docs/GRAVISCAN_SCANNER_DRIVER_SETUP.md](docs/GRAVISCAN_SCANNER_DRIVER_SETUP.md))
+
+Without hardware, the app runs with mock camera, DAQ and scanners.
+
+### Hardware
+
+What the CylinderScan code drives, as set up at Salk:
+
+- **Camera**: Basler acA2000-50gm (GigE, mono), set up by IP address in Machine Configuration.
+- **Turntable**: a stepper motor whose driver takes step and direction signals from an NI CompactDAQ digital output module (device `cDAQ1Mod1`, lines 0 and 1).
+- **Drive**: 20,000 microsteps per motor turn and 42:60 gearing to the turntable (28,571 steps per turntable turn). Change these in `src/types/daq.ts` for different hardware.
+- **Scan**: 72 frames per turn and 7 s per turn by default, set in Machine Configuration.
 
 ## Stations
 
@@ -22,23 +78,12 @@ The badge shows whether the station's last deploy succeeded; the history lists e
 ## Architecture
 
 - **Frontend**: Electron + React + TypeScript
-- **Backend**: Python (Basler Pylon cameras + NI-DAQ)
-- **Database**: Prisma ORM + SQLite
+- **Hardware**: Python subprocesses (Basler Pylon camera + NI-DAQ for CylinderScan; SANE for GraviScan)
+- **Database**: Prisma ORM + SQLite (`~/.bloom/data/bloom.db`); machine settings in `~/.bloom/.env`
+- **Uploads**: Bloom (Supabase) and Box (rclone), both optional
 - **Python Management**: uv + pyproject.toml
 - **Distribution**: PyInstaller bundled with Electron
 - **Build System**: Electron Forge + Webpack
-
-## Prerequisites
-
-- **Node.js**: >=18.0.0
-- **npm**: >=8.0.0
-- **Python**: >=3.11 (managed via uv)
-- **uv**: Python package manager ([installation instructions](https://docs.astral.sh/uv/getting-started/installation/))
-
-### Hardware Dependencies (for production use)
-
-- **Basler Pylon SDK**: Required for camera interface
-- **NI-DAQmx Runtime**: Required for data acquisition
 
 ## Environment Variables
 
@@ -62,60 +107,58 @@ comments. Highlights for GraviScan operators (V600 wedge follow-ups,
   this is the default. Configured via `~/.bloom/.env` (loaded by
   `config-store.ts`'s `loadEnvConfig`/`saveEnvConfig`), not the
   repo-root `.env`.
+- **`BLOOM_NOT_CONNECTED`** — set to `true` on a computer that doesn't use
+  Bloom (see [Using Bloom Desktop without Bloom](#using-bloom-desktop-without-bloom)).
+  Absent ⇒ Bloom is on; this is the default. Written by the Connect to Bloom
+  switch in Machine Configuration to `~/.bloom/.env`.
+
+## Using Bloom Desktop without Bloom
+
+Labs without a Bloom account can run CylinderScan or GraviScan on their own
+computer:
+
+1. Install the latest release (see [Installing](#installing)).
+2. Open Machine Configuration (it opens on first start; later with Ctrl+Shift+,, Cmd+Shift+, on macOS).
+3. Untick **Connect to Bloom**, type a scanner name (letters, numbers, `-` and
+   `_`), set the camera IP and scans folder, and save. Restart the app.
+
+With Bloom off, scans stay in the scans folder (CylinderScan PNGs, GraviScan
+TIFs) and nothing is sent to Bloom or Box: the upload and Backup to Box buttons
+are hidden. CylinderScan scans can be copied elsewhere with Export Scans. The
+species list is kept on this computer: pick **Add a species…** in the species
+list to add one, or **Remove from list** to take one out.
 
 ## Project Structure
 
 ```
 bloom-desktop/
 ├── src/
-│   ├── main/             # Electron main process
-│   │   ├── python-process.ts   # Python subprocess manager
-│   │   ├── python-paths.ts     # Path resolution for Python executable
-│   │   ├── database.ts         # Prisma database initialization
-│   │   ├── database-handlers.ts # Database IPC handlers
-│   │   └── preload.ts          # Preload script
-│   ├── renderer/         # React renderer/UI
-│   └── types/            # TypeScript type definitions
-│       └── database.ts   # Database type definitions
-├── python/               # Python hardware backend
-│   ├── main.py          # Entry point (--ipc or interactive mode)
-│   ├── ipc_handler.py   # IPC command routing
-│   ├── hardware/        # Hardware interfaces (camera, DAQ)
-│   ├── tests/           # Python unit tests (pytest)
-│   ├── main.spec        # PyInstaller build configuration
-│   └── PYINSTALLER.md   # PyInstaller troubleshooting guide
-├── prisma/              # Database schema and migrations
-│   ├── schema.prisma    # Prisma schema (pilot-compatible)
-│   ├── migrations/      # Database migrations
-│   └── seed.ts          # Seed script for test data
-├── tests/
-│   ├── integration/     # Integration tests
-│   │   ├── test-ipc.ts        # Python ↔ TypeScript IPC test
-│   │   └── test-package.ts    # Packaged app verification
-│   └── unit/            # TypeScript unit tests
-│       ├── path-sanitizer.test.ts # Path sanitization tests
-│       └── database.test.ts       # Database operation tests
-├── scripts/
-│   └── build-python.js  # Python executable build script
-├── out/                 # Packaged applications (generated)
-├── dist/                # Python executable (generated)
-├── package.json         # Node.js dependencies
-├── pyproject.toml       # Python dependencies (uv)
-├── forge.config.ts      # Electron Forge configuration
-├── tsconfig.json        # TypeScript configuration
-└── README.md
+│   ├── main/        # Electron main process: IPC handlers, config, uploads, Python subprocesses
+│   ├── renderer/    # React UI
+│   ├── types/       # Shared TypeScript types
+│   └── utils/       # Code shared by main and renderer
+├── python/          # Hardware backend (camera, DAQ, GraviScan scanners), bundled with PyInstaller
+├── prisma/          # SQLite schema and migrations
+├── tests/           # unit (Vitest), integration, e2e (Playwright), deploy
+├── deploy/          # Station deploy scripts
+├── docs/            # Setup, packaging, testing and station docs
+└── scripts/         # Build helpers
 ```
 
 ## Development Setup
 
 ### 1. Install Dependencies
 
-```bash
-# Install Node.js dependencies
-npm install
+The Bloom packages (`@salk-harnessing-plants-initiative/bloom-js`, `bloom-fs`) are private on GitHub Packages, so npm needs a token:
 
-# Install Python dependencies (once uv setup is complete)
-# uv sync
+```bash
+cp .npmrc.example .npmrc                 # .npmrc is gitignored
+export NODE_AUTH_TOKEN=<GitHub token with read:packages>
+npm install
+npx prisma generate
+
+# Python hardware backend (also runs uv sync)
+npm run build:python
 ```
 
 ### 2. Available Scripts
@@ -248,32 +291,13 @@ npm run make
 | `npm run format`                | Auto-format code with Prettier                    | None            |
 | `npm run format:check`          | Check code formatting                             | None            |
 
-## Migration from Pilot
-
-This project is migrating code from the pilot repository in phases:
-
-**Pilot structure → New structure:**
-
-```
-Pilot:                          New:
-├── app/                     → ├── src/
-│   ├── src/                →   ├── main/ (Electron main process)
-│   ├── prisma/             →   └── renderer/ (React UI)
-│   └── package.json        → ├── prisma/
-├── pylon/                  → ├── python/pylon/
-├── daq/                    → ├── python/daq/
-└── test/                   → ├── tests/
-                              └── package.json (root)
-```
-
 ## Testing
 
 ### Test Coverage
 
-- **TypeScript Unit Tests**: 48 tests (28 path sanitizer + 20 database)
-- **Python Unit Tests**: 84.5% coverage (78 tests)
-- **Integration Tests**: Python ↔ TypeScript IPC, camera, DAQ, packaged app verification
-- **Target**: 80%+ coverage for all code
+- **TypeScript**: Vitest unit tests in `tests/unit/`, run on Linux, macOS and Windows in CI
+- **Python**: pytest, 80% coverage required (`npm run test:python`)
+- **Integration and E2E**: mock-hardware IPC, scanner and database tests, and Playwright against the dev build
 
 ### Running Tests
 
@@ -298,42 +322,15 @@ npm run package
 npm run test:package
 ```
 
-### Test Output Examples
-
-**Python Tests:**
-
-```
-============================= 78 passed, 6 warnings in 6.25s ========================
-Coverage HTML written to dir htmlcov
-Required test coverage of 80% reached. Total coverage: 84.50%
-```
-
-**IPC Test:**
-
-```
-[PASS] Python process started successfully
-[PASS] Ping test passed
-[PASS] Version test passed
-[PASS] Hardware check test passed
-```
-
-**Package Test:**
-
-```
-[PASS] Package found
-[PASS] Python executable found
-[PASS] Python executable has correct permissions
-[PASS] IPC commands functional: 3/3 tested
-```
-
 ## Contributing
 
-Please see migration issues in the [Issues](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues) tab. All PRs should:
+Open PRs against `development`. All PRs should:
 
-- Include tests with 80%+ coverage
-- Pass linting and formatting checks
-- Reference the related issue number
-- Follow the migration plan in Issue #1
+- Include tests for new behaviour (Python: 80%+ coverage)
+- Pass linting, formatting and the CI checks
+- Reference the related issue, if there is one
+
+Releases are made from `main` ([docs/RELEASING.md](docs/RELEASING.md)).
 
 ## License
 
@@ -341,6 +338,5 @@ BSD-2-Clause - See [LICENSE](LICENSE) file for details.
 
 ## Links
 
+- [Releases](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/releases)
 - [Pilot Repository](https://github.com/eberrigan/bloom-desktop-pilot/tree/benfica/add-testing)
-- [Migration Plan (Issue #1)](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/1)
-- [Current Phase (Issue #2)](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/2)
