@@ -19,7 +19,6 @@ Desktop app for the Bloom plant phenotyping scanners. It runs the scanner hardwa
   </tr>
 </table>
 
-<sub>Screenshots show demo data; the GraviScan one uses simulated scanners.</sub>
 
 Scans are saved locally and can be uploaded to [Bloom](https://bloom.salk.edu) and backed up to Box. It can also run without Bloom (see [Using Bloom Desktop without Bloom](#using-bloom-desktop-without-bloom)).
 
