@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bloom Desktop User Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,600&display=swap" rel="stylesheet">
+<style>
+  @page { size: Letter; margin: 0.6in 0.65in 0.7in 0.65in; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #1C1917; font-size: 10.5pt; line-height: 1.55; }
+  .serif { font-family: 'Fraunces', Georgia, serif; font-style: italic; }
+  h1, h2, h3 { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 400; margin: 0; }
+  .eyebrow { font-size: 8.5pt; font-weight: 800; letter-spacing: 2.5px; color: #4D7C0F; text-transform: uppercase; margin: 0 0 6px; }
+  .eyebrow::before { content: ""; display: inline-block; width: 24px; height: 1px; background: #9DB37A; vertical-align: middle; margin-right: 8px; }
+  h2 { font-size: 22pt; line-height: 1.15; margin: 0 0 6px; }
+  h3 { font-size: 13.5pt; margin: 18px 0 6px; color: #3F6212; }
+  p { margin: 0 0 8px; color: #44403C; }
+  .lead { color: #57534E; font-size: 11pt; margin-bottom: 14px; }
+  b, strong { color: #1C1917; }
+  ol, ul { margin: 0 0 10px; padding-left: 20px; color: #44403C; }
+  li { margin: 0 0 4px; }
+  .section { page-break-before: always; }
+  figure { margin: 10px 0 14px; page-break-inside: avoid; }
+  figure img { display: block; width: 100%; border: 1.5px solid #D9F99D; border-radius: 10px; box-shadow: 0 3px 10px rgba(63,98,18,.10); }
+  figcaption { font-size: 8.5pt; color: #78716C; margin-top: 5px; }
+  .tip { background: #F7FEE7; border-left: 3px solid #84CC16; border-radius: 6px; padding: 8px 12px; margin: 10px 0 12px; page-break-inside: avoid; }
+  .tip p, .tip li { color: #3F3F2E; margin-bottom: 3px; }
+  .tip .t { font-weight: 800; font-size: 8.5pt; letter-spacing: 1.5px; color: #4D7C0F; margin-bottom: 3px; }
+  .warn { background: #FFF7ED; border-left-color: #F59E0B; }
+  .warn .t { color: #B45309; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .two figure { margin: 6px 0 10px; }
+  /* cover */
+  .cover { height: 9.4in; display: flex; flex-direction: column; justify-content: center; }
+  .cover img.icon { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 6px 18px rgba(63,98,18,.25); margin-bottom: 26px; }
+  .cover h1 { font-size: 40pt; line-height: 1.05; margin-bottom: 10px; }
+  .cover h1 span { color: #4D7C0F; }
+  .cover .sub { font-size: 13pt; color: #57534E; margin-bottom: 30px; }
+  .cover .bar { width: 64px; height: 3px; background: #A3E635; border-radius: 2px; margin: 0 0 26px; }
+  .toc { columns: 2; column-gap: 28px; font-size: 10.5pt; color: #44403C; padding: 0; list-style: none; }
+  .toc li { margin-bottom: 6px; break-inside: avoid; }
+  .toc li b { color: #4D7C0F; font-family: 'Fraunces', Georgia, serif; font-style: italic; margin-right: 6px; }
+  .toc-part { font-size: 8.5pt; font-weight: 800; letter-spacing: 2px; color: #4D7C0F; text-transform: uppercase; margin: 18px 0 8px; }
+  .part { display: inline-block; font-size: 8pt; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #FFFFFF; background: #4D7C0F; border-radius: 999px; padding: 3px 12px; margin: 0 0 14px; }
+  .meta { margin-top: 40px; font-size: 9pt; color: #78716C; }
+  .steps { counter-reset: s; list-style: none; padding-left: 0; }
+  .steps > li { counter-increment: s; position: relative; padding-left: 30px; margin-bottom: 6px; }
+  .steps > li::before { content: counter(s); position: absolute; left: 0; top: -3px; font-family: 'Fraunces', Georgia, serif; font-style: italic; font-size: 16pt; color: #4D7C0F; }
+  .contact { margin-top: 18px; padding: 14px 16px; border: 1.5px solid #D9F99D; border-radius: 10px; background: #FBFEF6; page-break-inside: avoid; }
+  .contact .name { color: #1C1917; text-decoration: none; border-bottom: 2px solid #A3E635; font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 600; }
+  .order { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 8px 0 12px; font-size: 9.5pt; }
+  .order span.s { background: #F7FEE7; border: 1px solid #D9F99D; border-radius: 999px; padding: 3px 10px; color: #3F6212; font-weight: 600; }
+  .order span.a { color: #84CC16; font-weight: 800; }
+  table.age { border-collapse: collapse; margin: 4px 0 8px; font-size: 9.5pt; }
+  table.age th, table.age td { border: 1px solid #FCD9A8; padding: 3px 12px; text-align: left; color: #3F3F2E; }
+  table.age th { background: #FDEBD3; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <img class="icon" src="img/new_icon.png" alt="">
+  <p class="eyebrow">User guide</p>
+  <h1>Bloom Desktop <span>user guide</span></h1>
+  <p class="sub">CylinderScan, for new users.</p>
+  <div class="bar"></div>
+  <p class="toc-part">Part A · Salk stations</p>
+  <ol class="toc">
+    <li><b>1</b>Getting around</li>
+    <li><b>2</b>Before your first scan</li>
+    <li><b>3</b>Scientists and Phenotypers</li>
+    <li><b>4</b>Accessions</li>
+    <li><b>5</b>Experiments</li>
+    <li><b>6</b>Camera Settings</li>
+    <li><b>7</b>Capture Scan</li>
+    <li><b>8</b>Browse Scans</li>
+    <li><b>9</b>Before you upload</li>
+    <li><b>10</b>Export Scans</li>
+    <li><b>11</b>Questions</li>
+  </ol>
+  <p class="toc-part">Part B · Using Bloom Desktop outside Salk</p>
+  <ol class="toc">
+    <li><b>12</b>Install</li>
+    <li><b>13</b>Set up without Bloom</li>
+    <li><b>14</b>What's different</li>
+    <li><b>15</b>Questions</li>
+  </ol>
+  <p class="meta">November 2026 · Screenshots are from version 0.2.5 and show demo data.</p>
+</div>
+
+<!-- 1 HOME -->
+<div class="section">
+  <p class="part">Part A · Salk stations</p>
+  <p class="lead">Part A is for the scanning stations at Salk, which upload to Bloom. Labs elsewhere: read Part A for how the app works, then Part B for what's different without Bloom.</p>
+  <p class="eyebrow">1 · Getting around</p>
+  <h2>Home</h2>
+  <p class="lead">Home is the first page you see. It shows the daily steps, the setup pages, and today's scans.</p>
+  <figure><img src="img/01_home.jpg" alt="Home page"><figcaption>Home, with the sidebar on the left.</figcaption></figure>
+  <ul>
+    <li><b>Sidebar:</b> use it to move between pages. The scanner's name is shown at the bottom.</li>
+    <li><b>Daily Workflow:</b> Camera Settings, Capture Scan and Browse Scans, the pages you use every day.</li>
+    <li><b>Setup:</b> Scientists, Phenotypers, Accessions and Experiments, which you fill in before scanning.</li>
+    <li><b>Today's Activity:</b> how many images are uploaded, waiting or failed, and the latest scans. If any uploads failed, a red banner links to Browse Scans.</li>
+  </ul>
+</div>
+
+<!-- 2 ORDER -->
+<div class="section">
+  <p class="eyebrow">2 · Before your first scan</p>
+  <h2>Set up once, then scan</h2>
+  <p class="lead">Before the first scan of a new experiment, set things up in this order. Each step needs the one before it.</p>
+  <div class="order">
+    <span class="s">Scientist</span><span class="a">→</span>
+    <span class="s">Phenotyper</span><span class="a">→</span>
+    <span class="s">Accessions</span><span class="a">→</span>
+    <span class="s">Experiment</span><span class="a">→</span>
+    <span class="s">Camera Settings</span><span class="a">→</span>
+    <span class="s">Capture Scan</span>
+  </div>
+  <ol class="steps">
+    <li><b>Scientist:</b> the person running the experiment.</li>
+    <li><b>Phenotyper:</b> you, the person operating the scanner.</li>
+    <li><b>Accessions:</b> an Excel file that matches each plant's barcode to its accession.</li>
+    <li><b>Experiment:</b> links the species, scientist and accession file.</li>
+    <li><b>Camera Settings:</b> check the picture looks right.</li>
+    <li><b>Capture Scan:</b> scan your plants.</li>
+  </ol>
+  <div class="tip"><div class="t">GOOD TO KNOW</div>
+    <p>If someone has already set up your experiment, you only need to add yourself as a phenotyper and go straight to Capture Scan.</p>
+    <p>The scanner itself (its name, camera and Bloom account) is set up by the Bloom team, so you don't need to change it.</p>
+  </div>
+</div>
+
+<!-- 3 PEOPLE -->
+<div class="section">
+  <p class="eyebrow">3 · Setup</p>
+  <h2>Scientists and Phenotypers</h2>
+  <p class="lead">Both pages work the same way: a list of people already added, and a short form to add someone new.</p>
+  <ol class="steps">
+    <li>Open <b>Scientists</b> (or <b>Phenotypers</b>) in the sidebar.</li>
+    <li>Under <b>Add New Scientist</b>, enter a <b>Name</b> and <b>Email</b>.</li>
+    <li>Click <b>Add new scientist</b> (or <b>Add new phenotyper</b>). They appear in the list above.</li>
+  </ol>
+  <div class="two">
+    <figure><img src="img/05_scientists.jpg" alt="Scientists page"><figcaption>Scientists</figcaption></figure>
+    <figure><img src="img/04_phenotypers.jpg" alt="Phenotypers page"><figcaption>Phenotypers</figcaption></figure>
+  </div>
+  <div class="tip"><div class="t">GOOD TO KNOW</div>
+    <p>Each email can only be used once. People can't be edited or removed here, so check the spelling before adding. If something needs fixing, contact the Bloom team.</p>
+  </div>
+</div>
+
+<!-- 4 ACCESSIONS -->
+<div class="section">
+  <p class="eyebrow">4 · Setup</p>
+  <h2>Accessions</h2>
+  <p class="lead">An accession file tells Bloom Desktop which accession each plant belongs to. When you scan a barcode, the accession fills in for you.</p>
+  <h3>Prepare the Excel file</h3>
+  <ul>
+    <li>The first row holds the column names, such as <b>Plant barcode</b> and <b>Accession</b>.</li>
+    <li>Each row after that is one plant: its barcode and its accession.</li>
+    <li>Use an .xlsx or .xls file, up to 15 MB. The accession file takes the Excel file's name.</li>
+  </ul>
+  <h3>Upload it</h3>
+  <ol class="steps">
+    <li>Under <b>Upload Plant Mappings (Excel)</b>, drag in your file or click <b>Choose File</b>.</li>
+    <li>Choose which column holds the barcode (<b>Select Plant ID (Barcode) Column</b>) and which holds the accession (<b>Select Accession Column</b>).</li>
+    <li>Check the preview, then click <b>Upload Accession File</b>. You'll see <b>Done uploading!</b></li>
+  </ol>
+  <figure><img src="img/06b_accession_upload.jpg" alt="Uploading an accession Excel file"><figcaption>Choosing the barcode and accession columns, with a preview of the rows.</figcaption></figure>
+</div>
+
+<div class="section">
+  <h3 style="margin-top:0">Check an accession file</h3>
+  <p>Click a file under <b>Current Accessions</b> to open it. You'll see the experiments that use it, and every barcode with its accession. Use <b>Edit</b> to correct a row, or <b>Delete</b> to remove the file.</p>
+  <figure><img src="img/06c_accession_list.jpg" alt="An accession file opened"><figcaption>An accession file opened, showing its linked experiment and plants.</figcaption></figure>
+</div>
+
+<!-- 5 EXPERIMENTS -->
+<div class="section">
+  <p class="eyebrow">5 · Setup</p>
+  <h2>Experiments</h2>
+  <p class="lead">An experiment groups your scans. It links a species, a scientist and an accession file.</p>
+  <h3>Create an experiment</h3>
+  <ol class="steps">
+    <li>Under <b>Create New Experiment</b>, enter a <b>Name</b>.</li>
+    <li>Choose the <b>Species</b>, <b>Scientist</b> and <b>Accession File</b>. All four are required.</li>
+    <li>Click <b>Create</b>. The experiment appears in the list at the top.</li>
+  </ol>
+  <div class="tip"><div class="t">NEW SPECIES?</div>
+    <p>The species list comes from Bloom. If your species isn't there, choose <b>Need a new species? Add it in Bloom…</b> at the bottom of the list, add it in Bloom, then click <b>Refresh list</b>.</p>
+  </div>
+  <figure><img src="img/07_experiments.jpg" alt="Experiments page"><figcaption>Each experiment shows its waves and their dates. Click a wave to see when the dates were set and by whom.</figcaption></figure>
+  <h3>Experiment without an accession file?</h3>
+  <p>Under <b>Attach Accession File to Existing Experiment</b>, select the experiment and the accession file, then click <b>Attach Accession</b>. You can't scan for an experiment until it has an accession file.</p>
+</div>
+
+<!-- 6 CAMERA -->
+<div class="section">
+  <p class="eyebrow">6 · Daily</p>
+  <h2>Camera Settings</h2>
+  <p class="lead">Check the picture before you start scanning. Settings are kept after the app restarts.</p>
+  <div class="tip warn"><div class="t">PLEASE DON'T CHANGE THE SETTINGS</div>
+    <p>A change stays for everyone who scans on that station afterwards, and every experiment should use the same settings. If the picture doesn't look right, contact the Bloom team.</p>
+  </div>
+  <ol class="steps">
+    <li>Adjust <b>Exposure Time</b>, <b>Gain</b> and <b>Gamma</b> with the sliders or by typing a number.</li>
+    <li>Click <b>Apply Settings</b>. The <b>Live Preview</b> shows the result.</li>
+    <li>When you're happy, the line under the buttons reads <b>Applied to the camera, and saved for future sessions</b>.</li>
+  </ol>
+  <figure><img src="img/03_camera.jpg" alt="Camera Settings"><figcaption>Camera Settings with the live preview.</figcaption></figure>
+  <ul>
+    <li><b>Exposure Time:</b> higher makes the image brighter.</li>
+    <li><b>Gain:</b> also brightens, but adds noise. Prefer exposure first.</li>
+    <li><b>Gamma:</b> 1.0 is normal. Above 1.0 brightens the shadows.</li>
+    <li><b>Reset</b> goes back to the default values.</li>
+  </ul>
+</div>
+
+<!-- 7 CAPTURE -->
+<div class="section">
+  <p class="eyebrow">7 · Daily</p>
+  <h2>Capture Scan</h2>
+  <p class="lead">This is where you scan each plant. Fields marked <b>*</b> are required.</p>
+  <h3>1. Choose who and what</h3>
+  <p>Choose your <b>Phenotyper</b> name and the <b>Experiment</b>, then type the <b>Wave Number</b>.</p>
+  <h3>2. Set the wave's dates (first time only)</h3>
+  <p>For a new wave, a <b>Set wave dates</b> card appears. Choose how the dates are entered:</p>
+  <ul>
+    <li><b>Wave-level:</b> all plants share the same dates. Enter them once.</li>
+    <li><b>Plant-level:</b> each plant has its own dates. You enter them when each barcode is first scanned.</li>
+  </ul>
+  <p>Enter the <b>Sowing date</b> and <b>Germination date</b>. <b>Transfer to cylinder</b> is ticked as <b>Same as germination date</b>; untick it to enter a different date. Then click <b>Save dates</b>.</p>
+  <div class="two">
+    <figure><img src="img/08b_wave_card.jpg" alt="Set wave dates card"><figcaption>A new wave asks for its dates.</figcaption></figure>
+    <figure><img src="img/08c_wave_dates_filled.jpg" alt="Wave dates entered"><figcaption>Wave-level, with the dates entered.</figcaption></figure>
+  </div>
+  <div class="tip warn"><div class="t">HOW PLANT AGE IS WORKED OUT</div>
+    <p><b>Plant age = days from the germination date to the day you scan.</b> The germination date is day 0. You don't type it, and you can't change it.</p>
+    <p>So <b>the age goes up by one every day</b>. The same plant scanned on different days gets a different age:</p>
+    <table class="age">
+      <tr><th>Germination date</th><th>Scanned on</th><th>Plant age</th></tr>
+      <tr><td>Oct 20</td><td>Oct 20</td><td>0</td></tr>
+      <tr><td>Oct 20</td><td>Oct 30</td><td>10</td></tr>
+      <tr><td>Oct 20</td><td>Oct 31</td><td>11</td></tr>
+    </table>
+    <ul>
+      <li><b>Need a set age?</b> Scan on that day. For a 10-day-old plant germinated on Oct 20, scan on Oct 30. Scanning the next day makes it 11.</li>
+      <li><b>Scanning one wave over several days?</b> Its plants will have different ages. That's expected, and each scan's age is right for the day it was taken.</li>
+      <li><b>After midnight</b> counts as the next day.</li>
+      <li><b>Wrong age?</b> Check the germination date. Age is only as right as the dates you saved.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h3 style="margin-top:0">3. Scan the barcode</h3>
+  <p>Scan or type the <b>Plant ID / Barcode</b>. <b>Plant Age</b> and <b>Accession</b> fill in automatically. Check the <b>Camera Settings</b> summary, then click <b>Start Scan</b>.</p>
+  <figure><img src="img/08d_ready.jpg" alt="Ready to scan"><figcaption>Everything filled in and ready to scan.</figcaption></figure>
+  <div class="tip warn"><div class="t">START SCAN STAYS GREY?</div>
+    <ul>
+      <li><b>Barcode not found in accession file:</b> the barcode isn't in this experiment's accession file. Check the barcode, or the experiment.</li>
+      <li><b>Accession file required:</b> the experiment has no accession file. See Experiments.</li>
+      <li><b>A scan already exists for this plant, experiment, wave, and age:</b> this plant has already been scanned today.</li>
+      <li><b>Save wave dates above to start the scan:</b> the wave's dates haven't been saved yet.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="section">
+  <h3 style="margin-top:0">4. During the scan</h3>
+  <p>The turntable turns the plant a full circle. The right side shows each picture as it's recorded, with <b>Frame N of 72</b>, the time elapsed and the time left.</p>
+  <figure style="width:78%"><img src="img/08e_scanning.jpg" alt="Scan in progress"><figcaption>Recording in progress.</figcaption></figure>
+  <p>After the last frame, the page shows <b>Saving...</b> while the images are saved. <b>Leave the plant in place and stay on the page until this finishes.</b></p>
+  <figure style="width:78%"><img src="img/08g_saving.jpg" alt="Saving the images"><figcaption>Saving the images.</figcaption></figure>
+</div>
+
+<div class="section">
+  <h3 style="margin-top:0">5. Done</h3>
+  <p>When you see <b>Scan completed successfully!</b>, take the plant out and scan the next barcode. Phenotyper, experiment and wave stay filled in.</p>
+  <figure><img src="img/08f_done.jpg" alt="Scan completed"><figcaption>The scan is saved. The scan you just did shows under Today's Activity on Home.</figcaption></figure>
+  <div class="tip warn"><div class="t">IF A SCAN FAILS</div>
+    <p>A red message explains what went wrong and stays until you click <b>Dismiss</b>. A failed scan isn't saved, so scan that plant again. Before you do, check the turntable is back at its start position.</p>
+  </div>
+  <div class="tip"><div class="t">GOOD TO KNOW</div>
+    <ul>
+      <li>While a scan runs, you can't leave the page, and the app asks before closing.</li>
+      <li>After 10 minutes with nothing happening, the form clears for the next person. Just fill it in again.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- 8 BROWSE -->
+<div class="section">
+  <p class="eyebrow">8 · Daily</p>
+  <h2>Browse Scans</h2>
+  <p class="lead">All your scans, newest first. This is where you upload them to Bloom.</p>
+  <figure><img src="img/09_browse.jpg" alt="Browse Scans"><figcaption>Browse Scans, with Upload all at the top right.</figcaption></figure>
+  <ul>
+    <li><b>Filter</b> by experiment or by date. <b>Clear Filters</b> shows everything again.</li>
+    <li><b>Upload all</b> uploads every scan not yet uploaded. You can <b>Stop</b> it at any time.</li>
+    <li>Or tick some scans and click <b>Upload Selected</b>.</li>
+    <li><b>Upload Status</b> shows <b>All uploaded</b>, how many images are uploaded, or how many <b>failed</b>. Failed uploads can be uploaded again.</li>
+    <li>The icons on the right view, upload or delete a scan.</li>
+  </ul>
+  <div class="tip warn"><div class="t">DELETING</div>
+    <p>Deleting a scan can't be undone, and a deleted scan is never uploaded. Images already uploaded to Bloom stay in Bloom.</p>
+  </div>
+</div>
+
+<div class="section">
+  <h3 style="margin-top:0">View a scan</h3>
+  <p>Click a <b>Plant ID</b> to open the scan. Step through the frames with <b>Previous</b> and <b>Next</b> (or the arrow keys), and zoom with <b>+</b> and <b>−</b>. The right side shows the plant, experiment, capture and camera details. You can also <b>Upload</b> or <b>Delete</b> from here.</p>
+  <figure><img src="img/10_scan_detail.jpg" alt="Scan detail"><figcaption>A single scan, frame 1 of 72.</figcaption></figure>
+</div>
+
+<!-- 9 CHECK -->
+<div class="section">
+  <p class="eyebrow">9 · Daily</p>
+  <h2>Before you upload: check every scan</h2>
+  <p class="lead">Each scan's details (experiment, wave, plant ID, accession, plant age and phenotyper) go into the Bloom database with its pictures. Correcting them after upload is hard, and the Bloom team has to do it.</p>
+  <ul>
+    <li><b>Check each scan.</b> In Browse Scans, click a scan's <b>Plant ID</b> to see its details next to its pictures.</li>
+    <li><b>Wrong scan?</b> Delete it before uploading, in Browse Scans or on the scan's page, then scan the plant again. A deleted scan is never uploaded.</li>
+    <li><b>Wrong wave dates?</b> Delete the scans taken with them (for a Plant-level wave, that plant's scans), and <b>Edit</b> opens the dates again. Fix them, then scan again.</li>
+    <li><b>Upload only what you've checked.</b> <b>Upload all</b> sends every scan not yet uploaded, so check the list first.</li>
+  </ul>
+  <div class="tip warn"><div class="t">ALREADY UPLOADED A MISTAKE?</div>
+    <p>Deleting it in Bloom Desktop doesn't remove it from Bloom. Contact the Bloom team.</p>
+  </div>
+</div>
+
+<!-- 10 EXPORT -->
+<div class="section">
+  <p class="eyebrow">10 · As needed</p>
+  <h2>Export Scans</h2>
+  <p class="lead">Copy scans to a USB drive or another folder.</p>
+  <ol class="steps">
+    <li>Click <b>Choose Destination</b> and pick the drive or folder.</li>
+    <li>Tick the scans you want. Scans are grouped by experiment and day; tick a group to select all its scans.</li>
+    <li>Click <b>Export</b>. Don't unplug the drive until it finishes.</li>
+  </ol>
+  <figure><img src="img/11_export.jpg" alt="Export Scans"><figcaption>Three scans selected for export.</figcaption></figure>
+  <p>Scans already on the destination are skipped, so exporting again only adds what's new.</p>
+
+  <!-- 11 QUESTIONS -->
+  <div class="contact">
+    <p class="eyebrow">11 · Questions</p>
+    <p style="margin-bottom:6px">Reach out to the Bloom team:</p>
+    <p style="margin:0">🌿 <span class="name">Benfica Fernando</span> &nbsp; 🍃 <span class="name">Elizabeth Berrigan</span> &nbsp; 🌱 <span class="name">Nolan Hartwick</span></p>
+  </div>
+</div>
+
+
+<!-- PART B: OUTSIDE SALK -->
+<div class="section">
+  <p class="part">Part B · Using Bloom Desktop outside Salk</p>
+  <p class="lead">Bloom Desktop also runs on its own, without a Bloom account. Scans stay on your computer, and you copy them with Export Scans.</p>
+  <p class="eyebrow">12 · Outside Salk</p>
+  <h2>Install</h2>
+  <ol class="steps">
+    <li>Download the latest release from <b>github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/releases</b>. For CylinderScan on Windows, run <b>Bloom-Desktop-&lt;version&gt;-Setup.exe</b>.</li>
+    <li>Install the hardware drivers: the <b>Basler pylon</b> camera software and the <b>NI-DAQmx</b> runtime for the turntable.</li>
+    <li>Start Bloom Desktop. On the first start it opens <b>Machine Configuration</b>.</li>
+  </ol>
+  <div class="tip warn"><div class="t">VERSION</div>
+    <p>Running without Bloom needs a release newer than 0.2.5.</p>
+  </div>
+  <div class="tip"><div class="t">GOOD TO KNOW</div>
+    <p>The hardware Bloom Desktop drives (camera, turntable motor and NI-DAQ) is listed under <b>Hardware</b> in the project's README on GitHub.</p>
+    <p>GraviScan can also run without Bloom, on Linux. This guide covers CylinderScan.</p>
+  </div>
+</div>
+
+<div class="section">
+  <p class="eyebrow">13 · Outside Salk</p>
+  <h2>Set up without Bloom</h2>
+  <p class="lead">Machine Configuration holds the computer's settings. It opens on the first start; later, open it with <b>Ctrl+Shift+,</b> (Cmd+Shift+, on a Mac).</p>
+  <ol class="steps">
+    <li>Under <b>Scanner Mode</b>, choose <b>CylinderScan</b>.</li>
+    <li>Under <b>Bloom Connection</b>, untick <b>Connect to Bloom</b>. The Bloom login fields disappear.</li>
+    <li>Under <b>Station Identity</b>, type a <b>Scanner Name</b> for this computer, using letters, numbers, - and _ (for example <b>lab-scanner-1</b>). Every scan is labelled with it.</li>
+    <li>Under <b>Scans Directory</b>, click <b>Browse...</b> and pick the folder where scans are saved.</li>
+    <li>Under <b>Hardware</b>, click <b>Detect Cameras</b>, or type the camera's <b>Camera IP Address</b>.</li>
+    <li>Check <b>Scan Parameters</b> (frames per turn and seconds per rotation), then click <b>Save Configuration</b>.</li>
+    <li>Restart Bloom Desktop when the notice asks you to.</li>
+  </ol>
+  <div class="tip"><div class="t">GOOD TO KNOW</div>
+    <p>Choose the scanner name carefully: it's saved with every scan, so changing it later splits your scans between two names.</p>
+  </div>
+</div>
+
+<div class="section">
+  <p class="eyebrow">14 · Outside Salk</p>
+  <h2>What's different without Bloom</h2>
+  <p class="lead">Scanning works the same as in Part A. These parts change.</p>
+  <h3>Species</h3>
+  <p>The species list is kept on your computer. On <b>Experiments</b>, choose <b>Add a species…</b> at the bottom of the Species list, type the name and click <b>Add</b>. To take one out, choose it and click <b>Remove from list</b>. Experiments that already use a species keep it.</p>
+  <h3>No uploads</h3>
+  <p>There is nothing to upload, so the upload buttons and Upload all are hidden, and section 9 (Before you upload) doesn't apply. Each scan's 72 images stay in your scans folder.</p>
+  <h3>Keeping your scans safe</h3>
+  <p>Use <b>Export Scans</b> (section 10) to copy scans to a USB drive or a shared folder. Nothing is backed up for you, so copy your scans regularly.</p>
+  <h3>"Contact the Bloom team"</h3>
+  <p>Notes in Part A that say this are for Salk stations. Outside Salk, whoever looks after your scanning computer makes those changes.</p>
+  <div class="tip"><div class="t">GOOD TO KNOW</div>
+    <p>To start uploading to Bloom later, tick <b>Connect to Bloom</b> again, enter the Bloom login, save, and pick this scanner's name from Bloom's list. Scans taken without Bloom keep the name you typed.</p>
+  </div>
+
+  <div class="contact">
+    <p class="eyebrow">15 · Questions</p>
+    <p style="margin:0">Open an issue at <b>github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues</b>.</p>
+  </div>
+</div>
+
+</body>
+</html>
