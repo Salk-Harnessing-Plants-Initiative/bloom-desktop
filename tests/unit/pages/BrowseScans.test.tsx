@@ -546,3 +546,33 @@ describe('thumbnail column, rows off screen', () => {
     expect(screen.queryByAltText(/thumbnail/i)).not.toBeInTheDocument();
   });
 });
+
+describe('Browse Scans with Bloom off', () => {
+  it('shows no upload controls, but still allows selection', async () => {
+    mockConfigGet.mockResolvedValue({
+      config: { scans_dir: '/scans', bloom_not_connected: true },
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+    win.electron.database.scans.pendingUploads = vi
+      .fn()
+      .mockResolvedValue({ success: true, data: { count: 2 } });
+    renderPage();
+
+    await waitFor(() => expect(mockList).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /Upload to Bloom/i })
+      ).not.toBeInTheDocument()
+    );
+    expect(screen.queryByTestId('upload-all-bar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    expect(
+      screen.getByRole('button', { name: /Clear Selection/i })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /Upload Selected/i })
+    ).not.toBeInTheDocument();
+  });
+});

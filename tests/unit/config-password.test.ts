@@ -447,3 +447,116 @@ describe('config:get / config:set against a real .env', () => {
     expect(save).not.toHaveBeenCalled();
   });
 });
+
+describe('Bloom off (BLOOM_NOT_CONNECTED)', () => {
+  let tempDir: string;
+  let envPath: string;
+  let store: ConfigStoreLike;
+
+  function connectedForm(): MachineConfig {
+    return {
+      ...getDefaultConfig(),
+      scanner_mode: 'cylinderscan',
+      scanner_name: 'TestScanner',
+      camera_ip_address: '10.0.0.23',
+      scans_dir: path.join(tempDir, 'scans'),
+      bloom_api_url: API_URL,
+      bloom_scanner_username: USERNAME,
+      bloom_scanner_password: STORED_PASSWORD,
+      bloom_anon_key: 'anon-key',
+    };
+  }
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bloom-config-offline-'));
+    envPath = path.join(tempDir, '.env');
+    store = {
+      load: () => loadEnvConfig(envPath),
+      save: (config) => saveEnvConfig(config, envPath),
+      validate: validateConfig,
+    };
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('config:get sends bloom_not_connected to the form', () => {
+    store.save({ ...connectedForm(), bloom_not_connected: true });
+    expect(
+      toRendererConfig(loadEnvConfig(envPath)).config.bloom_not_connected
+    ).toBe(true);
+  });
+
+  it('turning Bloom off keeps the stored Bloom URL and credentials', () => {
+    store.save(connectedForm());
+
+    const result = saveSubmittedConfig(
+      {
+        ...connectedForm(),
+        bloom_not_connected: true,
+        scanner_name: 'Nottingham-1',
+        bloom_api_url: '',
+        bloom_scanner_username: '',
+        bloom_scanner_password: '',
+        bloom_anon_key: '',
+      },
+      store
+    );
+
+    expect(result.success).toBe(true);
+    const saved = loadEnvConfig(envPath);
+    expect(saved.bloom_not_connected).toBe(true);
+    expect(saved.scanner_name).toBe('Nottingham-1');
+    expect(saved.bloom_api_url).toBe(API_URL);
+    expect(saved.bloom_scanner_username).toBe(USERNAME);
+    expect(saved.bloom_scanner_password).toBe(STORED_PASSWORD);
+    expect(saved.bloom_anon_key).toBe('anon-key');
+  });
+
+  it('saves with Bloom off and no Bloom values ever set', () => {
+    const result = saveSubmittedConfig(
+      {
+        ...getDefaultConfig(),
+        scanner_mode: 'cylinderscan',
+        scanner_name: 'Nottingham-1',
+        camera_ip_address: 'mock',
+        scans_dir: path.join(tempDir, 'scans'),
+        bloom_not_connected: true,
+      },
+      store
+    );
+
+    expect(result.success).toBe(true);
+    expect(loadEnvConfig(envPath).bloom_not_connected).toBe(true);
+  });
+
+  it('turning Bloom back on restores the stored values', () => {
+    store.save(connectedForm());
+    saveSubmittedConfig(
+      {
+        ...toRendererConfig(loadEnvConfig(envPath)).config,
+        bloom_not_connected: true,
+      },
+      store
+    );
+
+    const result = saveSubmittedConfig(
+      {
+        ...toRendererConfig(loadEnvConfig(envPath)).config,
+        bloom_not_connected: false,
+      },
+      store
+    );
+
+    expect(result.success).toBe(true);
+    const saved = loadEnvConfig(envPath);
+    expect(saved.bloom_not_connected).toBeUndefined();
+    expect(saved.bloom_scanner_password).toBe(STORED_PASSWORD);
+    expect(fs.readFileSync(envPath, 'utf-8')).not.toMatch(
+      /BLOOM_NOT_CONNECTED/
+    );
+  });
+});

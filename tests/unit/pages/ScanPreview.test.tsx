@@ -147,3 +147,24 @@ describe('ScanPreview color palette', () => {
     expect(deleteButton.className).toContain('bg-red-600');
   });
 });
+
+describe('Scan Preview with Bloom off', () => {
+  it('shows Delete but no upload button or status', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+    win.electron.config.get = vi.fn().mockResolvedValue({
+      config: { scans_dir: '/scans', bloom_not_connected: true },
+    });
+    renderPage();
+
+    expect(
+      await screen.findByRole('button', { name: /Delete/i })
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /^Upload$/ })
+      ).not.toBeInTheDocument()
+    );
+    expect(screen.queryByTitle('Upload to Bloom')).not.toBeInTheDocument();
+  });
+});
