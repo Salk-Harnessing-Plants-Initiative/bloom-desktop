@@ -14,12 +14,12 @@ Electron + React app that runs plant scanners and keeps their scans.
       <img src="assets/BloomGraviScanIcon.png" alt="GraviScan icon" width="72"><br>
       <b>GraviScan</b><br>
       Scans plates on Epson V600 flatbed scanners over time (Linux stations).<br><br>
-      <img src="docs/user-guide/img/graviscan_capture.jpg" alt="GraviScan: Capture Scan with two scanners ready" width="100%">
+      <img src="docs/user-guide/img/graviscan_capture.jpg" alt="GraviScan: two scanners scanning plates" width="100%">
     </td>
   </tr>
 </table>
 
-<sub>Screenshots show demo data.</sub>
+<sub>Screenshots show demo data; the GraviScan one uses simulated scanners.</sub>
 
 Scans are saved locally and can be uploaded to [Bloom](https://bloom.salk.edu) and backed up to Box. It can also run without Bloom (see [Using Bloom Desktop without Bloom](#using-bloom-desktop-without-bloom)).
 
