@@ -25,7 +25,8 @@ function setup(
     failed: 0,
     errors: [],
   }),
-  authenticate: UploaderLike['authenticate'] = async () => undefined
+  authenticate: UploaderLike['authenticate'] = async () => undefined,
+  bloomConnected = true
 ) {
   const handlers: Record<string, Handler> = {};
   const findMany = vi.fn(async () => scans);
@@ -42,6 +43,7 @@ function setup(
     } as never,
     db: { scan: { findMany, count } } as unknown as ScanUploadDbLike,
     createUploader,
+    bloomConnected: () => bloomConnected,
     getMainWindow: () =>
       ({ isDestroyed: () => false, webContents: { send } }) as never,
   });
@@ -341,6 +343,7 @@ describe('Upload all: remembered state', () => {
         authenticate: async () => undefined,
         uploadScan: async () => ({ success: true, failed: 0, errors: [] }),
       }),
+      bloomConnected: () => true,
       getMainWindow: () =>
         ({ isDestroyed: () => true, webContents: { send } }) as never,
     });
@@ -426,5 +429,25 @@ describe('scanListWhere', () => {
 
   it('leaves out filters that are not set', () => {
     expect(scanListWhere({})).toEqual({ where: { deleted: false } });
+  });
+});
+
+describe('Upload All with Bloom off', () => {
+  it('refuses without reading scans or creating an uploader', async () => {
+    const { call, findMany, createUploader } = setup(
+      scans(2),
+      undefined,
+      undefined,
+      false
+    );
+
+    const result = await call('db:scans:uploadAll');
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Bloom is turned off in Machine Configuration',
+    });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(createUploader).not.toHaveBeenCalled();
   });
 });

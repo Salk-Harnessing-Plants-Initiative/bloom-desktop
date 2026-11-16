@@ -79,10 +79,16 @@ vi.mock('@salk-harnessing-plants-initiative/bloom-fs', () => ({
 }));
 
 // Mock config-store
-vi.mock('../../src/main/config-store', () => ({
-  loadEnvConfig: vi.fn(),
-  getScansDir: vi.fn(),
-}));
+vi.mock('../../src/main/config-store', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../src/main/config-store')>();
+  return {
+    loadEnvConfig: vi.fn(),
+    getScansDir: vi.fn(),
+    isBloomConnected: actual.isBloomConnected,
+    BLOOM_OFF_MESSAGE: actual.BLOOM_OFF_MESSAGE,
+  };
+});
 
 // Import after mocking
 import { createClient } from '@supabase/supabase-js';
@@ -300,6 +306,19 @@ describe('image-uploader (add-browse-scans Phase 5)', () => {
 
   describe('ImageUploader class', () => {
     describe('constructor and authentication', () => {
+      it('refuses without signing in when Bloom is off', async () => {
+        (loadEnvConfig as Mock).mockReturnValue({
+          ...mockCredentials,
+          bloom_not_connected: true,
+        });
+        const uploader = new ImageUploader(mockPrismaClient);
+
+        await expect(uploader.authenticate()).rejects.toThrow(
+          'Bloom is turned off in Machine Configuration'
+        );
+        expect(createClient).not.toHaveBeenCalled();
+      });
+
       it('should load credentials from config-store', async () => {
         const uploader = new ImageUploader(mockPrismaClient);
         await uploader.authenticate();
