@@ -71,6 +71,8 @@ export function MachineConfiguration() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showRestartRequiredNotice, setShowRestartRequiredNotice] =
     useState(false);
+  // What the restart notice says changed
+  const [restartReason, setRestartReason] = useState('Scanner Mode');
 
   // Camera test state
   const [cameraTestStatus, setCameraTestStatus] =
@@ -272,11 +274,14 @@ export function MachineConfiguration() {
     setSaveSuccess(false);
     setIsSaving(true);
 
-    // Mode and the Bloom connection are both read once at app start-up
-    const restartNeeded =
+    // Mode is read once at start-up; open pages and the species list pick up
+    // a Bloom connection change only after a restart
+    const modeChanged =
       originalConfig !== null &&
-      (originalConfig.scanner_mode !== config.scanner_mode ||
-        isBloomConnected(originalConfig) !== bloomOn);
+      originalConfig.scanner_mode !== config.scanner_mode;
+    const bloomChanged =
+      originalConfig !== null && isBloomConnected(originalConfig) !== bloomOn;
+    const restartNeeded = modeChanged || bloomChanged;
 
     try {
       // Save unified config (credentials included)
@@ -289,11 +294,15 @@ export function MachineConfiguration() {
         setOriginalConfig(savedConfig);
 
         if (restartNeeded) {
-          // Scanner mode gates the entire app shell (see useAppMode/App.tsx)
-          // and is only ever read once at process startup — unlike the
-          // generic toast, this notice does not auto-clear on a timer; the
-          // admin must explicitly dismiss it, so it isn't missed before
-          // the required restart happens.
+          // Unlike the generic toast, this notice does not auto-clear on a
+          // timer; the admin must dismiss it, so the restart isn't missed.
+          setRestartReason(
+            modeChanged && bloomChanged
+              ? 'Scanner Mode and Bloom connection'
+              : modeChanged
+                ? 'Scanner Mode'
+                : 'Bloom connection'
+          );
           setShowRestartRequiredNotice(true);
         } else if (!showRestartRequiredNotice) {
           // Don't stack the generic toast on top of a still-visible
@@ -393,16 +402,17 @@ export function MachineConfiguration() {
 
       {/* Restart-required notice — persistent, dismissible, does NOT
           auto-clear on a timer like the generic save toast below, since a
-          scanner_mode change requires a restart the admin must not miss. */}
+          scanner mode or Bloom connection change requires a restart the
+          admin must not miss. */}
       {showRestartRequiredNotice && (
         <div
           data-testid="restart-required-notice"
           className="sticky top-0 z-10 bg-yellow-50 border-2 border-yellow-500 text-yellow-900 px-4 py-3 rounded-md mb-4 flex items-center justify-between gap-4"
         >
           <span>
-            Scanner Mode changed — restart the application now for this change
-            to take effect. This notice won&apos;t reappear if you navigate away
-            first.
+            {restartReason} changed — restart the application now for this
+            change to take effect. This notice won&apos;t reappear if you
+            navigate away first.
           </span>
           <button
             type="button"
