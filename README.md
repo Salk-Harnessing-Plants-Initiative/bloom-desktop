@@ -62,6 +62,26 @@ comments. Highlights for GraviScan operators (V600 wedge follow-ups,
   this is the default. Configured via `~/.bloom/.env` (loaded by
   `config-store.ts`'s `loadEnvConfig`/`saveEnvConfig`), not the
   repo-root `.env`.
+- **`BLOOM_NOT_CONNECTED`** — set to `true` on a computer that doesn't use
+  Bloom (see [Using Bloom Desktop without Bloom](#using-bloom-desktop-without-bloom)).
+  Absent ⇒ Bloom is on; this is the default. Written by the Connect to Bloom
+  switch in Machine Configuration to `~/.bloom/.env`.
+
+## Using Bloom Desktop without Bloom
+
+Labs without a Bloom account can run CylinderScan or GraviScan on their own
+computer:
+
+1. Install the latest release: `Setup.exe` on Windows, the `.deb` on Linux.
+2. Open Machine Configuration with Ctrl+Shift+, (Cmd+Shift+, on macOS).
+3. Untick **Connect to Bloom**, type a scanner name (letters, numbers, `-` and
+   `_`), set the camera IP and scans folder, and save. Restart the app.
+
+With Bloom off, scans stay in the scans folder (CylinderScan PNGs, GraviScan
+TIFs) and nothing is sent to Bloom or Box: the upload and Backup to Box buttons
+are hidden. CylinderScan scans can be copied elsewhere with Export Scans. The
+species list is kept on this computer: pick **Add a species…** in the species
+list to add one, or **Remove from list** to take one out.
 
 ## Project Structure
 

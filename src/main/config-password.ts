@@ -12,6 +12,7 @@
  * handler logic can be unit-tested without main.ts.
  */
 
+import { isBloomConnected } from './config-store';
 import type { MachineConfig, ValidationResult } from './config-store';
 
 /**
@@ -166,6 +167,7 @@ export function toRendererConfig(
       bloom_anon_key: stored.bloom_anon_key,
       num_frames: stored.num_frames,
       seconds_per_rot: stored.seconds_per_rot,
+      bloom_not_connected: stored.bloom_not_connected,
     },
     hasCredentials: storedPassword(stored) !== '',
   };
@@ -183,6 +185,20 @@ export function saveSubmittedConfig(
   const validation = store.validate(submitted);
   if (!validation.valid) {
     return { success: false, errors: validation.errors };
+  }
+
+  // With Bloom off the form hides the Bloom fields, so keep what's stored
+  if (!isBloomConnected(submitted)) {
+    const stored = store.load();
+    const values: MachineConfig = {
+      ...submitted,
+      bloom_api_url: stored.bloom_api_url,
+      bloom_scanner_username: stored.bloom_scanner_username,
+      bloom_scanner_password: stored.bloom_scanner_password,
+      bloom_anon_key: stored.bloom_anon_key,
+    };
+    store.save(values);
+    return { success: true, saved: values };
   }
 
   const resolution = withResolvedPassword(submitted, store.load);
