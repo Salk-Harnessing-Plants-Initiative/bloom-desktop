@@ -1640,7 +1640,7 @@ describe('Connect to Bloom', () => {
     expect(mockConfigAPI.fetchScanners).not.toHaveBeenCalled();
     expect(
       await screen.findByTestId('restart-required-notice')
-    ).toBeInTheDocument();
+    ).toHaveTextContent(/^Bloom connection changed — restart the application/);
   });
 
   it('turning Bloom back on asks for a restart too', async () => {
@@ -1658,6 +1658,40 @@ describe('Connect to Bloom', () => {
     });
     expect(
       await screen.findByTestId('restart-required-notice')
-    ).toBeInTheDocument();
+    ).toHaveTextContent(/^Bloom connection changed — restart the application/);
+  });
+
+  it('names the scanner mode when only the mode changed', async () => {
+    loadWith({});
+    await renderPage();
+
+    fireEvent.click(screen.getByRole('radio', { name: /GraviScan/i }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Save Configuration/i })
+    );
+
+    expect(
+      await screen.findByTestId('restart-required-notice')
+    ).toHaveTextContent(/^Scanner Mode changed — restart the application/);
+  });
+
+  it('names both when the mode and the Bloom connection changed', async () => {
+    loadWith({});
+    const toggle = await renderPage();
+
+    fireEvent.click(screen.getByRole('radio', { name: /GraviScan/i }));
+    fireEvent.click(toggle);
+    fireEvent.change(screen.getByLabelText(/Scanner Name/i), {
+      target: { value: 'Nottingham-1' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: /Save Configuration/i })
+    );
+
+    expect(
+      await screen.findByTestId('restart-required-notice')
+    ).toHaveTextContent(
+      /^Scanner Mode and Bloom connection changed — restart the application/
+    );
   });
 });

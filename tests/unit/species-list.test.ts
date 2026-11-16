@@ -277,6 +277,27 @@ describe('local species list (Bloom off)', () => {
     expect((await readSavedSpecies(file))!.species).not.toContain('Sorghum');
   });
 
+  it('keeps the list in use when an edit cannot be saved', async () => {
+    const store = createSpeciesStore({
+      // A file inside a file can't be created.
+      file: path.join(file, 'nested.json'),
+      bloomConnected: () => false,
+      fetchFromBloom: vi.fn(),
+      log: () => {},
+    });
+    fs.writeFileSync(file, 'x');
+    const before = await store.current();
+
+    const added = await store.add('Lotus japonicus');
+    const removed = await store.remove('Sorghum');
+
+    expect(added.error).toMatch(/^Couldn't save the species list: /);
+    expect(added.list).toEqual(before);
+    expect(removed.error).toMatch(/^Couldn't save the species list: /);
+    expect(removed.list).toEqual(before);
+    expect(await store.current()).toEqual(before);
+  });
+
   it('refuses to remove a species that is not listed', async () => {
     const result = await make().remove('Banana');
     expect(result.error).toBe("Banana isn't in the list");
