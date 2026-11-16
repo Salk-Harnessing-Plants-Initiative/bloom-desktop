@@ -13,7 +13,7 @@ Desktop app for the Bloom plant phenotyping scanners. It runs the scanner hardwa
     <td width="50%" align="center" valign="top">
       <img src="assets/BloomGraviScanIcon.png" alt="GraviScan icon" width="72"><br>
       <b>GraviScan</b><br>
-      Scans plates on Epson V600 flatbed scanners over time (Linux stations).<br><br>
+      Captures plant growth over days with continuous, timed scans of plates on Epson V600 flatbed scanners (Linux stations).<br><br>
       <img src="docs/user-guide/img/graviscan_capture.jpg" alt="GraviScan: two scanners scanning plates" width="100%">
     </td>
   </tr>
