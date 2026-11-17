@@ -1,186 +1,138 @@
 # Hardware Interface Modules
 
-This directory contains Python modules for controlling hardware devices used in the Bloom Desktop application.
+Python modules that control the CylinderScan hardware: a Basler camera (through
+`pypylon`) and a stepper-motor turntable driven by an NI DAQ (through `nidaqmx`).
+Bloom Desktop runs them, and they can also be used on their own.
 
-## Structure (Phase 3)
+## Files
 
 ```
 hardware/
 ├── __init__.py
-├── camera.py              # Basler camera interface (PyPylon)
-├── camera_mock.py         # Mock camera for testing
-├── camera_types.py        # Camera type definitions
-├── daq.py                 # NI-DAQ interface (nidaqmx)
-├── daq_mock.py            # Mock DAQ for testing
-├── daq_types.py           # DAQ type definitions
-└── rotation.py            # Rotation control logic for 360° scans
+├── camera.py          # Basler camera (pypylon): open, grab, software-triggered capture
+├── camera_mock.py     # MockCamera: same API, no camera needed
+├── camera_types.py    # CameraSettings
+├── daq.py             # NI-DAQ turntable control (nidaqmx): step and direction pulses
+├── daq_mock.py        # MockDAQ: same API, no DAQ needed
+├── daq_types.py       # DAQSettings, steps per turntable turn
+├── scanner.py         # Scanner: runs a full scan (turntable + camera together)
+├── scanner_types.py   # ScannerSettings, ScanResult
+└── scan_preview.py    # Small preview picture of each frame, for the app
 ```
 
-## Modules
+## How the hardware is driven
 
-### Camera Interface (`camera.py`)
+- **Camera:** a Basler GigE camera (ours is an acA2000-50gm), found by its IP
+  address. Exposure, gain (`GainRaw`, an integer) and gamma are set from
+  `CameraSettings`. During a scan, each frame is taken on a software trigger.
+- **Turntable:** the NI DAQ sends step and direction pulses on two digital lines
+  to a step/direction motor driver (ours is an Applied Motion STR3 driving an
+  HW23-753 stepper). Defaults in `DAQSettings`:
+  - device `cDAQ1Mod1` (an NI-9401 module in a cDAQ-9171 chassis)
+  - step on line 0, direction on line 1
+  - `steps_per_revolution` = 28,571: the driver set to 20,000 microsteps per
+    motor turn, times 42:60 gearing to the turntable. Change it to match your
+    driver setting and gears.
+- **A scan:** the turntable turns continuously, one turn in `seconds_per_rot`
+  seconds (default 7), and the camera is triggered at each of `num_frames`
+  positions (default 72, 5° apart). Frames are saved as `001.png`, `002.png`, …
+  If any frame doesn't arrive, nothing is saved, because the others' angles
+  can't be known.
 
-Controls Basler GigE cameras via PyPylon:
+## Usage
 
-- Connect to camera by IP address
-- Configure camera settings (exposure, gain, brightness, etc.)
-- Capture single images
-- Stream continuous frames
-- Return streaming images as base64-encoded JPEG (quality 85), single captures as PNG
+Run from the repository root, with NI-DAQmx and Basler pylon installed.
 
-**Migrated from pilot**: `pylon/pylon.py`, `pylon/pylon_stream.py`
-
-### Camera Mock (`camera_mock.py`)
-
-Mock camera implementation for testing without hardware:
-
-- Same API as real camera
-- Generates test pattern images
-- No PyPylon dependency required
-
-**Migrated from pilot**: `pylon/pylon_fake.py`, `pylon/pylon_stream_fake.py`
-
-### DAQ Interface (`daq.py`)
-
-Controls National Instruments DAQ for rotation:
-
-- Initialize NI-DAQ device
-- Control stepper motor for rotation stage
-- Rotate by degrees or steps
-- Synchronize with camera triggers
-
-**Migrated from pilot**: `daq/` directory
-
-### DAQ Mock (`daq_mock.py`)
-
-Mock DAQ implementation for testing without hardware:
-
-- Same API as real DAQ
-- Simulates rotation timing
-- No NI-DAQmx dependency required
-
-## Usage Example
-
-### Camera
-
-```python
-from python.hardware.camera import Camera
-
-# Connect to camera
-camera = Camera(ip_address="10.0.0.45")
-if camera.connect():
-    # Configure settings
-    camera.set_exposure(10000)  # 10ms
-    camera.set_gain(5.0)         # 5dB
-
-    # Capture image
-    image_base64 = camera.capture()
-    print(f"Captured image: {len(image_base64)} bytes")
-
-    camera.disconnect()
-```
-
-### DAQ
-
-```python
-from python.hardware.daq import DAQ
-
-# Connect to DAQ
-daq = DAQ(device_id="Dev1")
-if daq.connect():
-    # Rotate 90 degrees clockwise
-    daq.rotate(90)
-
-    # Get current position
-    position = daq.get_position()
-    print(f"Current position: {position}°")
-
-    # Return to home
-    daq.home()
-
-    daq.disconnect()
-```
-
-## Mock Hardware for Testing
-
-Use mock implementations when physical hardware is not available:
+### Full scan
 
 ```python
 import os
 
-# Set environment variable to use mock hardware
-os.environ['BLOOM_USE_MOCK_HARDWARE'] = 'true'
+os.environ["BLOOM_USE_MOCK_HARDWARE"] = "false"  # use the real camera and DAQ
 
-from python.hardware.camera_mock import CameraMock as Camera
-from python.hardware.daq_mock import DAQMock as DAQ
+from python.hardware.camera_types import CameraSettings
+from python.hardware.daq_types import DAQSettings
+from python.hardware.scanner import Scanner
+from python.hardware.scanner_types import ScannerSettings
 
-# Rest of the code is identical to real hardware
-camera = Camera(ip_address="mock")
-camera.connect()
-# ...
+settings = ScannerSettings(
+    camera=CameraSettings(exposure_time=10000, gain=100, camera_ip_address="10.0.0.23"),
+    daq=DAQSettings(device_name="cDAQ1Mod1"),
+    num_frames=72,
+    output_path="./scans/plant_001",
+)
+
+scanner = Scanner(settings)
+scanner.initialize()
+try:
+    result = scanner.perform_scan()  # call from the main thread
+    print(result.success, result.frames_captured, result.output_path)
+finally:
+    scanner.cleanup()
 ```
 
-## IPC Integration
+`Scanner` uses the mock camera and DAQ unless `BLOOM_USE_MOCK_HARDWARE` is set
+to `false`.
 
-Hardware modules are called from `python/ipc_handler.py`:
+### Camera only
 
 ```python
-# In ipc_handler.py
-def handle_command(cmd: Dict[str, Any]) -> None:
-    command = cmd.get("command")
+from python.hardware.camera import Camera
+from python.hardware.camera_types import CameraSettings
 
-    if command == "camera:connect":
-        ip = cmd.get("ip_address")
-        camera = Camera(ip_address=ip)
-        success = camera.connect()
-        send_data({"connected": success})
-
-    elif command == "camera:capture":
-        image = camera.capture()
-        print(f"IMAGE:{image}", flush=True)  # Send via stdout protocol
+camera = Camera(CameraSettings(exposure_time=10000, gain=100, camera_ip_address="10.0.0.23"))
+camera.open()
+try:
+    image = camera.grab_frame()  # numpy array
+    print(image.shape)
+finally:
+    camera.close()
 ```
 
-## Testing
+For a triggered sequence: `start_triggered_capture(n)`, then for each frame
+`trigger_frame()` and `retrieve_next_frame()`, then `stop_triggered_capture()`.
 
-Tests for hardware modules are in `python/tests/hardware/`:
+### Turntable only
 
-- `test_camera.py` - Camera interface tests (uses mock)
-- `test_daq.py` - DAQ interface tests (uses mock)
+```python
+from python.hardware.daq import DAQ
+from python.hardware.daq_types import DAQSettings
 
-Run hardware tests:
+daq = DAQ(DAQSettings(device_name="cDAQ1Mod1", step_pin=0, dir_pin=1))
+daq.initialize()
+try:
+    daq.rotate(90)              # degrees; negative turns the other way
+    print(daq.get_position())   # current angle, 0-360
+    daq.home()                  # back to 0°
+finally:
+    daq.cleanup()
+```
+
+## Without hardware
+
+`MockCamera` and `MockDAQ` have the same methods as `Camera` and `DAQ`, and need
+neither pypylon nor nidaqmx. `MockCamera` returns test images.
+
+```python
+from python.hardware.camera_mock import MockCamera
+from python.hardware.daq_mock import MockDAQ
+```
+
+`Scanner` uses them automatically while `BLOOM_USE_MOCK_HARDWARE` is `true` (the
+default). In Bloom Desktop, `BLOOM_USE_MOCK_HARDWARE`, `BLOOM_USE_MOCK_CAMERA` and
+`BLOOM_USE_MOCK_DAQ` choose real or mock hardware.
+
+## How Bloom Desktop calls these modules
+
+The app starts `python/main.py --ipc` and sends it JSON commands (`camera`, `daq`,
+`scanner`, `check_hardware`) over stdin; `python/ipc_handler.py` routes them to
+these modules and sends results back on stdout.
+
+## Tests
+
+Tests are in `python/tests/` (for example `test_scanner.py`, `test_daq_rotation.py`,
+`test_camera_commands.py`) and use the mocks:
 
 ```bash
-# Run all tests (uses mocks)
 npm run test:python
-
-# Test with real hardware (optional)
-BLOOM_USE_REAL_CAMERA=true BLOOM_CAMERA_IP=10.0.0.45 npm run test:python
 ```
-
-## Development Guidelines
-
-### Adding New Hardware Modules
-
-1. Create main module: `hardware/device.py`
-2. Create mock module: `hardware/device_mock.py`
-3. Create types: `hardware/device_types.py`
-4. Add tests: `tests/hardware/test_device.py`
-5. Update IPC handler: `ipc_handler.py`
-6. Update TypeScript types: `src/types/device.ts`
-7. Create subprocess wrapper: `src/main/device-process.ts`
-
-### Mock Implementation Requirements
-
-Mock implementations must:
-
-- Match the exact API of real hardware
-- Use same function signatures
-- Return same data types
-- Simulate realistic timing/behavior
-- Not require hardware dependencies
-
-## Related Issues
-
-- Issue #15: Camera Interface Migration
-- Issue #16: DAQ Interface Migration
-- Issue #12: Python IPC Protocol (foundation)
