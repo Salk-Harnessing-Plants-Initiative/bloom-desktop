@@ -19,6 +19,7 @@
 The xlsx upload format is documented in the spec §4 Section 6 and §8 (Subagent B finding). The cleanest existing sample is `/home/graviscan/Desktop/test-metadata-sample.xlsx` on the rig.
 
 **Files:**
+
 - Create: `tests/fixtures/graviscan/README.md` (new dir, README explaining the fixture)
 - Create: `tests/fixtures/graviscan/accessions-sample.xlsx` (the canonical sample)
 
@@ -59,15 +60,15 @@ operator manual](../../docs/superpowers/specs/2026-05-26-graviscan-user-manual-d
 spec-canonical snake_case form, but the in-app column-mapping UI
 lets operators map any header to the right field):
 
-| Column | Type | Required | Example |
-|---|---|---|---|
-| `plate_id` | string | yes | `PLATE_001` |
-| `plate_section_id` | string | yes | `S1` |
-| `plant_qr` | string | yes | `PLANT-001-A` |
-| `accession` | string | yes | `Col-0` |
-| `transplant_date` | date | yes | `2025-06-15` |
-| `medium` | string | yes | `1/2 MS` |
-| `custom_note` | string | no | `replant` |
+| Column             | Type   | Required | Example       |
+| ------------------ | ------ | -------- | ------------- |
+| `plate_id`         | string | yes      | `PLATE_001`   |
+| `plate_section_id` | string | yes      | `S1`          |
+| `plant_qr`         | string | yes      | `PLANT-001-A` |
+| `accession`        | string | yes      | `Col-0`       |
+| `transplant_date`  | date   | yes      | `2025-06-15`  |
+| `medium`           | string | yes      | `1/2 MS`      |
+| `custom_note`      | string | no       | `replant`     |
 
 The sample covers 3 plates × 4 sections = 12 rows, with 3 different
 accessions (Col-0, Ler-0, Cvi-0) demonstrating the
@@ -518,6 +519,7 @@ Tell the Claude session: "Task 7 done — N screenshots captured at `~/Pictures/
 The spec §4 has the full section walkthrough. This task is to convert it into Notion's enhanced-markdown format (the format the MCP `notion-create-pages` tool accepts) and save as a draft file in the repo. This way the content can be reviewed in-place before any Notion API call.
 
 **Files:**
+
 - Create: `docs/superpowers/drafts/graviscan-user-manual-notion-body.md` (the source of truth for the Notion page body)
 
 - [ ] **Step 1: Read the Notion enhanced-markdown spec**
@@ -587,6 +589,7 @@ the next task before publishing to Notion."
 Cross-links in the manual use `<mention-page url="https://www.notion.so/<id>"/>` syntax. The spec §2 lists which pages to link to. This task is to look up each page's URL via the Notion API.
 
 **Files:**
+
 - Modify: `docs/superpowers/drafts/graviscan-user-manual-notion-body.md` (replace TBD placeholders with real URLs)
 
 - [ ] **Step 1: Find Phenotypers admin page**
@@ -675,6 +678,7 @@ mcp__claude_ai_Notion__notion-fetch id="<new page URL from Step 3>"
 ```
 
 Inspect the rendered page. Check:
+
 - Title shows with the 🪴 emoji
 - Header callout is at the top
 - 12 sections present (0 + 1-11)
@@ -726,6 +730,7 @@ mcp__claude_ai_Notion__notion-fetch id="<new page URL>"
 ```
 
 Check that:
+
 - No `<!-- ... -->` placeholders remain (would have leaked from Task 8/9)
 - All 10 image embeds resolved (not empty placeholders)
 - Box URL resolves to a clickable link

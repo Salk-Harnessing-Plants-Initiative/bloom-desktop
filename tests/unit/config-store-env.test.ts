@@ -43,11 +43,11 @@ describe('loadEnvConfig — new env vars', () => {
     it('is set to the configured URL when present', () => {
       fs.writeFileSync(
         envPath,
-        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T/B/X\n',
+        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T/B/X\n'
       );
       const config = loadEnvConfig(envPath);
       expect(config.slack_webhook_url).toBe(
-        'https://hooks.slack.com/services/T/B/X',
+        'https://hooks.slack.com/services/T/B/X'
       );
     });
 
@@ -116,14 +116,14 @@ describe('loadEnvConfig — new env vars', () => {
     it('persists slack_webhook_url across load → save → load', async () => {
       fs.writeFileSync(
         envPath,
-        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/X/Y/Z\n',
+        'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/X/Y/Z\n'
       );
       const { saveEnvConfig } = await import('../../src/main/config-store');
       const c1 = loadEnvConfig(envPath);
       saveEnvConfig(c1, envPath);
       const c2 = loadEnvConfig(envPath);
       expect(c2.slack_webhook_url).toBe(
-        'https://hooks.slack.com/services/X/Y/Z',
+        'https://hooks.slack.com/services/X/Y/Z'
       );
     });
 
@@ -173,11 +173,11 @@ describe('loadEnvConfig — new env vars', () => {
           'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/A/B/C',
           'LIBUSB_ENDPOINT_RECOVERY=false',
           '',
-        ].join('\n'),
+        ].join('\n')
       );
       const config = loadEnvConfig(envPath);
       expect(config.slack_webhook_url).toBe(
-        'https://hooks.slack.com/services/A/B/C',
+        'https://hooks.slack.com/services/A/B/C'
       );
       expect(config.libusb_endpoint_recovery).toBe(false);
     });
@@ -191,13 +191,13 @@ describe('loadEnvConfig — new env vars', () => {
           'BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/X/Y/Z',
           'LIBUSB_ENDPOINT_RECOVERY=true',
           '',
-        ].join('\n'),
+        ].join('\n')
       );
       const config = loadEnvConfig(envPath);
       expect(config.scanner_name).toBe('Sc1');
       expect(config.bloom_api_url).toBe('https://api.example.com');
       expect(config.slack_webhook_url).toBe(
-        'https://hooks.slack.com/services/X/Y/Z',
+        'https://hooks.slack.com/services/X/Y/Z'
       );
       expect(config.libusb_endpoint_recovery).toBe(true);
     });

@@ -177,9 +177,9 @@ export class WedgeDetector {
       if (!this.warnedAboutMissingFields) {
         this.warnedAboutMissingFields = true;
         console.warn(
-          `[WedgeDetector] scan-error event missing bytes_received or wall_seconds — `
-            + `device_io_120s_zero_bytes signature will not fire. Is the Python worker on a `
-            + `pre-Task-0 version?`,
+          `[WedgeDetector] scan-error event missing bytes_received or wall_seconds — ` +
+            `device_io_120s_zero_bytes signature will not fire. Is the Python worker on a ` +
+            `pre-Task-0 version?`
         );
       }
     }
@@ -187,8 +187,10 @@ export class WedgeDetector {
     state.pendingErrors.push({
       plate_index: err.plate_index,
       error: err.error,
-      bytes_received: typeof err.bytes_received === 'number' ? err.bytes_received : -1,
-      wall_seconds: typeof err.wall_seconds === 'number' ? err.wall_seconds : -1,
+      bytes_received:
+        typeof err.bytes_received === 'number' ? err.bytes_received : -1,
+      wall_seconds:
+        typeof err.wall_seconds === 'number' ? err.wall_seconds : -1,
     });
   }
 
@@ -205,7 +207,7 @@ export class WedgeDetector {
 
     // Find and remove any pending error for this (scanner, plate)
     const idx = state.pendingErrors.findIndex(
-      (e) => e.plate_index === evt.plate_index,
+      (e) => e.plate_index === evt.plate_index
     );
     if (idx === -1) return;
     const pending = state.pendingErrors.splice(idx, 1)[0];
@@ -248,7 +250,7 @@ export class WedgeDetector {
   private emit(
     scannerId: string,
     signature: WedgeSignature,
-    errorMessage: string,
+    errorMessage: string
   ): void {
     this.onWedge({
       scanner_id: scannerId,

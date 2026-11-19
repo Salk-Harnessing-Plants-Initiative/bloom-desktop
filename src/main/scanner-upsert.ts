@@ -50,7 +50,7 @@ export interface UpsertScannerPayload {
  */
 export async function upsertScannerRow(
   db: PrismaClient,
-  payload: UpsertScannerPayload,
+  payload: UpsertScannerPayload
 ): Promise<GraviScannerRow> {
   let existing: GraviScannerRow | null = null;
 
@@ -76,8 +76,7 @@ export async function upsertScannerRow(
       where: { id: existing.id },
       data: {
         name: payload.name,
-        display_name:
-          payload.display_name ?? existing.display_name ?? null,
+        display_name: payload.display_name ?? existing.display_name ?? null,
         vendor_id: payload.vendor_id,
         product_id: payload.product_id,
         usb_port: payload.usb_port ?? null,
@@ -122,9 +121,7 @@ export interface DisableStaleResult {
   disabled: string[];
 }
 
-export type DisableScannerResult =
-  | { ok: true }
-  | { ok: false; error: string };
+export type DisableScannerResult = { ok: true } | { ok: false; error: string };
 
 /**
  * Minimal coordinator interface used by `disableScannerById`. Allows
@@ -151,7 +148,7 @@ export interface CoordinatorLike {
 export async function disableScannerById(
   db: PrismaClient,
   coordinator: CoordinatorLike | null,
-  scannerId: string,
+  scannerId: string
 ): Promise<DisableScannerResult> {
   const row = (await db.graviScanner.findUnique({
     where: { id: scannerId },
@@ -197,7 +194,7 @@ export async function disableScannerById(
  */
 export async function disableStaleScannerRows(
   db: PrismaClient,
-  currentUsbPorts: readonly string[],
+  currentUsbPorts: readonly string[]
 ): Promise<DisableStaleResult> {
   const enabled = (await db.graviScanner.findMany({
     where: { enabled: true },
@@ -241,7 +238,7 @@ export async function disableStaleScannerRows(
  */
 export async function stopWorkersForDisabledScanners(
   coordinator: CoordinatorLike,
-  disabledIds: readonly string[],
+  disabledIds: readonly string[]
 ): Promise<void> {
   for (const id of disabledIds) {
     if (!coordinator.hasWorker(id)) continue;
@@ -253,7 +250,7 @@ export async function stopWorkersForDisabledScanners(
       // already inside a try/catch that returns to the renderer.
       console.error(
         `[stopWorkersForDisabledScanners] Failed to stop worker for ${id}:`,
-        err instanceof Error ? err.message : err,
+        err instanceof Error ? err.message : err
       );
     }
   }

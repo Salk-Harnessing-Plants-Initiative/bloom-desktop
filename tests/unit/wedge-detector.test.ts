@@ -25,7 +25,7 @@ import type {
 } from '../../src/main/wedge-detector';
 
 function makeScanError(
-  overrides: Partial<ScanErrorInput> = {},
+  overrides: Partial<ScanErrorInput> = {}
 ): ScanErrorInput {
   return {
     scanner_id: 'sc-a',
@@ -58,9 +58,13 @@ describe('WedgeDetector', () => {
   describe('sane_start_invalid signature', () => {
     it('emits exactly one wedge on match', () => {
       detector.onScanError(
-        makeScanError({ error: 'epkowa: sane_start: Invalid argument' }),
+        makeScanError({ error: 'epkowa: sane_start: Invalid argument' })
       );
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       expect(emitted).toEqual([
         { scanner_id: 'sc-a', signature: 'sane_start_invalid' },
       ]);
@@ -68,23 +72,41 @@ describe('WedgeDetector', () => {
 
     it('does NOT emit if the scan recovers (scan-complete follows scan-error)', () => {
       detector.onScanError(
-        makeScanError({ error: 'sane_start: Invalid argument' }),
+        makeScanError({ error: 'sane_start: Invalid argument' })
       );
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: true });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: true,
+      });
       expect(emitted).toEqual([]);
     });
 
     it('deduplicates: two sane_start errors from the same scanner in one cycle emit ONE wedge', () => {
       detector.onScanError(
-        makeScanError({ plate_index: '00', error: 'sane_start: Invalid argument' }),
+        makeScanError({
+          plate_index: '00',
+          error: 'sane_start: Invalid argument',
+        })
       );
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       detector.onScanError(
-        makeScanError({ plate_index: '01', error: 'sane_start: Invalid argument' }),
+        makeScanError({
+          plate_index: '01',
+          error: 'sane_start: Invalid argument',
+        })
       );
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '01', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '01',
+        success: false,
+      });
       const saneStartCount = emitted.filter(
-        (e) => e.signature === 'sane_start_invalid',
+        (e) => e.signature === 'sane_start_invalid'
       ).length;
       expect(saneStartCount).toBe(1);
     });
@@ -97,9 +119,13 @@ describe('WedgeDetector', () => {
           error: 'Error during device I/O',
           bytes_received: 0,
           wall_seconds: 121,
-        }),
+        })
       );
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       expect(emitted).toEqual([
         { scanner_id: 'sc-a', signature: 'device_io_120s_zero_bytes' },
       ]);
@@ -111,10 +137,14 @@ describe('WedgeDetector', () => {
           error: 'Error during device I/O',
           bytes_received: 0,
           wall_seconds: 121,
-        }),
+        })
       );
       // Scan ultimately succeeded — recovered transient I/O error.
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: true });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: true,
+      });
       expect(emitted).toEqual([]);
     });
 
@@ -124,11 +154,15 @@ describe('WedgeDetector', () => {
           error: 'Error during device I/O',
           bytes_received: 100,
           wall_seconds: 121,
-        }),
+        })
       );
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       const ioCount = emitted.filter(
-        (e) => e.signature === 'device_io_120s_zero_bytes',
+        (e) => e.signature === 'device_io_120s_zero_bytes'
       ).length;
       expect(ioCount).toBe(0);
     });
@@ -139,11 +173,15 @@ describe('WedgeDetector', () => {
           error: 'Error during device I/O',
           bytes_received: 0,
           wall_seconds: 90,
-        }),
+        })
       );
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       const ioCount = emitted.filter(
-        (e) => e.signature === 'device_io_120s_zero_bytes',
+        (e) => e.signature === 'device_io_120s_zero_bytes'
       ).length;
       expect(ioCount).toBe(0);
     });
@@ -154,11 +192,15 @@ describe('WedgeDetector', () => {
           error: 'some other error',
           bytes_received: 0,
           wall_seconds: 150,
-        }),
+        })
       );
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       const ioCount = emitted.filter(
-        (e) => e.signature === 'device_io_120s_zero_bytes',
+        (e) => e.signature === 'device_io_120s_zero_bytes'
       ).length;
       expect(ioCount).toBe(0);
     });
@@ -166,48 +208,84 @@ describe('WedgeDetector', () => {
 
   describe('consecutive_failures signature', () => {
     it('emits when same scanner errors twice in one cycle (with both scans failing)', () => {
-      detector.onScanError(makeScanError({ plate_index: '00', error: 'transient' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
-      detector.onScanError(makeScanError({ plate_index: '01', error: 'transient' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '01', success: false });
+      detector.onScanError(
+        makeScanError({ plate_index: '00', error: 'transient' })
+      );
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
+      detector.onScanError(
+        makeScanError({ plate_index: '01', error: 'transient' })
+      );
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '01',
+        success: false,
+      });
       const count = emitted.filter(
-        (e) => e.signature === 'consecutive_failures',
+        (e) => e.signature === 'consecutive_failures'
       ).length;
       expect(count).toBe(1);
     });
 
     it('cycle boundary resets the counter', () => {
       detector.onScanError(makeScanError({ plate_index: '00' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       detector.onCycleStart(2);
       detector.onScanError(makeScanError({ plate_index: '00' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       // One error in cycle 1, one error in cycle 2 — no consecutive_failures
       const count = emitted.filter(
-        (e) => e.signature === 'consecutive_failures',
+        (e) => e.signature === 'consecutive_failures'
       ).length;
       expect(count).toBe(0);
     });
 
     it('counter is per scanner: errors from A and B in one cycle do NOT trigger', () => {
       detector.onScanError(makeScanError({ scanner_id: 'sc-a' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       detector.onScanError(makeScanError({ scanner_id: 'sc-b' }));
-      detector.onScanEnd({ scanner_id: 'sc-b', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-b',
+        plate_index: '00',
+        success: false,
+      });
       const count = emitted.filter(
-        (e) => e.signature === 'consecutive_failures',
+        (e) => e.signature === 'consecutive_failures'
       ).length;
       expect(count).toBe(0);
     });
 
     it('a recovered scan does NOT increment the consecutive counter past threshold', () => {
       detector.onScanError(makeScanError({ plate_index: '00' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: true }); // recovered
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: true,
+      }); // recovered
       detector.onScanError(makeScanError({ plate_index: '01' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '01', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '01',
+        success: false,
+      });
       // Only one ACTUAL failure for sc-a → no wedge
       const count = emitted.filter(
-        (e) => e.signature === 'consecutive_failures',
+        (e) => e.signature === 'consecutive_failures'
       ).length;
       expect(count).toBe(0);
     });
@@ -240,15 +318,23 @@ describe('WedgeDetector', () => {
 
     it('duplicate cycle-start events with the same cycle number are idempotent', () => {
       detector.onScanError(makeScanError({ plate_index: '00' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '00',
+        success: false,
+      });
       // Replay the same cycle-start — should NOT reset the per-scanner
       // counter (cycle number 1 is already in flight)
       detector.onCycleStart(1);
       detector.onScanError(makeScanError({ plate_index: '01' }));
-      detector.onScanEnd({ scanner_id: 'sc-a', plate_index: '01', success: false });
+      detector.onScanEnd({
+        scanner_id: 'sc-a',
+        plate_index: '01',
+        success: false,
+      });
       // Two failures in cycle 1 → consecutive_failures fires
       const count = emitted.filter(
-        (e) => e.signature === 'consecutive_failures',
+        (e) => e.signature === 'consecutive_failures'
       ).length;
       expect(count).toBe(1);
     });
@@ -272,7 +358,9 @@ describe('WedgeDetector', () => {
       d.onScanEnd({ scanner_id: 'sc-a', plate_index: '00', success: false });
       expect(warnSpy).toHaveBeenCalledTimes(1);
       // Warning mentions the missing fields and the pre-Task-0 hint
-      expect(warnSpy.mock.calls[0][0]).toMatch(/bytes_received or wall_seconds/);
+      expect(warnSpy.mock.calls[0][0]).toMatch(
+        /bytes_received or wall_seconds/
+      );
       warnSpy.mockRestore();
     });
 
@@ -308,7 +396,7 @@ describe('WedgeDetector', () => {
         makeScanError({
           scanner_id: 'sc-x',
           error: 'sane_start: Invalid argument',
-        }),
+        })
       );
       d.onScanEnd({ scanner_id: 'sc-x', plate_index: '00', success: false });
 

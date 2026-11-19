@@ -65,13 +65,13 @@ The body of the manual is a 12-section linear walkthrough (Section 0 is the pre-
 
 ### Section 0 — Before you start (pre-flight checklist, 5 items)
 
-| # | Check | How to verify | If fails |
-|---|---|---|---|
-| 1 | All 5 scanners powered on, LED steady | Walk past the rig; each scanner's status light is steady | Power it on, wait 10 sec, then check Configure Scanner page |
-| 2 | App launched from the desktop icon (not a terminal) | Single click on the desktop shortcut; window opens within ~5 sec | Close + relaunch via icon |
-| 3 | Free disc space ≥ 50 GB on `/data` | Open Terminal: `df -h /data` | If `/data` doesn't exist: ping engineering. If <50 GB: ping engineering before starting |
-| 4 | `#topic-graviscan-alerts` channel open in Slack | Slack search "topic-graviscan-alerts" → public channel, anyone can join | Without this, wedge alerts go unseen → silent data loss |
-| 5 | Physical scanner tape labels match UI Scanner numbering | Glance at each physical scanner's tape label, cross-reference with the UI | If they don't match: STOP and ping Benfica/Elizabeth |
+| #   | Check                                                   | How to verify                                                             | If fails                                                                                |
+| --- | ------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 1   | All 5 scanners powered on, LED steady                   | Walk past the rig; each scanner's status light is steady                  | Power it on, wait 10 sec, then check Configure Scanner page                             |
+| 2   | App launched from the desktop icon (not a terminal)     | Single click on the desktop shortcut; window opens within ~5 sec          | Close + relaunch via icon                                                               |
+| 3   | Free disc space ≥ 50 GB on `/data`                      | Open Terminal: `df -h /data`                                              | If `/data` doesn't exist: ping engineering. If <50 GB: ping engineering before starting |
+| 4   | `#topic-graviscan-alerts` channel open in Slack         | Slack search "topic-graviscan-alerts" → public channel, anyone can join   | Without this, wedge alerts go unseen → silent data loss                                 |
+| 5   | Physical scanner tape labels match UI Scanner numbering | Glance at each physical scanner's tape label, cross-reference with the UI | If they don't match: STOP and ping Benfica/Elizabeth                                    |
 
 ### Section 1 — Open Bloom Desktop
 
@@ -112,15 +112,15 @@ Brief inline steps; mention-page to the Scientists admin page.
 - 📢 File MUST be Excel (.xlsx or .xls), 15 MB max — **no CSV path exists**
 - 7 columns (header row required), 6 required, 1 optional:
 
-| Column | Type | Example | Notes |
-|---|---|---|---|
-| `plate_id` | string | `PLATE_001` | One Accession per plate_id |
-| `plate_section_id` | string | `S1` | Section within plate |
-| `plant_qr` | string | `PLANT-001-A` | Unique within plate |
-| `accession` | string | `Col-0` | Consistent for same plate_id |
-| `transplant_date` | date | `2025-06-15` | YYYY-MM-DD, year 1900-2100 |
-| `medium` | string | `1/2 MS` | Growth medium |
-| `custom_note` | string | `replant` | **OPTIONAL** — only optional col |
+| Column             | Type   | Example       | Notes                            |
+| ------------------ | ------ | ------------- | -------------------------------- |
+| `plate_id`         | string | `PLATE_001`   | One Accession per plate_id       |
+| `plate_section_id` | string | `S1`          | Section within plate             |
+| `plant_qr`         | string | `PLANT-001-A` | Unique within plate              |
+| `accession`        | string | `Col-0`       | Consistent for same plate_id     |
+| `transplant_date`  | date   | `2025-06-15`  | YYYY-MM-DD, year 1900-2100       |
+| `medium`           | string | `1/2 MS`      | Growth medium                    |
+| `custom_note`      | string | `replant`     | **OPTIONAL** — only optional col |
 
 - Link to sample file (Box) — sample committed to repo as `tests/fixtures/graviscan/accessions-sample.xlsx`; same file uploaded to a shared Box folder; manual links the Box URL
 - Common errors:
@@ -277,15 +277,15 @@ Four parallel subagent investigations during this brainstorm informed the spec. 
 
 These are pre-requisites or parallel actions that the writing-plans skill should treat as upstream dependencies, not as deferred-forever items.
 
-| # | Action | Blocking? |
-|---|---|---|
-| 1 | Set up 10 TB partition redirect: `sudo chown` on `/data/bloom`, then Machine Config UI step | Recommended before the manual ships (so Section 0 #3 and Section 10 use the simpler text without conditional language) |
-| 2 | Commit `/home/graviscan/Desktop/test-metadata-sample.xlsx` to repo as `tests/fixtures/graviscan/accessions-sample.xlsx` + upload to Box + capture Box URL | Blocking for Section 6 sample-file link |
-| 3 | Add comment to issue #203 with Subagent C code-line evidence about the port-move display_name bug | Non-blocking; informational for the warning text |
-| 4 | File new GitHub issue: "Wedge response gap — no UI affordance for resume / skip / retry; irreversible time-lapse data loss for affected plates" | Non-blocking; the manual's Section 11 references the gap honestly regardless |
-| 5 | File new GitHub issue: "Env config UI banner — show Slack on/off + LIBUSB_ENDPOINT_RECOVERY on/off in the app so operators can self-detect misconfiguration" | Non-blocking |
-| 6 | Capture the 10 screenshots at the rig | Blocking for final Notion publication; the spec uses placeholders until they're captured |
-| 7 | Operator provides Box folder URL for backup link in Section 10 | Blocking for the Section 10 link; placeholder until provided |
+| #   | Action                                                                                                                                                       | Blocking?                                                                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| 1   | Set up 10 TB partition redirect: `sudo chown` on `/data/bloom`, then Machine Config UI step                                                                  | Recommended before the manual ships (so Section 0 #3 and Section 10 use the simpler text without conditional language) |
+| 2   | Commit `/home/graviscan/Desktop/test-metadata-sample.xlsx` to repo as `tests/fixtures/graviscan/accessions-sample.xlsx` + upload to Box + capture Box URL    | Blocking for Section 6 sample-file link                                                                                |
+| 3   | Add comment to issue #203 with Subagent C code-line evidence about the port-move display_name bug                                                            | Non-blocking; informational for the warning text                                                                       |
+| 4   | File new GitHub issue: "Wedge response gap — no UI affordance for resume / skip / retry; irreversible time-lapse data loss for affected plates"              | Non-blocking; the manual's Section 11 references the gap honestly regardless                                           |
+| 5   | File new GitHub issue: "Env config UI banner — show Slack on/off + LIBUSB_ENDPOINT_RECOVERY on/off in the app so operators can self-detect misconfiguration" | Non-blocking                                                                                                           |
+| 6   | Capture the 10 screenshots at the rig                                                                                                                        | Blocking for final Notion publication; the spec uses placeholders until they're captured                               |
+| 7   | Operator provides Box folder URL for backup link in Section 10                                                                                               | Blocking for the Section 10 link; placeholder until provided                                                           |
 
 ## 10. Out-of-scope (intentionally not in this spec)
 

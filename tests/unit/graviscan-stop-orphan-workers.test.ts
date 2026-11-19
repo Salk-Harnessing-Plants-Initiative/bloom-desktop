@@ -60,7 +60,7 @@ describe('stopWorkersForDisabledScanners (#20)', () => {
       if (id === 'scanner-a') throw new Error('worker stuck');
     });
     await expect(
-      stopWorkersForDisabledScanners(coordinator, ['scanner-a', 'scanner-b']),
+      stopWorkersForDisabledScanners(coordinator, ['scanner-a', 'scanner-b'])
     ).resolves.not.toThrow();
     // Both attempts still occur — scanner-b is reached after scanner-a fails.
     expect(coordinator.stopScanner).toHaveBeenCalledTimes(2);

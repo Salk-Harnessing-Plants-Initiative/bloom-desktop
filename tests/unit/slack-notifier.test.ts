@@ -13,14 +13,7 @@
  *    throw.
  */
 
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-} from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SlackNotifier } from '../../src/main/slack-notifier';
 import type { WedgeDetectedEvent } from '../../src/main/wedge-detector';
 
@@ -28,7 +21,7 @@ const TEST_URL =
   'https://hooks.slack.com/services/SECRET/PATH/TOKEN-DO-NOT-LOG';
 
 function makeWedge(
-  overrides: Partial<WedgeDetectedEvent> = {},
+  overrides: Partial<WedgeDetectedEvent> = {}
 ): WedgeDetectedEvent {
   return {
     scanner_id: 'sc-a',
@@ -91,7 +84,7 @@ describe('SlackNotifier', () => {
           scanner_id: 'sc-uuid-1',
           display_name: 'Scanner 3',
           usb_port: '17-2',
-        }),
+        })
       );
       const init = fetchMock.mock.calls[0][1] as RequestInit;
       const body = JSON.parse(init.body as string);
@@ -121,11 +114,11 @@ describe('SlackNotifier', () => {
           signature: 'device_io_120s_zero_bytes',
           session_id: 'sess-7',
           cycle_number: 47,
-        }),
+        })
       );
       const init = fetchMock.mock.calls[0][1] as RequestInit;
       expect((init.headers as Record<string, string>)['Content-Type']).toBe(
-        'application/json',
+        'application/json'
       );
       const body = JSON.parse(init.body as string);
       expect(typeof body.text).toBe('string');
@@ -159,18 +152,18 @@ describe('SlackNotifier', () => {
       const n = new SlackNotifier({ webhookUrl: TEST_URL });
       // Cycle 3 at T=0
       await n.notify(
-        makeWedge({ scanner_id: 'sc-a', session_id: 'sess-1', cycle_number: 3 }),
+        makeWedge({ scanner_id: 'sc-a', session_id: 'sess-1', cycle_number: 3 })
       );
       // Cycle 4 at T=45s (within 60s window) — should be suppressed
       vi.setSystemTime(45_000);
       await n.notify(
-        makeWedge({ scanner_id: 'sc-a', session_id: 'sess-1', cycle_number: 4 }),
+        makeWedge({ scanner_id: 'sc-a', session_id: 'sess-1', cycle_number: 4 })
       );
       expect(fetchMock).toHaveBeenCalledTimes(1);
       // At T=61s (after window expires) — should fire again
       vi.setSystemTime(61_000);
       await n.notify(
-        makeWedge({ scanner_id: 'sc-a', session_id: 'sess-1', cycle_number: 5 }),
+        makeWedge({ scanner_id: 'sc-a', session_id: 'sess-1', cycle_number: 5 })
       );
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
@@ -195,7 +188,7 @@ describe('SlackNotifier', () => {
 
     it('a non-2xx status is logged but does not throw', async () => {
       fetchMock.mockResolvedValueOnce(
-        new Response('rate limited', { status: 429 }),
+        new Response('rate limited', { status: 429 })
       );
       const n = new SlackNotifier({ webhookUrl: TEST_URL });
       await expect(n.notify(makeWedge())).resolves.toBeUndefined();
@@ -206,9 +199,7 @@ describe('SlackNotifier', () => {
       const failures: Array<() => void> = [
         () => fetchMock.mockRejectedValueOnce(new Error('boom')),
         () =>
-          fetchMock.mockResolvedValueOnce(
-            new Response('x', { status: 503 }),
-          ),
+          fetchMock.mockResolvedValueOnce(new Response('x', { status: 503 })),
       ];
       for (const setup of failures) {
         consoleErrorSpy.mockClear();
@@ -249,7 +240,10 @@ describe('SlackNotifier', () => {
       vi.setSystemTime(25 * 60 * 60 * 1000); // 25h later
       fetchMock.mockClear();
       // Restore default rate limit
-      const n2 = new SlackNotifier({ webhookUrl: TEST_URL, rateLimitMs: 60_000 });
+      const n2 = new SlackNotifier({
+        webhookUrl: TEST_URL,
+        rateLimitMs: 60_000,
+      });
       // Fresh notifier; just confirm constructor doesn't throw
       void n2;
       // The previous notifier's behavior under rate-limit-zero means
@@ -263,7 +257,10 @@ describe('SlackNotifier', () => {
       // Construct with rate-limit 60s so each session-id gets a
       // distinct key in the map. Then artificially populate the map
       // to exceed pruneThreshold = 10_000.
-      const n = new SlackNotifier({ webhookUrl: TEST_URL, rateLimitMs: 60_000 });
+      const n = new SlackNotifier({
+        webhookUrl: TEST_URL,
+        rateLimitMs: 60_000,
+      });
       // Reach into the private map via cast; this is a white-box test
       // of the prune behavior.
       const internal = n as unknown as { lastSent: Map<string, number> };

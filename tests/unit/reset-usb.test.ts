@@ -176,7 +176,9 @@ async function resetUsbLogic(opts: {
 // Test helpers
 // ---------------------------------------------------------------------------
 
-function makeSavedScanner(overrides: Partial<MockGraviScanner>): MockGraviScanner {
+function makeSavedScanner(
+  overrides: Partial<MockGraviScanner>
+): MockGraviScanner {
   return {
     id: 'scanner-1',
     name: 'Perfection V600 Photo',
@@ -226,8 +228,18 @@ describe('Reset USB handler logic', () => {
     ];
     const db = createMockDb(saved);
     const detected = [
-      makeDetected({ usb_port: '1-3', usb_bus: 1, usb_device: 8, sane_name: 'epkowa:interpreter:001:008' }),
-      makeDetected({ usb_port: '1-4', usb_bus: 1, usb_device: 9, sane_name: 'epkowa:interpreter:001:009' }),
+      makeDetected({
+        usb_port: '1-3',
+        usb_bus: 1,
+        usb_device: 8,
+        sane_name: 'epkowa:interpreter:001:008',
+      }),
+      makeDetected({
+        usb_port: '1-4',
+        usb_bus: 1,
+        usb_device: 9,
+        sane_name: 'epkowa:interpreter:001:009',
+      }),
     ];
 
     const result = await resetUsbLogic({

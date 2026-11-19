@@ -61,10 +61,7 @@ export function ScanFileBrowser({
         setFiles(result.files);
 
         // Auto-scroll to top when new files appear
-        if (
-          result.files.length > prevFileCount.current &&
-          scrollRef.current
-        ) {
+        if (result.files.length > prevFileCount.current && scrollRef.current) {
           scrollRef.current.scrollTop = 0;
         }
         prevFileCount.current = result.files.length;

@@ -111,7 +111,7 @@ describe('buildSubprocessEnv (Task 4 #228)', () => {
           platform: 'linux',
           mock: false,
           processEnv: baseEnv,
-        }),
+        })
       ).toThrow(/at least 4 colon-separated tokens/);
     });
 
@@ -123,7 +123,7 @@ describe('buildSubprocessEnv (Task 4 #228)', () => {
           platform: 'linux',
           mock: false,
           processEnv: baseEnv,
-        }),
+        })
       ).toThrow(/3-digit decimal/);
     });
 
@@ -135,7 +135,7 @@ describe('buildSubprocessEnv (Task 4 #228)', () => {
           platform: 'linux',
           mock: false,
           processEnv: baseEnv,
-        }),
+        })
       ).toThrow(/3-digit decimal/);
     });
 

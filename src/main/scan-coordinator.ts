@@ -344,7 +344,7 @@ export class ScanCoordinator extends EventEmitter {
       this.isPackaged,
       config.scannerId,
       config.saneName,
-      this.mock,
+      this.mock
     );
 
     sub.on('event', (event: ScanWorkerEvent) => {
@@ -358,7 +358,7 @@ export class ScanCoordinator extends EventEmitter {
 
     sub.on('exit', (info: { scannerId: string; code: number | null }) => {
       console.log(
-        `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`,
+        `[ScanCoordinator] Subprocess ${info.scannerId} exited with code ${info.code}`
       );
       this.subprocesses.delete(info.scannerId);
     });
@@ -377,10 +377,9 @@ export class ScanCoordinator extends EventEmitter {
         status: 'ready',
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       console.error(
-        `[ScanCoordinator] Scanner ${config.scannerId} init failed: ${message}`,
+        `[ScanCoordinator] Scanner ${config.scannerId} init failed: ${message}`
       );
       this.subprocesses.delete(config.scannerId);
       this.initErrors.set(config.scannerId, message);
@@ -517,9 +516,7 @@ export class ScanCoordinator extends EventEmitter {
       const gridEndedAt = new Date();
       this.currentGridEndedAt = gridEndedAt.toISOString();
 
-      console.log(
-        `[ScanCoordinator] Row [${rowGrids.join(',')}]: complete`
-      );
+      console.log(`[ScanCoordinator] Row [${rowGrids.join(',')}]: complete`);
 
       // The Python worker composed the final filename (including `_et_`)
       // at save time. The actual paths on disk are emitted via

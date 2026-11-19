@@ -173,9 +173,7 @@ export interface GraviScanPlatformInfo {
  * — use `LegacyGraviScanResolution` for DB-read code paths and
  * `isValidResolution` to narrow to `GraviScanResolution`.
  */
-export const GRAVISCAN_RESOLUTIONS = [
-  200, 400, 600, 800, 1200, 1600,
-] as const;
+export const GRAVISCAN_RESOLUTIONS = [200, 400, 600, 800, 1200, 1600] as const;
 
 export type GraviScanResolution = (typeof GRAVISCAN_RESOLUTIONS)[number];
 

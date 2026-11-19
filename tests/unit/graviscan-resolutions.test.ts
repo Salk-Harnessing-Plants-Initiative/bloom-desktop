@@ -19,7 +19,7 @@ describe('GRAVISCAN_RESOLUTIONS', () => {
 
   it('still includes 1200 (the production value)', () => {
     expect((GRAVISCAN_RESOLUTIONS as readonly number[]).includes(1200)).toBe(
-      true,
+      true
     );
   });
 
