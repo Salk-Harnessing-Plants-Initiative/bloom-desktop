@@ -49,9 +49,7 @@ function buildMessageText(evt: WedgeDetectedEvent): string {
   const identity = evt.display_name
     ? `${evt.display_name} (${evt.scanner_id})`
     : evt.scanner_id;
-  const lines = [
-    `🚨 V600 wedge on scanner ${identity}`,
-  ];
+  const lines = [`🚨 V600 wedge on scanner ${identity}`];
   if (evt.usb_port) {
     lines.push(`USB path: ${evt.usb_port}`);
   }
@@ -60,7 +58,7 @@ function buildMessageText(evt: WedgeDetectedEvent): string {
     `Session: ${evt.session_id}, Cycle: ${evt.cycle_number}`,
     `Time: ${evt.timestamp}`,
     'Physical AC power-cycle required.',
-    `Investigation summary: ${INVESTIGATION_SUMMARY_URL}`,
+    `Investigation summary: ${INVESTIGATION_SUMMARY_URL}`
   );
   return lines.join('\n');
 }
@@ -105,7 +103,9 @@ export class SlackNotifier {
 
   constructor(opts: SlackNotifierOptions) {
     this.webhookUrl =
-      opts.webhookUrl && opts.webhookUrl.length > 0 ? opts.webhookUrl : undefined;
+      opts.webhookUrl && opts.webhookUrl.length > 0
+        ? opts.webhookUrl
+        : undefined;
     this.rateLimitMs = opts.rateLimitMs ?? 60_000;
     this.timeoutMs = opts.timeoutMs ?? 10_000;
     this.now = opts.now ?? (() => Date.now());
@@ -153,7 +153,7 @@ export class SlackNotifier {
       const name = err instanceof Error ? err.name : 'Error';
       if (name === 'AbortError') {
         console.error(
-          `[SlackNotifier] POST failed: timeout after ${this.timeoutMs} ms`,
+          `[SlackNotifier] POST failed: timeout after ${this.timeoutMs} ms`
         );
       } else {
         console.error(`[SlackNotifier] POST failed: ${name}`);

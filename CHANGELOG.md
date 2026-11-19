@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     error banner on failure (consistent with the page's other
     save/error feedback).
   - **Mid-scan scanner discovery** (#234): `ScanCoordinator.addScanner()`
-    + `hasWorker()` methods + a mid-scan queue so newly-discovered
+    and `hasWorker()` methods and a mid-scan queue so newly-discovered
     scanners come online without an app restart. Mid-scan queue
     re-enters `addScanner()` on cycle-complete to keep the
     `hasWorker` idempotency guard in the loop.

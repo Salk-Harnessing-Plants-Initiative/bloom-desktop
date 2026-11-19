@@ -528,7 +528,7 @@ function initializeScanCoordinator(): void {
             // scanner_id at minimum.
             console.error(
               '[main] wedge-detected enrichment lookup failed:',
-              err instanceof Error ? err.message : err,
+              err instanceof Error ? err.message : err
             );
           }
           void slackNotifier.notify(enriched);
@@ -1258,20 +1258,18 @@ app.on('ready', async () => {
       process.env.BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL = config.slack_webhook_url;
       // Confirm to the rig admin that the URL was loaded WITHOUT
       // logging the URL itself (it's a secret).
-      console.log(
-        '[GraviScan] Slack webhook URL loaded from ~/.bloom/.env',
-      );
+      console.log('[GraviScan] Slack webhook URL loaded from ~/.bloom/.env');
     } else {
       console.log(
-        '[GraviScan] BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL not set — Slack notifications disabled',
+        '[GraviScan] BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL not set — Slack notifications disabled'
       );
     }
     if (config.libusb_endpoint_recovery !== undefined) {
       process.env.LIBUSB_ENDPOINT_RECOVERY = String(
-        config.libusb_endpoint_recovery,
+        config.libusb_endpoint_recovery
       );
       console.log(
-        `[GraviScan] LIBUSB_ENDPOINT_RECOVERY explicitly set to: ${config.libusb_endpoint_recovery}`,
+        `[GraviScan] LIBUSB_ENDPOINT_RECOVERY explicitly set to: ${config.libusb_endpoint_recovery}`
       );
     } else {
       // Not set in ~/.bloom/.env — the C-shim's
@@ -1279,7 +1277,7 @@ app.on('ready', async () => {
       // returns null. Log here so the operator sees the resolved
       // state without inspecting subprocess stderr.
       console.log(
-        '[GraviScan] LIBUSB_ENDPOINT_RECOVERY not set in env — wrapper defaults to ON',
+        '[GraviScan] LIBUSB_ENDPOINT_RECOVERY not set in env — wrapper defaults to ON'
       );
     }
     console.log(

@@ -51,7 +51,7 @@ export interface BuildSubprocessEnvArgs {
  * isn't loaded; recovery is irrelevant).
  */
 export function buildSubprocessEnv(
-  args: BuildSubprocessEnvArgs,
+  args: BuildSubprocessEnvArgs
 ): Record<string, string | undefined> {
   // Per Copilot PR #237 review (#16): derive the PYTHONPATH delimiter
   // from `args.platform` rather than the hardcoded ':' that breaks on
@@ -76,14 +76,14 @@ export function buildSubprocessEnv(
     const parts = args.saneName.split(':');
     if (parts.length < 4) {
       throw new Error(
-        `Invalid saneName format (expected at least 4 colon-separated tokens): ${args.saneName}`,
+        `Invalid saneName format (expected at least 4 colon-separated tokens): ${args.saneName}`
       );
     }
     const usbBus = parts[2];
     const usbDev = parts[3];
     if (!/^\d{3}$/.test(usbBus) || !/^\d{3}$/.test(usbDev)) {
       throw new Error(
-        `Invalid saneName USB bus/address (expected 3-digit decimal): ${args.saneName}`,
+        `Invalid saneName USB bus/address (expected 3-digit decimal): ${args.saneName}`
       );
     }
     env.LD_PRELOAD = args.libusbFilterSoPath;

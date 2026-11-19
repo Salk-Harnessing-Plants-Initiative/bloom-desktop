@@ -42,7 +42,8 @@ function createMockDb(opts: {
     experiment: {
       count: vi.fn(({ where }: { where: { accession_id: string } }) =>
         Promise.resolve(
-          experiments.filter((e) => e.accession_id === where.accession_id).length
+          experiments.filter((e) => e.accession_id === where.accession_id)
+            .length
         )
       ),
     },
@@ -97,21 +98,18 @@ function createMockDb(opts: {
             where.experiment_id_wave_number;
           const idx = waveLinks.findIndex(
             (l) =>
-              l.experiment_id === experiment_id &&
-              l.wave_number === wave_number
+              l.experiment_id === experiment_id && l.wave_number === wave_number
           );
           if (idx === -1) return Promise.reject(new Error('Not found'));
           const [removed] = waveLinks.splice(idx, 1);
           return Promise.resolve(removed);
         }
       ),
-      findMany: vi.fn(
-        ({ where }: { where: { experiment_id: string } }) => {
-          return Promise.resolve(
-            waveLinks.filter((l) => l.experiment_id === where.experiment_id)
-          );
-        }
-      ),
+      findMany: vi.fn(({ where }: { where: { experiment_id: string } }) => {
+        return Promise.resolve(
+          waveLinks.filter((l) => l.experiment_id === where.experiment_id)
+        );
+      }),
     },
   };
 }
@@ -126,7 +124,9 @@ async function countMetadataReferences(
 ): Promise<number> {
   const [cylRefs, gravRefs] = await Promise.all([
     db.experiment.count({ where: { accession_id: accessionId } }),
-    db.graviExperimentWaveMetadata.count({ where: { accession_id: accessionId } }),
+    db.graviExperimentWaveMetadata.count({
+      where: { accession_id: accessionId },
+    }),
   ]);
   return cylRefs + gravRefs;
 }
@@ -222,7 +222,12 @@ describe('linkGraviMetadata', () => {
   it('refuses to link when the wave is already linked', async () => {
     const db = createMockDb({
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-1', wave_number: 1, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-1',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
       ],
     });
     const result = await linkGraviMetadata(db, 'exp-1', 1, 'acc-B');
@@ -235,7 +240,12 @@ describe('linkGraviMetadata', () => {
   it('allows different waves on the same experiment', async () => {
     const db = createMockDb({
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-1', wave_number: 1, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-1',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
       ],
     });
     const result = await linkGraviMetadata(db, 'exp-1', 2, 'acc-B');
@@ -246,7 +256,12 @@ describe('linkGraviMetadata', () => {
   it('allows the same accession to be linked to multiple experiments', async () => {
     const db = createMockDb({
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-1', wave_number: 1, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-1',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
       ],
     });
     const result = await linkGraviMetadata(db, 'exp-2', 1, 'acc-A');
@@ -263,7 +278,12 @@ describe('unlinkGraviMetadata', () => {
   it('removes an existing link', async () => {
     const db = createMockDb({
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-1', wave_number: 1, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-1',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
       ],
     });
     const result = await unlinkGraviMetadata(db, 'exp-1', 1);
@@ -304,8 +324,18 @@ describe('countMetadataReferences', () => {
   it('counts GraviScan references via wave links', async () => {
     const db = createMockDb({
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-1', wave_number: 1, accession_id: 'acc-A' },
-        { id: 'link-2', experiment_id: 'exp-1', wave_number: 2, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-1',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
+        {
+          id: 'link-2',
+          experiment_id: 'exp-1',
+          wave_number: 2,
+          accession_id: 'acc-A',
+        },
       ],
     });
     expect(await countMetadataReferences(db, 'acc-A')).toBe(2);
@@ -317,8 +347,18 @@ describe('countMetadataReferences', () => {
         { id: 'exp-1', experiment_type: 'cylinder', accession_id: 'acc-A' },
       ],
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-2', wave_number: 1, accession_id: 'acc-A' },
-        { id: 'link-2', experiment_id: 'exp-3', wave_number: 1, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-2',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
+        {
+          id: 'link-2',
+          experiment_id: 'exp-3',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
       ],
     });
     expect(await countMetadataReferences(db, 'acc-A')).toBe(3);
@@ -345,7 +385,12 @@ describe('deleteWithProtection (delete handler logic)', () => {
   it('blocks deletion when accession is referenced by GraviScan wave link', async () => {
     const db = createMockDb({
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-1', wave_number: 1, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-1',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
       ],
     });
     const result = await deleteWithProtection(db, 'acc-A');
@@ -360,7 +405,12 @@ describe('deleteWithProtection (delete handler logic)', () => {
         { id: 'exp-1', experiment_type: 'cylinder', accession_id: 'acc-A' },
       ],
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-2', wave_number: 1, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-2',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
       ],
     });
     const result = await deleteWithProtection(db, 'acc-A');
@@ -379,7 +429,12 @@ describe('deleteWithProtection (delete handler logic)', () => {
   it('allows deletion after all links are removed', async () => {
     const db = createMockDb({
       waveLinks: [
-        { id: 'link-1', experiment_id: 'exp-1', wave_number: 1, accession_id: 'acc-A' },
+        {
+          id: 'link-1',
+          experiment_id: 'exp-1',
+          wave_number: 1,
+          accession_id: 'acc-A',
+        },
       ],
     });
 

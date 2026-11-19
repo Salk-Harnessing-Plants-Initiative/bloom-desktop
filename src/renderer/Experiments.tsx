@@ -133,9 +133,7 @@ export function Experiments() {
   useEffect(() => {
     const links = waveLinksMap[attachExperimentId] || [];
     const next =
-      links.length > 0
-        ? Math.max(...links.map((l) => l.wave_number)) + 1
-        : 0;
+      links.length > 0 ? Math.max(...links.map((l) => l.wave_number)) + 1 : 0;
     setAttachWaveNumber(next);
   }, [attachExperimentId, waveLinksMap]);
 
@@ -218,22 +216,23 @@ export function Experiments() {
             {experiments.map((experiment) => {
               const links = waveLinksMap[experiment.id] || [];
               return (
-              <li key={experiment.id} className="mb-2 p-2">
-                <div className="flex justify-between items-center">
-                  <span>{getExperimentDisplay(experiment)}</span>
-                </div>
-                {experiment.experiment_type === 'graviscan' && links.length > 0 && (
-                  <div className="ml-4 mt-1 text-xs text-gray-600 space-y-0.5">
-                    {links
-                      .sort((a, b) => a.wave_number - b.wave_number)
-                      .map((link) => (
-                        <div key={link.id}>
-                          Wave {link.wave_number}: {link.accession.name}
-                        </div>
-                      ))}
+                <li key={experiment.id} className="mb-2 p-2">
+                  <div className="flex justify-between items-center">
+                    <span>{getExperimentDisplay(experiment)}</span>
                   </div>
-                )}
-              </li>
+                  {experiment.experiment_type === 'graviscan' &&
+                    links.length > 0 && (
+                      <div className="ml-4 mt-1 text-xs text-gray-600 space-y-0.5">
+                        {links
+                          .sort((a, b) => a.wave_number - b.wave_number)
+                          .map((link) => (
+                            <div key={link.id}>
+                              Wave {link.wave_number}: {link.accession.name}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                </li>
               );
             })}
           </ul>
