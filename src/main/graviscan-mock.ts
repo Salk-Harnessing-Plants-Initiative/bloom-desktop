@@ -146,13 +146,41 @@ function fromControl(
   rows: MockScannerRow[],
   control: MockControl
 ): DetectedScanner[] {
+  // Device numbers already held by saved rows. Saving a scanner looks up its
+  // row by (usb_bus, usb_device) before usb_port, so a mock scanner must
+  // never report a number that belongs to a different saved row.
+  const takenDevices = new Set<number>();
+  for (const r of rows) {
+    if (r.usb_device != null) takenDevices.add(r.usb_device);
+  }
+
   const detected: DetectedScanner[] = [];
   control.scanners.forEach((entry, i) => {
     if (!entry.present) return;
     const row = rows.find((r) => r.usb_port === entry.port);
-    detected.push(mockScanner(row, i + 1, 1, i + 1, entry.port));
+    if (row && row.usb_bus != null && row.usb_device != null) {
+      detected.push(
+        mockScanner(row, i + 1, row.usb_bus, row.usb_device, entry.port)
+      );
+      return;
+    }
+    const device = freeDeviceNumber(entry.port, takenDevices);
+    takenDevices.add(device);
+    detected.push(mockScanner(row, i + 1, 1, device, entry.port));
   });
   return detected;
+}
+
+/**
+ * Device number for a mock scanner with no saved address: the number after
+ * the dash in a `<bus>-<n>` port (`1-3` → 3, as in `fixed-pair` mode), or 1
+ * for any other port, moved up to the first number not already taken.
+ */
+function freeDeviceNumber(port: string, taken: Set<number>): number {
+  const match = /^\d+-(\d+)$/.exec(port);
+  let device = match ? Math.max(1, Number(match[1])) : 1;
+  while (taken.has(device)) device++;
+  return device;
 }
 
 function fixedPair(rows: MockScannerRow[]): DetectedScanner[] {

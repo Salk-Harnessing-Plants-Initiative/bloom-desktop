@@ -286,16 +286,90 @@ describe('detectMockScanners with a control file', () => {
     ]);
   });
 
-  it('numbers devices by position in the file', () => {
+  it('keeps the saved address of a matched scanner', () => {
     const result = detectMockScanners([ROW_A, ROW_C], 'saved', {
       scanners: [
         { port: '1-1', present: false },
         { port: '1-3', present: true },
       ],
     });
-    expect([result[0].usb_device, result[0].sane_name]).toEqual([
+    expect([
+      result[0].scanner_id,
+      result[0].usb_device,
+      result[0].sane_name,
+    ]).toEqual(['scanner-c', 3, 'epkowa:interpreter:001:003']);
+  });
+
+  it('keeps addresses when an entry is removed from the file', () => {
+    // A and B saved; the developer deletes A's line to unplug it. B must
+    // keep device 2, or saving it would overwrite A's row (matched by
+    // bus/device before port).
+    const result = detectMockScanners([ROW_A, ROW_B], 'saved', {
+      scanners: [{ port: '1-2', present: true }],
+    });
+    expect([result[0].scanner_id, result[0].usb_device]).toEqual([
+      'scanner-b',
       2,
-      'epkowa:interpreter:001:002',
+    ]);
+  });
+
+  it('keeps addresses when entries are reordered', () => {
+    const result = detectMockScanners([ROW_A, ROW_B], 'saved', {
+      scanners: [
+        { port: '1-2', present: true },
+        { port: '1-1', present: true },
+      ],
+    });
+    expect(result.map((s) => [s.scanner_id, s.usb_bus, s.usb_device])).toEqual([
+      ['scanner-b', 1, 2],
+      ['scanner-a', 1, 1],
+    ]);
+  });
+
+  it('numbers an unsaved scanner from its port', () => {
+    const result = detectMockScanners([ROW_A], 'saved', {
+      scanners: [
+        { port: '1-1', present: true },
+        { port: '1-3', present: true },
+      ],
+    });
+    expect([result[1].usb_device, result[1].sane_name]).toEqual([
+      3,
+      'epkowa:interpreter:001:003',
+    ]);
+  });
+
+  it('never gives an unsaved scanner a saved scanner’s device number', () => {
+    // 2-1 would be device 1, which row A holds.
+    const result = detectMockScanners([ROW_A], 'saved', {
+      scanners: [{ port: '2-1', present: true }],
+    });
+    expect([result[0].scanner_id, result[0].usb_device]).toEqual([
+      'mock-scanner-1',
+      2,
+    ]);
+  });
+
+  it('gives each unsaved scanner its own device number', () => {
+    const result = detectMockScanners([], 'saved', {
+      scanners: [
+        { port: '1-1', present: true },
+        { port: '2-1', present: true },
+        { port: 'usb-x', present: true },
+      ],
+    });
+    expect(result.map((s) => s.usb_device)).toEqual([1, 2, 3]);
+  });
+
+  it('derives the address when a matched row has none saved', () => {
+    // reset-usb clears usb_bus/usb_device before detecting.
+    const cleared = { ...ROW_B, usb_bus: null, usb_device: null };
+    const result = detectMockScanners([cleared], 'saved', {
+      scanners: [{ port: '1-2', present: true }],
+    });
+    expect([result[0].scanner_id, result[0].usb_device]).toEqual([
+      'scanner-b',
+      2,
     ]);
   });
 

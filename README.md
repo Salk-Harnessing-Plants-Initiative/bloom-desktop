@@ -386,7 +386,9 @@ exist and which are plugged in, create `~/.bloom/graviscan-mock.json`:
 
 The file is read on every scanner detection, so editing it while the app
 runs simulates plugging a scanner in (`"present": true`) or unplugging it
-(`"present": false`). Scanners are matched to saved scanners by port.
+(`"present": false`). Scanners are matched to saved scanners by port and
+keep their saved USB address, so removing or reordering lines does not mix
+up saved scanners.
 Delete the file to go back to the default. It is only read when
 `GRAVISCAN_MOCK=true`.
 
