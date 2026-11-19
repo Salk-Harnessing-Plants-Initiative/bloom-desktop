@@ -14,6 +14,7 @@ import * as fs from 'fs';
 import { execSync } from 'child_process';
 import sharp from 'sharp';
 import { detectEpsonScanners } from './lsusb-detection';
+import { detectMockScanners, readMockControl } from './graviscan-mock';
 import { resolveGraviScanPath } from './graviscan-path-utils';
 import { getGraviscanOutputDir } from './graviscan-output-dir';
 import {
@@ -88,35 +89,11 @@ export async function runStartupScannerValidation(
     let detectedScanners: DetectedScanner[] = [];
 
     if (mockEnabled) {
-      // Mock mode: return simulated scanners
-      const mockCount = 2;
-      for (let i = 0; i < mockCount; i++) {
-        if (i < dbScanners.length) {
-          detectedScanners.push({
-            name: dbScanners[i].name,
-            scanner_id: dbScanners[i].id,
-            usb_bus: 1,
-            usb_device: i + 1,
-            usb_port: `1-${i + 1}`,
-            is_available: true,
-            vendor_id: dbScanners[i].vendor_id,
-            product_id: dbScanners[i].product_id,
-            sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-          });
-        } else {
-          detectedScanners.push({
-            name: `Mock Scanner ${i + 1}`,
-            scanner_id: `mock-scanner-${i + 1}`,
-            usb_bus: 1,
-            usb_device: i + 1,
-            usb_port: `1-${i + 1}`,
-            is_available: true,
-            vendor_id: '04b8',
-            product_id: '013a',
-            sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-          });
-        }
-      }
+      detectedScanners = detectMockScanners(
+        dbScanners,
+        'fixed-pair',
+        readMockControl()
+      );
     } else {
       // Real mode: detect via lsusb (no Python needed)
       const lsusbResult = detectEpsonScanners();
@@ -257,37 +234,11 @@ export function registerGraviscanHandlers(
       let detectedScanners: DetectedScanner[];
 
       if (mockEnabled) {
-        // Mock mode: return simulated scanners
-        const mockCount = 2;
-        detectedScanners = [];
-
-        for (let i = 0; i < mockCount; i++) {
-          if (i < dbScanners.length) {
-            detectedScanners.push({
-              name: dbScanners[i].name,
-              scanner_id: dbScanners[i].id,
-              usb_bus: 1,
-              usb_device: i + 1,
-              usb_port: `1-${i + 1}`,
-              is_available: true,
-              vendor_id: dbScanners[i].vendor_id,
-              product_id: dbScanners[i].product_id,
-              sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-            });
-          } else {
-            detectedScanners.push({
-              name: `Mock Scanner ${i + 1}`,
-              scanner_id: `mock-scanner-${i + 1}`,
-              usb_bus: 1,
-              usb_device: i + 1,
-              usb_port: `1-${i + 1}`,
-              is_available: true,
-              vendor_id: '04b8',
-              product_id: '013a',
-              sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-            });
-          }
-        }
+        detectedScanners = detectMockScanners(
+          dbScanners,
+          'fixed-pair',
+          readMockControl()
+        );
 
         return {
           success: true,
@@ -674,20 +625,16 @@ export function registerGraviscanHandlers(
       let detectedScanners: DetectedScanner[] = [];
 
       if (mockEnabled) {
+        // Addresses were cleared in step 2, so `saved` mode numbers devices
+        // by position, as a fresh lsusb would.
         const saved = await db.graviScanner.findMany({
           where: { enabled: true },
         });
-        detectedScanners = saved.map((s, i) => ({
-          name: s.name,
-          scanner_id: s.id,
-          usb_bus: 1,
-          usb_device: i + 1,
-          usb_port: s.usb_port || `1-${i + 1}`,
-          is_available: true,
-          vendor_id: s.vendor_id,
-          product_id: s.product_id,
-          sane_name: `epkowa:interpreter:001:${String(i + 1).padStart(3, '0')}`,
-        }));
+        detectedScanners = detectMockScanners(
+          saved,
+          'saved',
+          readMockControl()
+        );
       } else {
         const lsusbResult = detectEpsonScanners();
         if (!lsusbResult.success) {
@@ -900,18 +847,11 @@ export function registerGraviscanHandlers(
       let detectedScanners: DetectedScanner[] = [];
 
       if (mockEnabled) {
-        // Return mock scanners for testing
-        detectedScanners = savedScanners.map((s, i) => ({
-          name: s.name,
-          scanner_id: s.id,
-          usb_bus: s.usb_bus || 1,
-          usb_device: s.usb_device || i + 1,
-          usb_port: s.usb_port || `1-${i + 1}`,
-          is_available: true,
-          vendor_id: s.vendor_id,
-          product_id: s.product_id,
-          sane_name: `epkowa:interpreter:001:${String(s.usb_device || i + 1).padStart(3, '0')}`,
-        }));
+        detectedScanners = detectMockScanners(
+          savedScanners,
+          'saved',
+          readMockControl()
+        );
       } else {
         // Detect via lsusb (no Python needed)
         const lsusbResult = detectEpsonScanners();
@@ -2342,17 +2282,11 @@ export async function autoInitScanners(
   let detectedScanners: DetectedScanner[] = [];
 
   if (mockEnabled) {
-    detectedScanners = savedScanners.map((s, i) => ({
-      name: s.name,
-      scanner_id: s.id,
-      usb_bus: s.usb_bus || 1,
-      usb_device: s.usb_device || i + 1,
-      usb_port: s.usb_port || `1-${i + 1}`,
-      is_available: true,
-      vendor_id: s.vendor_id,
-      product_id: s.product_id,
-      sane_name: `epkowa:interpreter:001:${String(s.usb_device || i + 1).padStart(3, '0')}`,
-    }));
+    detectedScanners = detectMockScanners(
+      savedScanners,
+      'saved',
+      readMockControl()
+    );
   } else {
     const lsusbResult = detectEpsonScanners();
     if (!lsusbResult.success) {
