@@ -49,7 +49,9 @@ async function countMetadataReferences(accessionId: string): Promise<number> {
   const db = getDatabase();
   const [cylRefs, gravRefs] = await Promise.all([
     db.experiment.count({ where: { accession_id: accessionId } }),
-    db.graviExperimentWaveMetadata.count({ where: { accession_id: accessionId } }),
+    db.graviExperimentWaveMetadata.count({
+      where: { accession_id: accessionId },
+    }),
   ]);
   return cylRefs + gravRefs;
 }
@@ -1888,7 +1890,10 @@ export function registerDatabaseHandlers() {
 
         return { success: true };
       } catch (error) {
-        console.error('[DB:Metadata] Failed to delete gravi plate accessions:', error);
+        console.error(
+          '[DB:Metadata] Failed to delete gravi plate accessions:',
+          error
+        );
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',

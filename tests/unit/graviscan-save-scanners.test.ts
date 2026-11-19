@@ -59,24 +59,29 @@ function makeMockDb(initialRows: MockGraviScanner[] = []) {
   const rows = [...initialRows];
   return {
     graviScanner: {
-      findFirst: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
-        return (
-          rows.find((r) => {
-            if (
-              where.usb_bus !== undefined &&
-              where.usb_device !== undefined &&
-              r.usb_bus === where.usb_bus &&
-              r.usb_device === where.usb_device
-            ) {
-              return true;
-            }
-            if (where.usb_port !== undefined && r.usb_port === where.usb_port) {
-              return true;
-            }
-            return false;
-          }) ?? null
-        );
-      }),
+      findFirst: vi.fn(
+        async ({ where }: { where: Record<string, unknown> }) => {
+          return (
+            rows.find((r) => {
+              if (
+                where.usb_bus !== undefined &&
+                where.usb_device !== undefined &&
+                r.usb_bus === where.usb_bus &&
+                r.usb_device === where.usb_device
+              ) {
+                return true;
+              }
+              if (
+                where.usb_port !== undefined &&
+                r.usb_port === where.usb_port
+              ) {
+                return true;
+              }
+              return false;
+            }) ?? null
+          );
+        }
+      ),
       update: vi.fn(
         async ({
           where,
@@ -89,20 +94,18 @@ function makeMockDb(initialRows: MockGraviScanner[] = []) {
           if (!row) throw new Error(`row not found: ${where.id}`);
           Object.assign(row, data);
           return { ...row };
-        },
+        }
       ),
-      create: vi.fn(
-        async ({ data }: { data: Partial<MockGraviScanner> }) => {
-          const newRow: MockGraviScanner = {
-            ...makeRow({
-              id: `row-${rows.length + 1}`,
-              ...(data as Partial<MockGraviScanner>),
-            }),
-          } as MockGraviScanner;
-          rows.push(newRow);
-          return { ...newRow };
-        },
-      ),
+      create: vi.fn(async ({ data }: { data: Partial<MockGraviScanner> }) => {
+        const newRow: MockGraviScanner = {
+          ...makeRow({
+            id: `row-${rows.length + 1}`,
+            ...(data as Partial<MockGraviScanner>),
+          }),
+        } as MockGraviScanner;
+        rows.push(newRow);
+        return { ...newRow };
+      }),
     },
     _rows: rows,
   };
@@ -189,9 +192,7 @@ describe('upsertScannerRow — grid_mode persistence (#231)', () => {
     });
 
     it('UPDATE Prisma call sets enabled=true in the data block', async () => {
-      const db = makeMockDb([
-        makeRow({ id: 'row-1', enabled: false }),
-      ]);
+      const db = makeMockDb([makeRow({ id: 'row-1', enabled: false })]);
       await upsertScannerRow(db as never, {
         name: 'Scanner 1',
         vendor_id: '04b8',

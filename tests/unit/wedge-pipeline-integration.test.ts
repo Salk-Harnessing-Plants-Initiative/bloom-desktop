@@ -9,14 +9,7 @@
  * the chain is covered.
  */
 
-import {
-  describe,
-  it,
-  expect,
-  vi,
-  beforeEach,
-  afterEach,
-} from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WedgeDetector } from '../../src/main/wedge-detector';
 import { SlackNotifier } from '../../src/main/slack-notifier';
 
@@ -199,7 +192,7 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
     // consecutive_failures.
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const body = JSON.parse(
-      (fetchMock.mock.calls[0][1] as RequestInit).body as string,
+      (fetchMock.mock.calls[0][1] as RequestInit).body as string
     );
     expect(body.text).toContain('consecutive_failures');
   });
@@ -228,7 +221,7 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
       });
       await new Promise((r) => setTimeout(r, 0));
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('missing bytes_received or wall_seconds'),
+        expect.stringContaining('missing bytes_received or wall_seconds')
       );
     });
 
@@ -247,7 +240,7 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
       });
       await new Promise((r) => setTimeout(r, 0));
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('missing bytes_received or wall_seconds'),
+        expect.stringContaining('missing bytes_received or wall_seconds')
       );
     });
 
@@ -266,7 +259,7 @@ describe('wedge pipeline integration (scan-event → detector → notifier)', ()
       });
       await new Promise((r) => setTimeout(r, 0));
       expect(warnSpy).not.toHaveBeenCalledWith(
-        expect.stringContaining('missing bytes_received or wall_seconds'),
+        expect.stringContaining('missing bytes_received or wall_seconds')
       );
     });
   });

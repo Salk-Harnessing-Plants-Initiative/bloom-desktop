@@ -21,7 +21,7 @@ function makeMockDb(rows: MockGraviScanner[]) {
     graviScanner: {
       findUnique: vi.fn(
         async ({ where }: { where: { id: string } }) =>
-          data.find((r) => r.id === where.id) ?? null,
+          data.find((r) => r.id === where.id) ?? null
       ),
       update: vi.fn(
         async ({
@@ -35,7 +35,7 @@ function makeMockDb(rows: MockGraviScanner[]) {
           if (!row) throw new Error(`row not found: ${where.id}`);
           Object.assign(row, patch);
           return { ...row };
-        },
+        }
       ),
     },
     _rows: data,
@@ -85,7 +85,7 @@ describe('disableScannerById (#230)', () => {
     const result = await disableScannerById(
       db as never,
       coord as never,
-      'unknown',
+      'unknown'
     );
 
     expect(result.ok).toBe(false);

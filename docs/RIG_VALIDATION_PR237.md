@@ -5,13 +5,13 @@ production rig (`graviscan@graviscan-ms-7c56`) before using it for the
 upcoming experiment. Completes the deferred items from PR #237's
 "Rig validation (Task 12, 2026-05-22)" section.
 
-**Date:** _________ **Operator:** _________
+**Date:** \_\_\_\_\_\_\_\_\_ **Operator:** \_\_\_\_\_\_\_\_\_
 **Branch HEAD:** `fb53449` (or later) on `fix/v600-wedge-followups`
 **Pre-validation context:** packaged app (`bloom-graviscan 0.1.0`,
 `.deb` installed, launched from bash) was running PID 181158 at last
 check. Synthetic injection of WedgeDetector + SlackNotifier already
-validated end-to-end via tsx; this pass covers the deferred real-scan
-+ libusb-filter-under-load + production-deploy steps.
+validated end-to-end via tsx; this pass covers the deferred real-scan,
+libusb-filter-under-load and production-deploy steps.
 
 ---
 
@@ -225,9 +225,9 @@ pgrep -f /usr/lib/bloom-graviscan/bloom-graviscan
 - [ ] UI opens on the rig's screen
 - [ ] In the UI: ConfigureScanner page detects scanners; resolution
       shows `1200 DPI (production, validated at 140×140 mm)`
-- [ ] In stderr/journal: `[GraviScan] Slack webhook URL loaded from
-      ~/.bloom/.env` + `[GraviScan] LIBUSB_ENDPOINT_RECOVERY explicitly
-      set to: true`
+- [ ] In stderr/journal:
+      `[GraviScan] Slack webhook URL loaded from ~/.bloom/.env` and
+      `[GraviScan] LIBUSB_ENDPOINT_RECOVERY explicitly set to: true`
 - [ ] Quick 1-cycle scan (1 scanner, 4-plate, 1200 dpi) completes
       without errors
 
@@ -264,15 +264,16 @@ the package marked installed, so apt knows how to fetch a replacement.
 
 ## Evidence to capture for PR #237
 
-| Source | Location |
-|---|---|
-| Tier 2 dev-run.log | `/tmp/v600-validation/dev-run.log` (libusb-filter init line + scan completion) |
-| Tier 2 toggle log | `/tmp/v600-validation/dev-run-toggle.log` (recovery=false branch) |
-| Tier 3 make.log | `/tmp/v600-validation/make.log` (build artifact) |
-| Slack screenshot | `#topic-graviscan-alerts` showing only test messages (no production wedges) OR a real wedge captured during validation |
-| GraviScan UI screenshot | Configure Scanner with 1200 DPI label visible; GraviScan page mid-scan |
+| Source                  | Location                                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Tier 2 dev-run.log      | `/tmp/v600-validation/dev-run.log` (libusb-filter init line + scan completion)                                         |
+| Tier 2 toggle log       | `/tmp/v600-validation/dev-run-toggle.log` (recovery=false branch)                                                      |
+| Tier 3 make.log         | `/tmp/v600-validation/make.log` (build artifact)                                                                       |
+| Slack screenshot        | `#topic-graviscan-alerts` showing only test messages (no production wedges) OR a real wedge captured during validation |
+| GraviScan UI screenshot | Configure Scanner with 1200 DPI label visible; GraviScan page mid-scan                                                 |
 
 `scp` them back to your laptop:
+
 ```bash
 scp -r graviscan@graviscan-ms-7c56.tail461d0e.ts.net:/tmp/v600-validation /tmp/
 ```

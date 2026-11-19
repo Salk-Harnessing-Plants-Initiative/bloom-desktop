@@ -55,7 +55,7 @@ describe('readScansDirFromEnv', () => {
   it('ignores commented-out SCANS_DIR lines', () => {
     fs.writeFileSync(
       envPath,
-      '# SCANS_DIR=/should/be/ignored\nSCANS_DIR=/real/value\n',
+      '# SCANS_DIR=/should/be/ignored\nSCANS_DIR=/real/value\n'
     );
     expect(readScansDirFromEnv(envPath)).toBe('/real/value');
   });

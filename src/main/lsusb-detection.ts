@@ -182,8 +182,7 @@ export function detectEpsonScanners(): {
         scanner_id: '', // Will be matched against DB by caller
         usb_bus: dev.bus,
         usb_device: dev.device,
-        usb_port:
-          portPath !== undefined ? buildUsbPort(dev.bus, portPath) : '',
+        usb_port: portPath !== undefined ? buildUsbPort(dev.bus, portPath) : '',
         is_available: true,
         vendor_id: dev.vendorId,
         product_id: dev.productId,

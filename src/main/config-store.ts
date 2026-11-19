@@ -579,13 +579,11 @@ export function saveEnvConfig(config: MachineConfig, envPath: string): void {
     lines.push('', '# GraviScan V600 wedge follow-ups (#228 + #236)');
     if (config.slack_webhook_url !== undefined) {
       lines.push(
-        `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=${config.slack_webhook_url}`,
+        `BLOOM_GRAVISCAN_SLACK_WEBHOOK_URL=${config.slack_webhook_url}`
       );
     }
     if (config.libusb_endpoint_recovery !== undefined) {
-      lines.push(
-        `LIBUSB_ENDPOINT_RECOVERY=${config.libusb_endpoint_recovery}`,
-      );
+      lines.push(`LIBUSB_ENDPOINT_RECOVERY=${config.libusb_endpoint_recovery}`);
     }
   }
 

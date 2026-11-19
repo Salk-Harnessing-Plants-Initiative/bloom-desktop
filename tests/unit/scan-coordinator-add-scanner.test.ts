@@ -29,7 +29,7 @@ class MockSubprocess extends EventEmitter {
     scannerId: string,
     _saneName: string,
     _mock: boolean,
-    options?: { shouldFail?: boolean; spawnDelay?: number },
+    options?: { shouldFail?: boolean; spawnDelay?: number }
   ) {
     super();
     this.scannerId = scannerId;
@@ -74,7 +74,7 @@ vi.mock('../../src/main/scanner-subprocess', () => ({
       isPackaged: boolean,
       scannerId: string,
       saneName: string,
-      mock: boolean,
+      mock: boolean
     ) => {
       const opts = subprocessOptionsMap.get(scannerId) ?? {};
       const sub = new MockSubprocess(
@@ -83,11 +83,11 @@ vi.mock('../../src/main/scanner-subprocess', () => ({
         scannerId,
         saneName,
         mock,
-        opts,
+        opts
       );
       createdSubprocesses.push(sub);
       return sub;
-    },
+    }
   ),
 }));
 
@@ -164,8 +164,9 @@ describe('ScanCoordinator.addScanner', () => {
   it('does not throw if spawn fails (logs and reports via init-status event)', async () => {
     subprocessOptionsMap.set('X', { shouldFail: true });
 
-    await expect(coordinator.addScanner(makeConfig('X'))).resolves
-      .toBeUndefined();
+    await expect(
+      coordinator.addScanner(makeConfig('X'))
+    ).resolves.toBeUndefined();
     expect(coordinator.hasWorker('X')).toBe(false);
   });
 });
@@ -191,7 +192,7 @@ describe('ScanCoordinator.stopScanner', () => {
 
   it('is a no-op when the scanner is not in the map (no throw)', async () => {
     await expect(
-      coordinator.stopScanner('does-not-exist'),
+      coordinator.stopScanner('does-not-exist')
     ).resolves.toBeUndefined();
   });
 

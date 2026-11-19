@@ -6,15 +6,15 @@ Canonical sample accessions file for the GraviScan "Upload Accessions" flow. Use
 
 **Columns** (header row required; header names below are the spec-canonical snake_case form, but the in-app column-mapping UI lets operators map any header to the right field):
 
-| Column | Type | Required | Example |
-|---|---|---|---|
-| `plate_id` | string | yes | `PLATE_001` |
-| `plate_section_id` | string | yes | `S1` |
-| `plant_qr` | string | yes | `PLANT-001-A` |
-| `accession` | string | yes | `Col-0` |
-| `transplant_date` | date | yes | `2025-06-15` |
-| `medium` | string | yes | `1/2 MS` |
-| `custom_note` | string | no | `replant` |
+| Column             | Type   | Required | Example       |
+| ------------------ | ------ | -------- | ------------- |
+| `plate_id`         | string | yes      | `PLATE_001`   |
+| `plate_section_id` | string | yes      | `S1`          |
+| `plant_qr`         | string | yes      | `PLANT-001-A` |
+| `accession`        | string | yes      | `Col-0`       |
+| `transplant_date`  | date   | yes      | `2025-06-15`  |
+| `medium`           | string | yes      | `1/2 MS`      |
+| `custom_note`      | string | no       | `replant`     |
 
 The sample covers 3 plates × 4 sections = 12 rows, with 3 different accessions (Col-0, Ler-0, Cvi-0) demonstrating the "one accession per plate" rule.
 

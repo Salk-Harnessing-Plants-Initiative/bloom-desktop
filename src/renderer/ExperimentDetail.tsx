@@ -468,9 +468,7 @@ export function ExperimentDetail() {
                     <span className="font-medium text-gray-700">
                       Wave {link.wave_number}:
                     </span>{' '}
-                    <span className="text-gray-900">
-                      {link.accession.name}
-                    </span>
+                    <span className="text-gray-900">{link.accession.name}</span>
                   </div>
                   <button
                     onClick={() => handleUnlink(link.wave_number)}

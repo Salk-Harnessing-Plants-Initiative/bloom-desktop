@@ -64,7 +64,9 @@ export function validatePlateIdPattern(plateIds: string[]): string[] {
         maxCount = count;
       }
     }
-    const outliers = valid.filter((p) => p.prefix !== canonical).map((p) => p.id);
+    const outliers = valid
+      .filter((p) => p.prefix !== canonical)
+      .map((p) => p.id);
     errors.push(
       `Plate IDs do not share a consistent prefix (expected "${canonical}…"): ${summarizeIds(outliers)}`
     );

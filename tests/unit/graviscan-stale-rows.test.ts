@@ -32,7 +32,7 @@ function makeMockDb(initialRows: MockGraviScanner[] = []) {
             return rows.filter((r) => r.enabled === where.enabled);
           }
           return rows;
-        },
+        }
       ),
       update: vi.fn(
         async ({
@@ -46,7 +46,7 @@ function makeMockDb(initialRows: MockGraviScanner[] = []) {
           if (!row) throw new Error(`row not found: ${where.id}`);
           Object.assign(row, data);
           return { ...row };
-        },
+        }
       ),
       // Should never be called — leaving here so tests can assert it.
       delete: vi.fn(),

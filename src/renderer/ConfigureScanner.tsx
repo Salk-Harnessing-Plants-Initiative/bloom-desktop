@@ -40,9 +40,9 @@ export function ConfigureScanner() {
   >(null);
   /** Set to N>0 after a Detect call disables N stale scanner rows.
    *  Cleared when the operator dismisses or re-detects. (#230 visibility) */
-  const [staleDisabledNotice, setStaleDisabledNotice] = useState<
-    number | null
-  >(null);
+  const [staleDisabledNotice, setStaleDisabledNotice] = useState<number | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
 
   // Load existing scanner config from DB on mount
@@ -196,10 +196,10 @@ export function ConfigureScanner() {
         // shot info banner so the operator gets feedback rather than
         // a silent row vanish.
         const newScannerIds = new Set(
-          refreshedStatus.scanners.map((s) => s.scannerId),
+          refreshedStatus.scanners.map((s) => s.scannerId)
         );
         const disabledCount = [...previousScannerIds].filter(
-          (id) => !newScannerIds.has(id),
+          (id) => !newScannerIds.has(id)
         ).length;
         if (disabledCount > 0) {
           setStaleDisabledNotice(disabledCount);
@@ -251,11 +251,11 @@ export function ConfigureScanner() {
   //    operator gets immediate feedback rather than only a console log.
   const handleRemoveScanner = async (
     scannerId: string,
-    displayName: string,
+    displayName: string
   ) => {
     const confirmed = window.confirm(
-      `Remove scanner "${displayName}"? This disables it and stops its worker. `
-        + `The row will return if the scanner is re-detected.`,
+      `Remove scanner "${displayName}"? This disables it and stops its worker. ` +
+        `The row will return if the scanner is re-detected.`
     );
     if (!confirmed) return;
 
@@ -331,9 +331,9 @@ export function ConfigureScanner() {
         >
           <p className="text-sm text-blue-800">
             {staleDisabledNotice} previously-detected scanner
-            {staleDisabledNotice === 1 ? '' : 's'} no longer
-            enumerating — automatically disabled. Reconnect the
-            hardware and click Detect to re-enable.
+            {staleDisabledNotice === 1 ? '' : 's'} no longer enumerating —
+            automatically disabled. Reconnect the hardware and click Detect to
+            re-enable.
           </p>
           <button
             type="button"
@@ -352,12 +352,12 @@ export function ConfigureScanner() {
           data-testid="legacy-resolution-warning"
         >
           <p className="text-sm text-amber-800">
-            <strong>Saved DPI ({legacyResolutionWarning}) is no longer
-            supported.</strong>{' '}
-            The empirically-validated set is{' '}
-            {GRAVISCAN_RESOLUTIONS.join(', ')} DPI (per the V600 wedge
-            investigation). Please choose a valid value below and click Save
-            Resolution.
+            <strong>
+              Saved DPI ({legacyResolutionWarning}) is no longer supported.
+            </strong>{' '}
+            The empirically-validated set is {GRAVISCAN_RESOLUTIONS.join(', ')}{' '}
+            DPI (per the V600 wedge investigation). Please choose a valid value
+            below and click Save Resolution.
           </p>
         </div>
       )}
@@ -402,8 +402,7 @@ export function ConfigureScanner() {
                     prev.map((s) => ({ ...s, status: 'starting' as const }))
                   );
                   try {
-                    const result =
-                      await window.electron.graviscan.resetUsb();
+                    const result = await window.electron.graviscan.resetUsb();
                     if (!result.success) {
                       setDetectionError(result.error || 'USB reset failed');
                     }
@@ -474,7 +473,7 @@ export function ConfigureScanner() {
                         onChange={(e) =>
                           handleGridModeChange(
                             scanner.scannerId,
-                            e.target.value,
+                            e.target.value
                           )
                         }
                         disabled={isScanActive}
@@ -487,7 +486,7 @@ export function ConfigureScanner() {
                         onClick={() =>
                           handleRemoveScanner(
                             scanner.scannerId,
-                            scanner.displayName || scanner.scannerId,
+                            scanner.displayName || scanner.scannerId
                           )
                         }
                         // Disable during active scan: the overlay
@@ -527,7 +526,9 @@ export function ConfigureScanner() {
                   {GRAVISCAN_RESOLUTIONS.map((res) => (
                     <option key={res} value={res}>
                       {res} DPI
-                      {res === 1200 ? ' (production, validated at 140×140 mm)' : ''}
+                      {res === 1200
+                        ? ' (production, validated at 140×140 mm)'
+                        : ''}
                     </option>
                   ))}
                 </select>
