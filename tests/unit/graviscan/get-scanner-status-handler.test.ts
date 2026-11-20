@@ -178,7 +178,28 @@ describe('getScannerStatus', () => {
     });
   });
 
-  it('orders results by createdAt ascending (matches production query)', async () => {
+  it('lists scanners in USB-port order, the order Detect labels them "Scanner 1", "Scanner 2" (so Sc{K} is "Scanner K", as on the rig)', async () => {
+    // Saved first but on a higher port: Detect labelled it "Scanner 2".
+    const later = { ...SAVED_SCANNER_2, id: 'hi', usb_port: '1-4' };
+    const earlier = { ...SAVED_SCANNER_1, id: 'lo', usb_port: '1-1' };
+    db.graviScanner.findMany.mockResolvedValue([later, earlier]);
+
+    const result = await getScannerStatus(coordinator, db);
+
+    expect(result.scanners.map((s) => s.scannerId)).toEqual(['lo', 'hi']);
+  });
+
+  it('keeps the saved order for scanners without a USB port or with the same one', async () => {
+    const a = { ...SAVED_SCANNER_1, id: 'a', usb_port: null };
+    const b = { ...SAVED_SCANNER_2, id: 'b', usb_port: null };
+    db.graviScanner.findMany.mockResolvedValue([a, b]);
+
+    const result = await getScannerStatus(coordinator, db);
+
+    expect(result.scanners.map((s) => s.scannerId)).toEqual(['a', 'b']);
+  });
+
+  it('fetches enabled scanners in createdAt order (the tie-break for the USB-port sort)', async () => {
     db.graviScanner.findMany.mockResolvedValue([SAVED_SCANNER_1]);
 
     await getScannerStatus(coordinator, db);
