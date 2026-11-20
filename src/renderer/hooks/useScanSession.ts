@@ -666,9 +666,10 @@ export function useScanSession(
           // markJobRecorded() (design.md Decision 14) is what makes this
           // status reachable at all — without it every job would still
           // report 'pending' here, indistinguishable from one genuinely
-          // still in flight. The backend never separately stores the real
-          // captured path, only the deterministic path assigned at job
-          // creation, which the scanner always writes to.
+          // still in flight. The backend keeps each finished plate's real
+          // saved path as `imagePath` (job-image-path.ts); the planned
+          // `outputPath` has no `_et_` and never exists on disk, so it is
+          // only a last resort.
           restoredCompletedJobs[key] = {
             ...job,
             status: 'complete',

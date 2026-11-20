@@ -21,6 +21,7 @@ import type { BrowserWindow } from 'electron';
 import { WedgeDetector, type WedgeDetectedEvent } from '../wedge-detector';
 import { SlackNotifier } from '../slack-notifier';
 import { scanLog } from './scan-logger';
+import { recordJobImagePath, type ScanCompleteLike } from './job-image-path';
 
 // =============================================================================
 // Module-level state (not exported — accessed via functions)
@@ -432,6 +433,12 @@ export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
     // and forwarded to the renderer + auto-pausing the wedged scanner
     // when a main window getter is available (Tier 3 wedge-response UI)
     setupWedgeDetection(scanCoordinator, _db, _getMainWindow);
+
+    // Keep each finished plate's real saved path on its session job, so a
+    // page that comes back mid-session verifies the actual file.
+    scanCoordinator.on('scan-complete', (event: ScanCompleteLike) =>
+      recordJobImagePath(graviSessionFns.getScanSession, event)
+    );
 
     return scanCoordinator;
   })();
