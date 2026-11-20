@@ -36,7 +36,7 @@ interface FileNameMarker {
 
 const FILE_NAME_MARKERS: readonly FileNameMarker[] = [
   { pattern: /^st$/i, meaning: 'file names use "_st_" for the start time' },
-  { pattern: /^et$/i, meaning: 'file names use "_et_" for the save time' },
+  { pattern: /^et$/i, meaning: 'file names use "_et_" for the scan end time' },
   {
     pattern: /^wave\d+$/i,
     meaning:

@@ -71,7 +71,7 @@ describe('graviscanExpNameError', () => {
   });
 
   it.each([
-    ['Run et', 'save time'],
+    ['Run et', 'scan end time'],
     ['Trial cy1', 'cycle'],
     ['Test Sc2', 'scanner'],
   ])('%s → mentions %s', (name, what) => {
