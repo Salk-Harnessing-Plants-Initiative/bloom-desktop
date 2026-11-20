@@ -22,7 +22,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ScannerSubprocess, ScanWorkerEvent } from './scanner-subprocess';
 import { scanLog } from './scan-logger';
-import { plannedPlatePath, readCycleFromScanFileName } from './scan-filename';
+import {
+  plannedPlatePath,
+  readStAndCycleFromScanFileName,
+} from './scan-filename';
 import type { PlateConfig, ScannerConfig } from '../../types/graviscan';
 import type { ScanCoordinatorLike } from './session-handlers';
 
@@ -920,10 +923,10 @@ export class ScanCoordinator
           cycle: this.currentCycle,
         }));
 
-        // Plates of this row; `onScanComplete` accepts completions only for
-        // these, and only for this cycle (see the comment there).
-        const dispatchedPlates = new Set(
-          platesToScan.map((p) => p.plate_index)
+        // Plates of this row, by plate index; `onScanComplete` accepts
+        // completions only for these, and only from this row (see there).
+        const dispatchedPlates = new Map(
+          platesToScan.map((p) => [p.plate_index, p])
         );
 
         // Accumulate the REAL per-plate paths from each plate's own
@@ -981,24 +984,32 @@ export class ScanCoordinator
             // affirmative false completeness claim, while the dedupe below
             // silently dropped this cycle's genuine event.
             //
-            // So discriminate on the cycle: the worker builds `_cy<N>_` into
-            // the name from the `cycle` sent with this row, at its fixed
-            // place after `_st_`/`_et_` (`readCycleFromScanFileName`).
-            // Every name the worker builds carries a cycle; a path without
-            // one is accepted rather than dropped, so a naming change can
-            // never turn a healthy grid into all-MISSING.
-            if (!dispatchedPlates.has(event.plate_index)) return;
-            const savedCycle = readCycleFromScanFileName(
+            // So discriminate on what the worker built into the saved name
+            // from this row's parts: its folder (`output_dir`), its `_st_`
+            // and its `_cy<N>_`. The cycle alone is not enough: every session
+            // starts at cycle 1, and a ready worker is reused by the next
+            // session, so a late file from an earlier session also says
+            // `cy1` (#500 review). A path without the rig pattern is accepted
+            // rather than dropped, so a naming change can never turn a
+            // healthy grid into all-MISSING.
+            const plate = dispatchedPlates.get(event.plate_index);
+            if (!plate) return;
+            const saved = readStAndCycleFromScanFileName(
               path.basename(event.path)
             );
-            if (savedCycle !== null && savedCycle !== this.currentCycle) {
+            if (
+              saved &&
+              (saved.cycle !== this.currentCycle ||
+                saved.stTimestamp !== stTimestamp ||
+                path.dirname(event.path) !== plate.output_dir)
+            ) {
               scanLog(
                 `[${scannerId}] Cycle ${this.currentCycle}: ignored a ` +
-                  `scan-complete for plate ${event.plate_index} belonging ` +
-                  `to cycle ${savedCycle} — got ${path.basename(event.path)}. ` +
-                  `The worker is running behind after an earlier row timed ` +
-                  `out; that file belongs to the earlier cycle and is counted ` +
-                  `there, not here.`
+                  `scan-complete for plate ${event.plate_index} from an ` +
+                  `earlier row, cycle or session — got ${event.path}, ` +
+                  `expected _st_${stTimestamp} cycle ${this.currentCycle} in ` +
+                  `${plate.output_dir}. The worker is running behind after an ` +
+                  `earlier row timed out; that file is not counted here.`
               );
               return;
             }

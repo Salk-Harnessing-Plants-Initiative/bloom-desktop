@@ -141,8 +141,15 @@ export function buildScanFileName(parts: ScanFileNameParts): string {
 
 /** Cycle of a rig-style name (before or after `_et_`), or null. */
 export function readCycleFromScanFileName(fileName: string): number | null {
+  return readStAndCycleFromScanFileName(fileName)?.cycle ?? null;
+}
+
+/** `_st_` time and cycle of a rig-style name (before or after `_et_`), or null. */
+export function readStAndCycleFromScanFileName(
+  fileName: string
+): { stTimestamp: string; cycle: number } | null {
   const m = ST_CYCLE_PATTERN.exec(fileName);
-  return m ? Number(m[3]) : null;
+  return m ? { stTimestamp: m[1], cycle: Number(m[3]) } : null;
 }
 
 /**

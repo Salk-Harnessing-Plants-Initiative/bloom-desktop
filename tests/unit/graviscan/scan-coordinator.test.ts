@@ -1611,16 +1611,19 @@ describe('ScanCoordinator', () => {
       await coordinator.initialize(makeScanners(1));
 
       const sub = createdSubprocesses[0];
-      const plannedPath = path.join(
-        SESSION_PARTS.output_dir,
-        'scan_wave1_st_20260410T120000_cy1_Sc1_00.tif'
-      );
-      const realFinalPath = path.join(
-        SESSION_PARTS.output_dir,
-        'scan_wave1_st_20260410T120000_et_20260410T120530_cy1_Sc1_00.tif'
-      );
+      let plannedPath = '';
+      let realFinalPath = '';
 
-      sub.scan.mockImplementation(() => {
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        // As the worker would: this row's `_st_` and cycle, plus `_et_`.
+        const p = plates[0];
+        const stem = `scan_wave1_st_${p.st_timestamp}`;
+        const tail = `_cy${p.cycle}_Sc1_00.tif`;
+        plannedPath = path.join(p.output_dir!, `${stem}${tail}`);
+        realFinalPath = path.join(
+          p.output_dir!,
+          `${stem}_et_20260410T120530${tail}`
+        );
         sub.emit('scan-complete', {
           type: 'scan-complete',
           scanner_id: 'scanner-1',
@@ -1938,13 +1941,14 @@ describe('ScanCoordinator', () => {
       // accumulated paths here would (a) log "output presence unknown" for a
       // plate whose path is known, (b) skip its on-disk verification, and
       // (c) undercount it in the grid-complete tally.
-      sub.scan.mockImplementation((plates: { plate_index: string }[]) => {
+      let reportedPath = '';
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
         setImmediate(() => {
+          reportedPath = workerSavedPath(plates[0]);
           sub.emit('scan-complete', {
             plate_index: '00',
-            path: '/scans/exp/wave1/scanner-1/plate_st_20260101T000000_et_20260101T000100_cy1_S1_00.tif',
+            path: reportedPath,
           });
-          void plates;
           sub.emit('exit', { scannerId: sub.scannerId, code: 1, signal: null });
         });
       });
@@ -1978,9 +1982,7 @@ describe('ScanCoordinator', () => {
       ).toBe(true);
 
       // And plate 00's file must have gone through real on-disk verification.
-      expect(fs.promises.access).toHaveBeenCalledWith(
-        '/scans/exp/wave1/scanner-1/plate_st_20260101T000000_et_20260101T000100_cy1_S1_00.tif'
-      );
+      expect(fs.promises.access).toHaveBeenCalledWith(reportedPath);
 
       // ...and must COUNT toward its grid's tally. Verifying it but not
       // counting it would report `0/1 files verified — 1 MISSING` for a grid
@@ -2416,6 +2418,74 @@ describe('ScanCoordinator', () => {
       expect(fs.promises.access).not.toHaveBeenCalledWith(
         workerSavedPath(dispatched[0][0])
       );
+    });
+
+    it('does not count a late file from an EARLIER SESSION, which also says cy1 now that every session starts at cycle 1', async () => {
+      // A row that timed out leaves its worker scanning, and ready workers
+      // are reused by the next session. The late file names cy1 like this
+      // session's row, but lives in the earlier session's folder with that
+      // session's _st_ — it must not be counted (or verified) here.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-09T20:00:00Z'));
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+      const sub = createdSubprocesses[0];
+
+      const earlierSessionFile = path.join(
+        '/tmp/scan_wave1_20260809T190000',
+        'scan_wave1_st_20260809T190000_et_20260809T200001_cy1_Sc1_00.tif'
+      );
+      const sameFolderOtherSt = path.join(
+        SESSION_PARTS.output_dir,
+        'scan_wave1_st_20260809T190000_et_20260809T200001_cy1_Sc1_00.tif'
+      );
+      sub.scan.mockImplementation(() => {
+        setImmediate(() => {
+          sub.emit('scan-complete', {
+            type: 'scan-complete',
+            scanner_id: 'scanner-1',
+            plate_index: '00',
+            path: earlierSessionFile,
+          });
+          sub.emit('scan-complete', {
+            type: 'scan-complete',
+            scanner_id: 'scanner-1',
+            plate_index: '00',
+            path: sameFolderOtherSt,
+          });
+          emitCycleDone(sub);
+        });
+      });
+
+      coordinator.startNewSession();
+      const scan = coordinator.scanOnce(
+        new Map<string, PlateConfig[]>([
+          [
+            'scanner-1',
+            [
+              {
+                plate_index: '00',
+                grid_mode: '2grid',
+                resolution: 600,
+                ...SESSION_PARTS,
+              },
+            ],
+          ],
+        ])
+      );
+      await vi.advanceTimersByTimeAsync(100_000);
+      await scan;
+
+      expect(fs.promises.access).not.toHaveBeenCalledWith(earlierSessionFile);
+      expect(fs.promises.access).not.toHaveBeenCalledWith(sameFolderOtherSt);
+      const tally = vi
+        .mocked(scanLog)
+        .mock.calls.map(([msg]) => String(msg))
+        .find((msg) => msg.includes('grid 00 complete'));
+      expect(tally).toContain('0/1 files verified');
+
+      vi.useRealTimers();
     });
 
     it('ignores a late scan-complete belonging to a different row, and a duplicate for the same plate', async () => {

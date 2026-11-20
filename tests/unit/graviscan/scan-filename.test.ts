@@ -10,6 +10,7 @@ import {
   composeScanFileName,
   buildSystemPrefix,
   readCycleFromScanFileName,
+  readStAndCycleFromScanFileName,
 } from '../../../src/main/graviscan/scan-filename';
 
 /**
@@ -239,5 +240,20 @@ describe('readCycleFromScanFileName', () => {
 
   it('returns null for a name without the rig pattern', () => {
     expect(readCycleFromScanFileName('00_cy1_1700000000000.tiff')).toBeNull();
+  });
+});
+
+describe('readStAndCycleFromScanFileName', () => {
+  it('reads the _st_ time and cycle of a saved rig name', () => {
+    expect(readStAndCycleFromScanFileName(RIG_GOLDEN[8])).toEqual({
+      stTimestamp: '20260809T191646',
+      cycle: 2,
+    });
+  });
+
+  it('returns null for a name without the rig pattern', () => {
+    expect(
+      readStAndCycleFromScanFileName('00_cy1_1700000000000.tiff')
+    ).toBeNull();
   });
 });
