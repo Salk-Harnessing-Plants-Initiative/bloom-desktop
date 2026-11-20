@@ -657,6 +657,10 @@ export interface ScanSessionState {
   coordinatorState: 'idle' | 'scanning' | 'waiting';
   nextScanAt: number | null;
   waveNumber: number;
+  /** A test scan: nothing is recorded in the database. */
+  isTest: boolean;
+  /** Set once the session has ended (see `endScanSession`). */
+  ended?: boolean;
 }
 
 /**

@@ -247,7 +247,8 @@ describe('registerGraviScanHandlers', () => {
     it('graviscan:get-scan-status delegates to getScanStatus', async () => {
       await mockIpcMain._invoke('graviscan:get-scan-status');
       expect(sessionHandlers.getScanStatus).toHaveBeenCalledWith(
-        mockSessionFns
+        mockSessionFns,
+        null
       );
     });
 
@@ -1827,6 +1828,96 @@ describe('registerGraviScanHandlers', () => {
         error: 'Scan already in progress',
       });
       expect(sessionHandlers.startScan).not.toHaveBeenCalled();
+    });
+
+    it('refuses a second start while the first is still starting, then accepts one after (#505)', async () => {
+      let release!: () => void;
+      vi.mocked(startScanPaths.buildTestScanPlan).mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            release = () =>
+              resolve({ ok: true, scanners: [], outputPaths: {} } as any);
+          })
+      );
+      const first = mockIpcMain._invoke('graviscan:start-scan', {
+        test: true,
+      });
+      const second = await mockIpcMain._invoke('graviscan:start-scan', {});
+      expect(second).toEqual({
+        success: false,
+        error: 'A scan is already starting.',
+      });
+
+      release();
+      await first;
+      vi.mocked(startScanPaths.buildStartScanPlan).mockResolvedValueOnce({
+        error: 'plan refused',
+      } as any);
+      const third = await mockIpcMain._invoke('graviscan:start-scan', {});
+      expect(third).toEqual({ success: false, error: 'plan refused' });
+    });
+
+    it('accepts a new start after a start that threw', async () => {
+      vi.mocked(startScanPaths.buildStartScanPlan)
+        .mockRejectedValueOnce(new Error('db gone'))
+        .mockResolvedValueOnce({ error: 'next one ran' } as any);
+      await mockIpcMain._invoke('graviscan:start-scan', {});
+      const result = await mockIpcMain._invoke('graviscan:start-scan', {});
+      expect(result).toEqual({ success: false, error: 'next one ran' });
+    });
+  });
+
+  describe('session records', () => {
+    const lastSession = {
+      sessionId: 'sess-1',
+      experimentId: 'exp-1',
+      waveNumber: 1,
+      outcome: 'completed',
+      verification: null,
+    };
+    const records = {
+      hooks: { openSessionRecord: vi.fn(), onSessionEnd: vi.fn() },
+      getLastSession: vi.fn(() => lastSession),
+    };
+
+    beforeEach(() => {
+      mockGetCoordinator.mockReturnValue({ isScanning: false });
+      registerGraviScanHandlers(
+        mockIpcMain as any,
+        mockDb,
+        mockGetMainWindow,
+        mockSessionFns,
+        mockGetCoordinator,
+        undefined,
+        records as any
+      );
+    });
+
+    it('passes the session hooks and the test flag to startScan', async () => {
+      vi.mocked(startScanPaths.buildTestScanPlan).mockResolvedValueOnce({
+        ok: true,
+        scanners: [],
+        outputPaths: {},
+      } as any);
+      await mockIpcMain._invoke('graviscan:start-scan', { test: true });
+      const call = vi.mocked(sessionHandlers.startScan).mock.calls[0];
+      expect(call[1].test).toBe(true);
+      expect(call[4]).toBe(records.hooks);
+    });
+
+    it('passes the session hooks to cancelScan', async () => {
+      await mockIpcMain._invoke('graviscan:cancel-scan');
+      expect(vi.mocked(sessionHandlers.cancelScan).mock.calls[0][2]).toBe(
+        records.hooks
+      );
+    });
+
+    it('gives getScanStatus the last session', async () => {
+      await mockIpcMain._invoke('graviscan:get-scan-status');
+      expect(sessionHandlers.getScanStatus).toHaveBeenCalledWith(
+        mockSessionFns,
+        lastSession
+      );
     });
   });
 });

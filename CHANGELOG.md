@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - GraviScan: Box backup no longer skips images when two scanners scan the same plate position ([#370](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/370)).
+- GraviScan: scans are now saved to the database, uploaded to Bloom and backed up to Box even when the Capture Scan page is closed. The main process records each image and ends the session, so leaving the page during a scan loses nothing ([#502](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/502)). Before this, the development branch saved no image rows at all, so no scan reached Box, Bloom or Download Wave.
+- GraviScan: an image that arrives late, after its row timed out, is recorded under its own cycle, not the next one ([#503](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/503)).
+- GraviScan: an image that was saved but couldn't be recorded in the database is shown on the scan page, and is no longer left as "pending" ([#479](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/479), [#330](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/330)).
+- GraviScan: if the session can't be saved to the database, the scan doesn't start and the page says why. It used to scan anyway.
+- GraviScan: per-scanner progress is right after returning to the Capture Scan page, and the QR check result is shown if the session ended while the page was closed ([#314](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/314)).
+- GraviScan: Start Scan and Test Scan can't run at the same time, and a second Start Scan while one is starting is refused ([#505](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/505)). Start Scan waits while a scanner with plates is still connecting or in error, and says which one ([#159](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/159)).
 - GraviScan: a single scan or test scan is saved as cycle 1. It used to continue the previous session's cycle count until the app was restarted ([#498](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/498)).
 
 ## [0.2.5] - 2026-10-30

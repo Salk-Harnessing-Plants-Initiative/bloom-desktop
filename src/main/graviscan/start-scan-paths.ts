@@ -61,6 +61,9 @@ export interface StartScanPlateRequest {
   grid_mode: GridMode;
   resolution: number;
   plate_barcode?: string | null;
+  /** "YYYY-MM-DD"; a `Date` is also accepted (assignments hold one, #315). */
+  transplant_date?: string | Date | null;
+  custom_note?: string | null;
 }
 
 export interface StartScanScannerRequest {
@@ -82,7 +85,33 @@ export interface StartScanPathRequest {
   };
 }
 
-export type StartScanPlate = PlateConfig & { plate_barcode?: string | null };
+/** A plate as planned: name parts for the worker, details for its records. */
+export type StartScanPlate = PlateConfig & {
+  plate_barcode?: string | null;
+  /** "YYYY-MM-DD" or null. */
+  transplant_date?: string | null;
+  custom_note?: string | null;
+};
+
+/** `null`, a string that parses as a date, or a `Date`; anything else is not. */
+function isTransplantDate(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (value instanceof Date) return !Number.isNaN(value.getTime());
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+}
+
+/** A plate's transplant date as "YYYY-MM-DD" (a `Date` is converted), or null. */
+export function normalizeTransplantDate(
+  value: string | Date | null | undefined
+): string | null {
+  if (value === undefined || value === null) return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return value;
+}
+
+function isOptionalText(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === 'string';
+}
 
 export interface StartScanPlanScanner {
   scannerId: string;
@@ -140,6 +169,13 @@ function requestShapeError(req: unknown): string | null {
     for (const p of s.plates as unknown[]) {
       if (!isRecord(p) || typeof p.plate_index !== 'string') {
         return `${MALFORMED}: each plate must include a plate_index`;
+      }
+      if (
+        !isOptionalText(p.plate_barcode) ||
+        !isOptionalText(p.custom_note) ||
+        !isTransplantDate(p.transplant_date)
+      ) {
+        return `${MALFORMED}: a plate's barcode, transplant date or note is not valid`;
       }
     }
   }
@@ -266,6 +302,8 @@ export async function buildStartScanPlan(
             phenotyper_name: phenotyper.name,
             scanner_name: scannerNames.get(s.scannerId),
             plate_barcode: p.plate_barcode ?? null,
+            transplant_date: normalizeTransplantDate(p.transplant_date),
+            custom_note: p.custom_note ?? null,
           };
         }),
       };

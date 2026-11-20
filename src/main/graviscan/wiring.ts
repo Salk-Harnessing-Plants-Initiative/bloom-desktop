@@ -21,7 +21,9 @@ import type { BrowserWindow } from 'electron';
 import { WedgeDetector, type WedgeDetectedEvent } from '../wedge-detector';
 import { SlackNotifier } from '../slack-notifier';
 import { scanLog } from './scan-logger';
-import { recordJobImagePath, type ScanCompleteLike } from './job-image-path';
+import type { GraviScanRecording } from './recording-wiring';
+import type { RecordableScanEvent } from './scan-recorder';
+import { advanceSessionCycle } from './session-lifecycle';
 
 // =============================================================================
 // Module-level state (not exported — accessed via functions)
@@ -52,6 +54,8 @@ let lastSeenCycleNumber = -1;
 /** Set by `initGraviScan()`; used by `setupWedgeDetection()` to look up
  * a scanner's display_name/usb_port for Slack alert enrichment (#4). */
 let _db: ScannerLookupDb | null = null;
+/** Set by `initGraviScan()`: records each image and the session's row. */
+let _recording: GraviScanRecording | null = null;
 
 /**
  * Look up the `GraviScanner` row for `evt.scanner_id` and merge its
@@ -434,10 +438,14 @@ export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
     // when a main window getter is available (Tier 3 wedge-response UI)
     setupWedgeDetection(scanCoordinator, _db, _getMainWindow);
 
-    // Keep each finished plate's real saved path on its session job, so a
-    // page that comes back mid-session verifies the actual file.
-    scanCoordinator.on('scan-complete', (event: ScanCompleteLike) =>
-      recordJobImagePath(graviSessionFns.getScanSession, event)
+    // Record every finished image in the database (and keep its real
+    // saved path on its job), whether or not the scan page is open.
+    scanCoordinator.on('scan-complete', (event: RecordableScanEvent) => {
+      void _recording?.recorder.record(event);
+    });
+    // Each cycle's first scan-started resets the jobs for that cycle.
+    scanCoordinator.on('scan-started', (event: { cycle_number?: unknown }) =>
+      advanceSessionCycle(scanSession, event.cycle_number)
     );
 
     return scanCoordinator;
@@ -477,6 +485,15 @@ export async function initGraviScan(
   const { registerGraviScanHandlers } = await import('./register-handlers');
   const { cleanupOldLogs } = await import('./scan-logger');
   const { setAuditLogger } = await import('../database-handlers');
+  const { createGraviScanRecording } = await import('./recording-wiring');
+  const { getOutputDir } = await import('./image-handlers');
+
+  _recording = createGraviScanRecording({
+    db,
+    getMainWindow,
+    getScanSession: graviSessionFns.getScanSession,
+    getOutputDir: () => getOutputDir().path ?? null,
+  });
 
   // Clean up old scan logs on startup
   cleanupOldLogs();
@@ -506,7 +523,8 @@ export async function initGraviScan(
     getMainWindow,
     graviSessionFns,
     () => scanCoordinator,
-    getOrCreateCoordinator
+    getOrCreateCoordinator,
+    _recording.sessionRecords
   );
 
   console.log('[Main] GraviScan handlers registered');
@@ -569,6 +587,7 @@ export async function _resetWiringState(): Promise<void> {
   wedgeDetector = null;
   lastSeenCycleNumber = -1;
   _db = null;
+  _recording = null;
   // Dynamic import to avoid pulling in register-handlers (and its transitive
   // sharp/native dependencies) at module load time.
   const { _resetRegistration } = await import('./register-handlers');

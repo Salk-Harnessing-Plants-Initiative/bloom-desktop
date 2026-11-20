@@ -74,6 +74,10 @@ const mockGraviAPI = {
   onIntervalStart: vi.fn().mockReturnValue(vi.fn()),
   onIntervalComplete: vi.fn().mockReturnValue(vi.fn()),
   onCancelled: vi.fn().mockReturnValue(vi.fn()),
+  // The Capture Scan page shows the main process's QR check.
+  onVerifyStarted: vi.fn().mockReturnValue(vi.fn()),
+  onVerifyResult: vi.fn().mockReturnValue(vi.fn()),
+  onVerifyComplete: vi.fn().mockReturnValue(vi.fn()),
   onUploadProgress: vi.fn().mockReturnValue(vi.fn()),
   retryScanner: vi.fn().mockResolvedValue({ success: true }),
   // BrowseGraviScans (Tier 5) — mounted for real when its nav link is
