@@ -720,29 +720,6 @@ export class ScanCoordinator
   }
 
   /**
-   * Record that a plate ended a cycle with no confirmed image.
-   *
-   * This line is the ONLY durable record that the plate's outcome is
-   * unknown, so it carries enough context to reconstruct the affected wave
-   * later without the database: cycle, wave, plate and the full expected
-   * path (which itself encodes experiment, wave and scanner).
-   *
-   * Written for a lab technician rather than an engineer (review round 5,
-   * I8):
-   *  - leads with `MISSING?`, the same token the grid tally uses, so one
-   *    grep finds both halves of the signal;
-   *  - states the consequence before the mechanism;
-   *  - ends with the action, because "output presence unknown" never got a
-   *    plate re-scanned;
-   *  - does not label the path `pre-_et_`. No `_et_`-stamped file exists to
-   *    look for today (#370), and sending someone hunting for one is worse
-   *    than saying nothing.
-   *
-   * `plate` must come from `platesToScan` where one exists, so its
-   * `_cy<N>_` is this cycle's rather than the stale one the row was built
-   * from.
-   */
-  /**
    * Plain-language cause for a row outcome that left a plate unreported.
    *
    * `stopped` covers two very different situations and must not be
@@ -773,6 +750,30 @@ export class ScanCoordinator
     }
   }
 
+  /**
+   * Record that a plate ended a cycle with no confirmed image.
+   *
+   * This line is the ONLY durable record that the plate's outcome is
+   * unknown, so it carries enough context to reconstruct the affected wave
+   * later without the database: cycle, wave, plate and the full expected
+   * path (which itself encodes experiment, wave and scanner).
+   *
+   * Written for a lab technician rather than an engineer (review round 5,
+   * I8):
+   *  - leads with `MISSING?`, the same token the grid tally uses, so one
+   *    grep finds both halves of the signal;
+   *  - states the consequence before the mechanism;
+   *  - ends with the action, because "output presence unknown" never got a
+   *    plate re-scanned;
+   *  - quotes the planned path, which has no `_et_` (only the worker knows
+   *    the save time), and says that the saved file adds `_et_` and its
+   *    save time after the `_st_` time, so the technician looks for the
+   *    right name.
+   *
+   * `plate` must come from `platesToScan` where one exists, so its `cycle`
+   * and `st_timestamp` are this row's rather than the ones the plates were
+   * built with.
+   */
   private logUnverifiedPlate(
     scannerId: string,
     plate: PlateConfig,
@@ -796,13 +797,6 @@ export class ScanCoordinator
   }
 
   /**
-   * Scan all plates once, orchestrated per-grid.
-   *
-   * Iterates grids sequentially: for each grid index, all scanners scan
-   * that grid in parallel (with USB stagger), then we wait for all to
-   * finish before moving to the next grid.
-   */
-  /**
    * Start counting cycles from 1 again. Called once at the start of every
    * session by Start Scan, so a single scan is cycle 1 rather than the
    * previous session's count plus one (#498). Not done in `initialize()`,
@@ -812,6 +806,13 @@ export class ScanCoordinator
     this.currentCycle = 0;
   }
 
+  /**
+   * Scan all plates once, orchestrated per-grid.
+   *
+   * Iterates grids sequentially: for each grid index, all scanners scan
+   * that grid in parallel (with USB stagger), then we wait for all to
+   * finish before moving to the next grid.
+   */
   async scanOnce(platesPerScanner: Map<string, PlateConfig[]>): Promise<void> {
     this.state = 'scanning';
     this.currentCycle++;

@@ -1170,16 +1170,16 @@ describe('registerGraviScanHandlers', () => {
       expect(sessionHandlers.startScan).not.toHaveBeenCalled();
     });
 
-    it('reports a folder that cannot be created, without starting', async () => {
+    it('reports a failure while preparing the scan (e.g. the database), without starting', async () => {
       vi.mocked(startScanPaths.buildStartScanPlan).mockRejectedValueOnce(
-        new Error('EACCES: permission denied')
+        new Error('database is locked')
       );
 
       const result = await mockIpcMain._invoke('graviscan:start-scan', request);
 
       expect(result).toEqual({
         success: false,
-        error: 'Failed to create scan folder: EACCES: permission denied',
+        error: 'Failed to prepare scan: database is locked',
       });
       expect(sessionHandlers.startScan).not.toHaveBeenCalled();
     });

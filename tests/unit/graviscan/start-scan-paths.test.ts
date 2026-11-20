@@ -80,12 +80,15 @@ function deps(db = fakeDb(), systemName = 'graviscan-desktop') {
 const SESSION_DIR = 'Perceptome_Screen_wave20_20260809T190946';
 
 describe('buildStartScanPlan', () => {
-  it('creates the rig session folder and hands the worker the name parts, as on the rig', async () => {
+  it('hands the worker the name parts, as on the rig, without creating the folder', async () => {
     const plan = await buildStartScanPlan(deps(), request());
     if ('error' in plan) throw new Error(plan.error);
 
+    // The worker creates the session folder when it saves the first image,
+    // so a start that fails later leaves no empty folder behind.
     const dir = path.join(outputDir, SESSION_DIR);
-    expect(fs.statSync(dir).isDirectory()).toBe(true);
+    expect(fs.existsSync(dir)).toBe(false);
+    expect(plan.sessionDir).toBe(dir);
 
     const [a, b] = plan.scanners.map((s) => s.plates[0]);
     expect(a).toEqual({
@@ -236,19 +239,42 @@ describe('buildStartScanPlan', () => {
       ).toMatch(/twice/i);
     });
 
-    it('a scanner that is not in the database', async () => {
-      expect(
-        await refused(request(), fakeDb(undefined, undefined, [SCANNERS[0]]))
-      ).toMatch(/scanner/i);
+    it('a scanner that is not in the database, saying what to do', async () => {
+      const msg = await refused(
+        request(),
+        fakeDb(undefined, undefined, [SCANNERS[0]])
+      );
+      expect(msg).toMatch(/Configure Scanner/);
+      expect(msg).not.toContain('scanner-b');
     });
 
-    it('a system name that could change the folder', async () => {
-      const plan = await buildStartScanPlan(
-        { ...deps(), systemName: '../x' },
-        request()
+    it('an unknown experiment or phenotyper, saying what to do', async () => {
+      expect(await refused(request(), fakeDb(null))).toMatch(
+        /choose the experiment again/i
       );
-      expect('error' in plan).toBe(true);
-      expect(fs.readdirSync(outputDir)).toEqual([]);
+      expect(await refused(request(), fakeDb({ name: 'X' }, null))).toMatch(
+        /choose the phenotyper again/i
+      );
+    });
+
+    it.each(['../x', 'a/b', 'a b', 'a.b', 'x'.repeat(33)])(
+      'a system name %j that is not letters, digits, - and _ (up to 32), saying where to fix it',
+      async (systemName) => {
+        const plan = await buildStartScanPlan(
+          { ...deps(), systemName },
+          request()
+        );
+        if (!('error' in plan)) throw new Error('expected a refusal');
+        expect(plan.error).toContain('GRAVISCAN_SYSTEM_NAME');
+        expect(plan.error).toContain('~/.bloom/.env');
+        expect(fs.readdirSync(outputDir)).toEqual([]);
+      }
+    );
+
+    it('a SANE device name that is not a string', async () => {
+      const req = request();
+      (req.scanners[0] as Record<string, unknown>).saneName = 42;
+      expect(await refused(req)).toMatch(/malformed/i);
     });
 
     it('a scanner missing from the page order', async () => {
@@ -306,7 +332,8 @@ describe('buildTestScanPlan', () => {
     });
     if ('error' in plan) throw new Error(plan.error);
     const dir = path.join(outputDir, 'test');
-    expect(fs.statSync(dir).isDirectory()).toBe(true);
+    // The worker creates the test folder when it saves.
+    expect(fs.existsSync(dir)).toBe(false);
 
     // Rig test-scan parts (rig useTestScan.ts): `test-` + first 8 characters
     // of the scanner id, wave 0, cycle 1, no system name, Sc{K} by position.
@@ -357,6 +384,50 @@ describe('buildTestScanPlan', () => {
       test: true,
       scanners: 'x',
     } as never);
+    expect('error' in plan).toBe(true);
+  });
+
+  it('refuses a plate index that is not a string, even one that looks right', async () => {
+    const plan = await buildTestScanPlan(testDeps(), {
+      test: true,
+      scanners: [
+        {
+          scannerId: 'a',
+          saneName: 'a',
+          plates: [{ ...plate('00'), plate_index: ['01'] as never }],
+        },
+      ],
+    });
+    expect('error' in plan).toBe(true);
+  });
+
+  it('refuses the same plate twice on one scanner', async () => {
+    const plan = await buildTestScanPlan(testDeps(), {
+      test: true,
+      scanners: [
+        { scannerId: 'a', saneName: 'a', plates: [plate('00'), plate('00')] },
+      ],
+    });
+    if (!('error' in plan)) throw new Error('expected a refusal');
+    expect(plan.error).toMatch(/twice/i);
+  });
+
+  it('refuses a test scan with no plates at all', async () => {
+    const plan = await buildTestScanPlan(testDeps(), {
+      test: true,
+      scanners: [{ scannerId: 'a', saneName: 'a', plates: [] }],
+    });
+    if (!('error' in plan)) throw new Error('expected a refusal');
+    expect(plan.error).toMatch(/no plates/i);
+  });
+
+  it('refuses a SANE device name that is not a string', async () => {
+    const plan = await buildTestScanPlan(testDeps(), {
+      test: true,
+      scanners: [
+        { scannerId: 'a', saneName: 42 as never, plates: [plate('00')] },
+      ],
+    });
     expect('error' in plan).toBe(true);
   });
 });

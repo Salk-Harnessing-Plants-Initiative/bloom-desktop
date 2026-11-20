@@ -80,13 +80,23 @@ export function buildSessionDirName(parts: SessionDirNameParts): string {
   );
 }
 
+/**
+ * `GRAVISCAN_SYSTEM_NAME` as it may appear in file names: letters, digits,
+ * `-` and `_`, up to 32 characters (e.g. `graviscan-desktop`).
+ */
+const SYSTEM_NAME_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
+
 /** `{system}_`, or empty when no system name is set (rig rule). */
 export function buildSystemPrefix(
   systemName: string | null | undefined
 ): string {
   if (!systemName) return '';
-  if (/[/\\]/.test(systemName) || systemName.includes('..')) {
-    throw new Error(`Invalid GraviScan system name: ${systemName}`);
+  if (!SYSTEM_NAME_PATTERN.test(systemName)) {
+    throw new Error(
+      `GRAVISCAN_SYSTEM_NAME in ~/.bloom/.env ("${systemName}") can only use ` +
+        `letters, digits, - and _ (up to 32 characters), because it goes into ` +
+        `every scan's file name. Change it there and restart the app.`
+    );
   }
   return `${systemName}_`;
 }

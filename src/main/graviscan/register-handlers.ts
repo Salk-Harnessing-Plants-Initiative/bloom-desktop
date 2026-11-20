@@ -317,8 +317,8 @@ export function registerGraviScanHandlers(
             );
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      console.error('[GraviScan IPC] Failed to prepare scan folder:', msg);
-      return { success: false, error: `Failed to create scan folder: ${msg}` };
+      console.error('[GraviScan IPC] Failed to prepare scan:', msg);
+      return { success: false, error: `Failed to prepare scan: ${msg}` };
     }
     if ('error' in plan) return { success: false, error: plan.error };
     const outputPaths = plan.outputPaths;

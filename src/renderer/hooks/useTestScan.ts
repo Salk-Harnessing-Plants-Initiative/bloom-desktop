@@ -90,8 +90,10 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
     let cleanupComplete: (() => void) | undefined;
     let cleanupError: (() => void) | undefined;
     try {
-      // The main process builds the test paths
-      // (`test/{scannerId}/{plate}_{epochMs}.tiff`); none are sent from here.
+      // The main process prepares the test-scan name parts and the worker
+      // names the files as on the rig, in the output folder's `test/`:
+      // `test-{scanner id, 8 chars}_wave0_st_…_et_…_cy1_Sc{K}_{plate}.tif`.
+      // No paths are sent from here.
       pendingRef.current = new Map(
         scannerIds.map((id) => [
           id,

@@ -196,15 +196,14 @@ export const PLATE_INDICES: Record<GridMode, string[]> = {
 /**
  * Plate configuration for a single scan operation.
  * Used by scan-coordinator, scanner-subprocess, and session-handlers.
+ *
+ * Carries the parts of the plate's file name; the worker builds the name
+ * from them when it saves, as on the rig. No ready-made path is ever sent.
  */
 export interface PlateConfig {
   plate_index: string;
   grid_mode: GridMode;
   resolution: number;
-  /**
-   * Name parts: the worker builds the file name from these when it saves,
-   * as on the rig. No ready-made path is ever sent.
-   */
   /** Session folder (or the test folder) the worker saves into. */
   output_dir?: string;
   /** Cleaned experiment name as used in the file name (rig field). */

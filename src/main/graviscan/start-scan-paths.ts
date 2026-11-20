@@ -4,10 +4,10 @@
  * phenotyper, wave, scanners in page order, plates). As on the rig, each
  * plate gets the parts of its file name and the worker builds the name when
  * it saves; here the parts come from the database and `scan-filename.ts`,
- * the session folder is created, and every path is checked to be inside the
- * output folder.
+ * every path is checked to be inside the output folder. The worker creates
+ * the session folder when it saves the first image, so a start that fails
+ * later leaves no empty folder behind.
  */
-import * as fs from 'fs';
 import * as path from 'path';
 import type { GridMode, PlateConfig } from '../../types/graviscan';
 import { resolveContainedPathAllowingMissing } from './path-containment';
@@ -25,6 +25,15 @@ import {
 const FIRST_CYCLE = 1;
 
 const MALFORMED = 'Malformed start-scan request';
+
+/** Refusal when a built path would land outside the GraviScan output folder. */
+function outsideOutputFolder(outputDir: string): string {
+  return (
+    `Can't save scans there: the scan folder would be outside the GraviScan ` +
+    `output folder (${outputDir}), for example through a link. Check ` +
+    `GRAVISCAN_OUTPUT_DIR in ~/.bloom/.env.`
+  );
+}
 
 export interface StartScanLookupLike {
   experiment: {
@@ -122,6 +131,7 @@ function requestShapeError(req: unknown): string | null {
     if (
       !isRecord(s) ||
       typeof s.scannerId !== 'string' ||
+      typeof s.saneName !== 'string' ||
       !Array.isArray(s.plates) ||
       !order.includes(s.scannerId)
     ) {
@@ -158,12 +168,24 @@ export async function buildStartScanPlan(
     where: { id: experimentId },
     select: { name: true },
   });
-  if (!experiment) return { ok: false, error: 'Experiment not found' };
+  if (!experiment) {
+    return {
+      ok: false,
+      error:
+        'The selected experiment no longer exists. Choose the experiment again.',
+    };
+  }
   const phenotyper = await deps.db.phenotyper.findUnique({
     where: { id: phenotyperId },
     select: { name: true },
   });
-  if (!phenotyper) return { ok: false, error: 'Phenotyper not found' };
+  if (!phenotyper) {
+    return {
+      ok: false,
+      error:
+        'The selected phenotyper no longer exists. Choose the phenotyper again.',
+    };
+  }
 
   const scannerIds = req.scanners.map((s) => s.scannerId);
   const scannerRows = await deps.db.graviScanner.findMany({
@@ -174,7 +196,14 @@ export async function buildStartScanPlan(
     scannerRows.map((r) => [r.id, r.display_name || r.name])
   );
   const unknown = scannerIds.find((id) => !scannerNames.has(id));
-  if (unknown) return { ok: false, error: `Scanner not found: ${unknown}` };
+  if (unknown) {
+    return {
+      ok: false,
+      error:
+        'A selected scanner is no longer in the scanner list. Open Configure ' +
+        'Scanner, detect and save the scanners again, then start the scan.',
+    };
+  }
 
   const startedAt = deps.now();
   const stTimestamp = formatScanTimestamp(startedAt);
@@ -188,7 +217,7 @@ export async function buildStartScanPlan(
         buildSessionDirName({ expName: experiment.name, waveNumber, startedAt })
       )
     );
-    if (!sessionDir.ok) throw new Error('Path outside scan directory');
+    if (!sessionDir.ok) throw new Error(outsideOutputFolder(deps.outputDir));
     const systemPrefix = buildSystemPrefix(deps.systemName);
     const outputPaths: Record<string, string> = {};
     const scanners = req.scanners.map((s) => {
@@ -220,7 +249,7 @@ export async function buildStartScanPlan(
               })
             )
           );
-          if (!planned.ok) throw new Error('Path outside scan directory');
+          if (!planned.ok) throw new Error(outsideOutputFolder(deps.outputDir));
           outputPaths[key] = planned.path;
           return {
             plate_index: p.plate_index,
@@ -248,8 +277,6 @@ export async function buildStartScanPlan(
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
-
-  await fs.promises.mkdir(plan.sessionDir, { recursive: true });
   return plan;
 }
 
@@ -273,11 +300,15 @@ const SAFE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 /** Characters of the scanner id in a test scan's name (rig rule). */
 const TEST_SCAN_ID_CHARS = 8;
 
+/** Wave number in a test scan's name (rig rule: test scans have no wave). */
+const TEST_SCAN_WAVE = 0;
+
 /**
  * Parts for a test scan, as the rig names them (rig `useTestScan.ts`):
  * `test-{first 8 characters of the scanner id}`, wave 0, cycle 1, no system
  * name, `Sc{K}` by the scanner's position in the request. Saved under
- * `{outputDir}/test/` so test files stay apart from session folders.
+ * `{outputDir}/test/` so test files stay apart from session folders. The
+ * worker creates that folder when it saves.
  */
 export async function buildTestScanPlan(
   deps: TestScanPathDeps,
@@ -290,7 +321,9 @@ export async function buildTestScanPlan(
     deps.outputDir,
     path.join(deps.outputDir, TEST_SCAN_DIR)
   );
-  if (!contained.ok) return { ok: false, error: 'Path outside scan directory' };
+  if (!contained.ok) {
+    return { ok: false, error: outsideOutputFolder(deps.outputDir) };
+  }
   const testDir = contained.path;
   const stTimestamp = formatScanTimestamp(deps.now());
   const outputPaths: Record<string, string> = {};
@@ -301,6 +334,7 @@ export async function buildTestScanPlan(
       !isRecord(s) ||
       typeof s.scannerId !== 'string' ||
       !SAFE_ID_PATTERN.test(s.scannerId) ||
+      typeof s.saneName !== 'string' ||
       !Array.isArray(s.plates)
     ) {
       return { ok: false, error: `${MALFORMED}: invalid scanner` };
@@ -308,12 +342,22 @@ export async function buildTestScanPlan(
     const expName = `test-${s.scannerId.slice(0, TEST_SCAN_ID_CHARS)}`;
     const plates: StartScanPlate[] = [];
     for (const p of s.plates as StartScanPlateRequest[]) {
-      if (!isRecord(p) || !/^\d{2}$/.test(String(p.plate_index))) {
-        return { ok: false, error: `Invalid plate index: ${p?.plate_index}` };
+      if (
+        !isRecord(p) ||
+        typeof p.plate_index !== 'string' ||
+        !/^\d{2}$/.test(p.plate_index)
+      ) {
+        return { ok: false, error: `${MALFORMED}: invalid plate index` };
+      }
+      if (`${s.scannerId}:${p.plate_index}` in outputPaths) {
+        return {
+          ok: false,
+          error: `Plate ${p.plate_index} is listed twice for one scanner`,
+        };
       }
       const parts = {
         exp_name: expName,
-        wave_number: 0,
+        wave_number: TEST_SCAN_WAVE,
         st_timestamp: stTimestamp,
         cycle: FIRST_CYCLE,
         system_prefix: '',
@@ -335,10 +379,12 @@ export async function buildTestScanPlan(
     }
     scanners.push({
       scannerId: s.scannerId,
-      saneName: String(s.saneName ?? ''),
+      saneName: s.saneName,
       plates,
     });
   }
-  await fs.promises.mkdir(testDir, { recursive: true });
+  if (Object.keys(outputPaths).length === 0) {
+    return { ok: false, error: 'No plates selected for the test scan.' };
+  }
   return { ok: true, scanners, outputPaths, sessionDir: testDir };
 }
