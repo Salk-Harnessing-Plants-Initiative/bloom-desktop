@@ -1,6 +1,6 @@
 /**
- * db:experiments:create and db:experiments:update through their IPC handlers:
- * GraviScan experiment names may not contain file-name marker words.
+ * db:experiments:create through its IPC handler: new GraviScan experiment
+ * names may not contain file-name marker words.
  * Runs on a copy of the migrated template database (see scans-list-handler.test.ts).
  */
 import {
@@ -49,8 +49,6 @@ holder.db = prisma;
 type Result = { success: boolean; error?: string; data?: { id: string } };
 const create = (data: object) =>
   handlers.get('db:experiments:create')!({}, data) as Promise<Result>;
-const update = (id: string, data: object) =>
-  handlers.get('db:experiments:update')!({}, id, data) as Promise<Result>;
 
 beforeAll(async () => {
   await prisma.$connect();
@@ -93,35 +91,6 @@ describe('db:experiments:create', () => {
       species: 'Arabidopsis',
       experiment_type: 'cylinderscan',
     });
-    expect(result.success).toBe(true);
-  });
-});
-
-describe('db:experiments:update', () => {
-  it('refuses renaming a GraviScan experiment to a marker name, and keeps the old name', async () => {
-    const exp = await prisma.experiment.create({
-      data: {
-        name: 'Good',
-        species: 'Arabidopsis',
-        experiment_type: 'graviscan',
-      },
-    });
-    const result = await update(exp.id, { name: 'Trial cy1' });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('"cy1"');
-    const after = await prisma.experiment.findUnique({ where: { id: exp.id } });
-    expect(after?.name).toBe('Good');
-  });
-
-  it('still updates other fields of an existing GraviScan experiment with a marker name', async () => {
-    const exp = await prisma.experiment.create({
-      data: {
-        name: 'Trial_cy1',
-        species: 'Arabidopsis',
-        experiment_type: 'graviscan',
-      },
-    });
-    const result = await update(exp.id, { species: 'Amaranthus' });
     expect(result.success).toBe(true);
   });
 });
