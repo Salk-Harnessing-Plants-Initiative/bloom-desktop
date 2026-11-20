@@ -830,25 +830,8 @@ export function useScanSession(
         return;
       }
 
-      const outputDirResult = unwrapGraviResult<{
-        success: boolean;
-        path?: string;
-        error?: string;
-      }>(await window.electron.gravi.getOutputDir());
-      if (!outputDirResult?.success || !outputDirResult.path) {
-        dispatch({
-          type: 'ERROR',
-          payload: {
-            error:
-              outputDirResult?.error ??
-              'Could not determine the scan output directory.',
-          },
-        });
-        return;
-      }
-      const outputDir = outputDirResult.path;
-
-      const timestamp = Date.now();
+      // The main process builds every output path (the rig's folder and
+      // file names) and returns them; this hook sends only the choices.
       const jobs: Record<string, ScanSessionJob> = {};
       const scannerTotals: Record<string, number> = {};
       const scanners: Array<{
@@ -858,8 +841,6 @@ export function useScanSession(
           plate_index: string;
           grid_mode: GridMode;
           resolution: number;
-          output_path: string;
-          wave_number: number;
           plate_barcode?: string | null;
         }>;
       }> = [];
@@ -870,11 +851,10 @@ export function useScanSession(
         );
         const gridMode = gridModes[scannerId];
         const plates = assignments.map((a) => {
-          const outputPath = `${outputDir}/${experimentId}/wave${waveNumber}/${scannerId}/${a.plateIndex}_cy1_${timestamp}.tiff`;
           jobs[jobKey(scannerId, a.plateIndex)] = {
             scannerId,
             plateIndex: a.plateIndex,
-            outputPath,
+            outputPath: '',
             plantBarcode: a.plantBarcode,
             transplantDate: a.transplantDate,
             customNote: a.customNote,
@@ -885,8 +865,6 @@ export function useScanSession(
             plate_index: a.plateIndex,
             grid_mode: gridMode,
             resolution,
-            output_path: outputPath,
-            wave_number: waveNumber,
             plate_barcode: a.plantBarcode,
           };
         });
@@ -916,8 +894,13 @@ export function useScanSession(
           : 1
         : 1;
 
-      const result = unwrapGraviResult<{ success: boolean; error?: string }>(
+      const result = unwrapGraviResult<{
+        success: boolean;
+        error?: string;
+        outputPaths?: Record<string, string>;
+      }>(
         await window.electron.gravi.startScan({
+          scannerOrder: scannerIds,
           scanners,
           interval: isContinuous
             ? { intervalSeconds, durationSeconds }
@@ -932,6 +915,9 @@ export function useScanSession(
           payload: { error: result?.error ?? 'Failed to start scan.' },
         });
         return;
+      }
+      for (const [key, job] of Object.entries(jobs)) {
+        job.outputPath = result.outputPaths?.[key] ?? '';
       }
 
       let sessionId: string | null = null;

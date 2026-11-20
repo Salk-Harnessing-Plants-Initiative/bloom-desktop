@@ -8,9 +8,10 @@
  * Adapted from Ben's scan-coordinator.ts (PR #138) with:
  * - Types imported from shared types file
  * - Implements ScanCoordinatorLike interface
- * - Real per-plate output paths learned from scan-complete events (the
- *   Python worker composes the final _et_-stamped filename at save time,
- *   so no post-save rename is needed — see #154)
+ * - Name parts forwarded to the worker with each grid's start time and
+ *   cycle, as on the rig; the Python worker builds the final file name
+ *   (with `_et_`) at save time and the real path is learned from its
+ *   scan-complete event (#154). No file name is rewritten here.
  * - File verification after scan-complete
  * - USB stagger delay logged
  * - Dead CoordinatorEvent type removed
@@ -21,6 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ScannerSubprocess, ScanWorkerEvent } from './scanner-subprocess';
 import { scanLog } from './scan-logger';
+import { plannedPlatePath, readCycleFromScanFileName } from './scan-filename';
 import type { PlateConfig, ScannerConfig } from '../../types/graviscan';
 import type { ScanCoordinatorLike } from './session-handlers';
 
@@ -781,8 +783,8 @@ export class ScanCoordinator
     // instruction once per plate per cycle for a dead USB port would bury
     // the records that do warrant action.
     const action = actionable
-      ? `Check for ${plate.output_path} and re-scan this plate if it is absent.`
-      : `No image was produced; expected path would have been ${plate.output_path}.`;
+      ? `Check for ${plannedPlatePath(plate)} (the saved file also has _et_ and its save time after the _st_ time) and re-scan this plate if it is absent.`
+      : `No image was produced; expected path would have been ${plannedPlatePath(plate)}.`;
     scanLog(
       `[${scannerId}] MISSING? Cycle ${this.currentCycle} wave ${wave} ` +
         `plate ${plate.plate_index} — ${cause}; no completion signal ` +
@@ -797,6 +799,16 @@ export class ScanCoordinator
    * that grid in parallel (with USB stagger), then we wait for all to
    * finish before moving to the next grid.
    */
+  /**
+   * Start counting cycles from 1 again. Called once at the start of every
+   * session by Start Scan, so a single scan is cycle 1 rather than the
+   * previous session's count plus one (#498). Not done in `initialize()`,
+   * which also runs when scanners are detected mid-session.
+   */
+  startNewSession(): void {
+    this.currentCycle = 0;
+  }
+
   async scanOnce(platesPerScanner: Map<string, PlateConfig[]>): Promise<void> {
     this.state = 'scanning';
     this.currentCycle++;
@@ -898,41 +910,26 @@ export class ScanCoordinator
 
         dispatchedScannerIds.add(scannerId);
 
-        // Update timestamps and cycle numbers in output filenames only
-        // (apply regex to basename to avoid mangling date-like directory names)
-        const platesToScan: PlateConfig[] = rowPlates.map((plate) => {
-          const dir = path.dirname(plate.output_path);
-          const basename = path
-            .basename(plate.output_path)
-            .replace(/(\d{8}T\d{6})/, stTimestamp)
-            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
-          return {
-            ...plate,
-            output_path: path.join(dir, basename),
-            st_timestamp: stTimestamp,
-          };
-        });
+        // As on the rig: forward the name parts with this grid's start time
+        // and cycle; the worker builds the file name when it saves. No file
+        // name is ever rewritten, so an experiment name that contains a date
+        // or `_cy<N>_` cannot be changed.
+        const platesToScan: PlateConfig[] = rowPlates.map((plate) => ({
+          ...plate,
+          st_timestamp: stTimestamp,
+          cycle: this.currentCycle,
+        }));
 
-        // The exact basename dispatched for each plate of this row, keyed by
-        // plate index. `onScanComplete` compares against it so a late
-        // completion from an earlier cycle cannot be counted here — see the
-        // comment there for why plate_index alone is insufficient.
-        const expectedBasenames = new Map(
-          platesToScan.map((p) => [p.plate_index, path.basename(p.output_path)])
+        // Plates of this row; `onScanComplete` accepts completions only for
+        // these, and only for this cycle (see the comment there).
+        const dispatchedPlates = new Set(
+          platesToScan.map((p) => p.plate_index)
         );
 
         // Accumulate the REAL per-plate paths from each plate's own
-        // scan-complete event. The worker composes the final filename at
-        // save time, so we learn the path from the event rather than
-        // assuming the one we sent.
-        //
-        // Today those are in fact identical, because the renderer no longer
-        // emits an `_st_` segment for `compose_output_path()` to stamp
-        // `_et_` into (#370) — so this is currently a design stance rather
-        // than a live necessity. It is still the right stance: it is what
-        // makes the coordinator correct again the moment #370 restores the
-        // stamped convention, and the cycle guard below is written
-        // to compare correctly under both.
+        // scan-complete event. The worker builds the final file name
+        // (including `_et_`) at save time, so we learn the path from the
+        // event rather than assuming one.
         const outputPaths: PlateOutputPath[] = [];
 
         const promise = new Promise<RowOutcome>((resolve) => {
@@ -955,11 +952,9 @@ export class ScanCoordinator
             cleanup();
             // Snapshot the cancel flag HERE, where the outcome is decided.
             const cancelledAtSettle = this.cancelled;
-            // `platesToScan`, not `rowPlates`: the former carries the
-            // rewritten `_st_` timestamp and the current `_cy<N>_` in its
-            // basename, which the diagnostic quotes so a missing plate names
-            // the cycle it belonged to rather than the stale one this row was
-            // built from.
+            // `platesToScan`, not `rowPlates`: the former carries this grid's
+            // `st_timestamp` and cycle, which the diagnostic quotes so a
+            // missing plate names the cycle it belonged to.
             resolve({
               kind,
               scannerId,
@@ -986,31 +981,24 @@ export class ScanCoordinator
             // affirmative false completeness claim, while the dedupe below
             // silently dropped this cycle's genuine event.
             //
-            // So discriminate on the cycle token. `scanOnce()` rewrites
-            // `_cy<N>_` into every dispatched basename each cycle, and
-            // nothing downstream touches it: `compose_output_path()` only
-            // inserts `_et_`. Deliberately NOT a whole-basename comparison —
-            // the worker may legitimately report a different path than the
-            // one sent (that is why we learn it from the event at all), and
-            // the coordinator itself also rewrites the `_st_` stamp.
-            //
-            // Enforced only when the dispatched name actually carries a
-            // cycle token, so a naming scheme without one degrades to
-            // today's behaviour rather than silently dropping every event.
-            const expected = expectedBasenames.get(event.plate_index);
-            if (!expected) return;
-            const cycleToken = `_cy${this.currentCycle}_`;
-            if (
-              expected.includes(cycleToken) &&
-              !path.basename(event.path).includes(cycleToken)
-            ) {
+            // So discriminate on the cycle: the worker builds `_cy<N>_` into
+            // the name from the `cycle` sent with this row, at its fixed
+            // place after `_st_`/`_et_` (`readCycleFromScanFileName`).
+            // Every name the worker builds carries a cycle; a path without
+            // one is accepted rather than dropped, so a naming change can
+            // never turn a healthy grid into all-MISSING.
+            if (!dispatchedPlates.has(event.plate_index)) return;
+            const savedCycle = readCycleFromScanFileName(
+              path.basename(event.path)
+            );
+            if (savedCycle !== null && savedCycle !== this.currentCycle) {
               scanLog(
                 `[${scannerId}] Cycle ${this.currentCycle}: ignored a ` +
                   `scan-complete for plate ${event.plate_index} belonging ` +
-                  `to a different cycle — got ${path.basename(event.path)}, ` +
-                  `expected ${cycleToken}. The worker is running behind ` +
-                  `after an earlier row timed out; that file belongs to the ` +
-                  `earlier cycle and is counted there, not here.`
+                  `to cycle ${savedCycle} — got ${path.basename(event.path)}. ` +
+                  `The worker is running behind after an earlier row timed ` +
+                  `out; that file belongs to the earlier cycle and is counted ` +
+                  `there, not here.`
               );
               return;
             }
@@ -1158,16 +1146,6 @@ export class ScanCoordinator
             : 'the scanner was not running when this row was dispatched ' +
               '(its worker exited, or it was stopped earlier in this session)';
         for (const plate of rowPlates) {
-          // Correct the quoted path exactly as the dispatch path would
-          // have, BOTH rewrites — no `platesToScan` exists for a scanner
-          // that never received a row. Omitting the `_st_` rewrite would
-          // make two lines in the same cycle quote different filename
-          // conventions once #370 restores the stamped names.
-          const dir = path.dirname(plate.output_path);
-          const basename = path
-            .basename(plate.output_path)
-            .replace(/(\d{8}T\d{6})/, stTimestamp)
-            .replace(/_cy\d+_/, `_cy${this.currentCycle}_`);
           // Never actionable, whatever the reason the scanner is missing
           // (review round 7). Keying this on `initErrors` was wrong in both
           // directions: that map is populated only by SPAWN failure, so a
@@ -1183,9 +1161,11 @@ export class ScanCoordinator
           // exist for it and there is nothing to go and check. Plates that
           // WERE dispatched are handled by the row-outcome loop above,
           // where a partial file genuinely may exist.
+          // Quote the path this plate would have had in this grid and cycle,
+          // as the dispatch path would have sent it.
           this.logUnverifiedPlate(
             scannerId,
-            { ...plate, output_path: path.join(dir, basename) },
+            { ...plate, st_timestamp: stTimestamp, cycle: this.currentCycle },
             cause,
             { actionable: false }
           );

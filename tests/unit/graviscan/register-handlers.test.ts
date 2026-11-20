@@ -1,6 +1,6 @@
 // @vitest-environment node
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock all handler modules
 vi.mock('../../../src/main/graviscan/scanner-handlers', () => ({
@@ -49,6 +49,11 @@ vi.mock('../../../src/main/graviscan/image-handlers', () => ({
   listScanFiles: vi.fn().mockReturnValue({ success: true, files: [] }),
 }));
 
+vi.mock('../../../src/main/graviscan/start-scan-paths', () => ({
+  buildStartScanPlan: vi.fn(),
+  buildTestScanPlan: vi.fn(),
+}));
+
 vi.mock('../../../src/main/graviscan/verify-plates', () => ({
   verifyPlates: vi
     .fn()
@@ -78,6 +83,7 @@ const OUTPUT_DIR = '/home/user/.bloom/graviscan';
 import * as scannerHandlers from '../../../src/main/graviscan/scanner-handlers';
 import * as sessionHandlers from '../../../src/main/graviscan/session-handlers';
 import * as imageHandlers from '../../../src/main/graviscan/image-handlers';
+import * as startScanPaths from '../../../src/main/graviscan/start-scan-paths';
 import * as configStore from '../../../src/main/config-store';
 import * as scannerUpsert from '../../../src/main/graviscan/scanner-upsert';
 import * as verifyPlatesHandlers from '../../../src/main/graviscan/verify-plates';
@@ -227,7 +233,13 @@ describe('registerGraviScanHandlers', () => {
     });
 
     it('graviscan:start-scan delegates to startScan', async () => {
-      const params = { scanners: [], metadata: {} };
+      vi.mocked(startScanPaths.buildStartScanPlan).mockResolvedValueOnce({
+        ok: true,
+        scanners: [],
+        outputPaths: {},
+        sessionDir: '/x',
+      });
+      const params = { scannerOrder: [], scanners: [], metadata: {} };
       await mockIpcMain._invoke('graviscan:start-scan', params);
       expect(sessionHandlers.startScan).toHaveBeenCalled();
     });
@@ -1023,7 +1035,41 @@ describe('registerGraviScanHandlers', () => {
     });
   });
 
-  describe('graviscan:start-scan path containment', () => {
+  describe('graviscan:start-scan builds the paths in the main process', () => {
+    const builtPlate = {
+      plate_index: '00',
+      grid_mode: '2grid' as const,
+      resolution: 600,
+      output_dir: `${OUTPUT_DIR}/Exp_wave0_20260809T190946`,
+      exp_name: 'Exp',
+      experiment_name: 'Exp',
+      phenotyper_name: 'Jane',
+      wave_number: 0,
+      st_timestamp: '20260809T190946',
+      cycle: 1,
+      system_prefix: '',
+      scanner_tag: 'Sc1',
+      plate_barcode: null,
+    };
+    const plannedPath = `${OUTPUT_DIR}/Exp_wave0_20260809T190946/Exp_wave0_st_20260809T190946_cy1_Sc1_00.tif`;
+    const request = {
+      scannerOrder: ['sc-1'],
+      scanners: [
+        {
+          scannerId: 'sc-1',
+          saneName: 'epkowa:usb:001:005',
+          plates: [{ plate_index: '00', grid_mode: '2grid', resolution: 600 }],
+        },
+      ],
+      interval: { intervalSeconds: 60, durationSeconds: 600 },
+      metadata: {
+        experimentId: 'exp-1',
+        phenotyperId: 'pheno-1',
+        resolution: 600,
+        waveNumber: 0,
+      },
+    };
+
     beforeEach(() => {
       registerGraviScanHandlers(
         mockIpcMain as any,
@@ -1034,179 +1080,128 @@ describe('registerGraviScanHandlers', () => {
       );
     });
 
-    function startScanParams(outputPath: string) {
-      return {
+    afterEach(() => {
+      delete process.env.GRAVISCAN_SYSTEM_NAME;
+    });
+
+    it('builds the plan from the request, the output folder and the system name', async () => {
+      process.env.GRAVISCAN_SYSTEM_NAME = 'graviscan-desktop';
+      vi.mocked(startScanPaths.buildStartScanPlan).mockResolvedValueOnce({
+        ok: true,
+        scanners: [],
+        outputPaths: {},
+        sessionDir: '/x',
+      });
+
+      await mockIpcMain._invoke('graviscan:start-scan', request);
+
+      const [deps, req] = vi.mocked(startScanPaths.buildStartScanPlan).mock
+        .calls[0];
+      expect(deps.db).toBe(mockDb);
+      expect(deps.outputDir).toBe('/home/user/.bloom/graviscan');
+      expect(deps.systemName).toBe('graviscan-desktop');
+      expect(deps.now()).toBeInstanceOf(Date);
+      expect(req).toBe(request);
+    });
+
+    it('starts the coordinator with the built plates and returns their paths', async () => {
+      const outputPaths = { 'sc-1:00': plannedPath };
+      vi.mocked(startScanPaths.buildStartScanPlan).mockResolvedValueOnce({
+        ok: true,
         scanners: [
           {
             scannerId: 'sc-1',
             saneName: 'epkowa:usb:001:005',
-            plates: [
-              {
-                plate_index: '00',
-                grid_mode: '2grid',
-                resolution: 600,
-                output_path: outputPath,
-                wave_number: 0,
-              },
-            ],
+            plates: [builtPlate],
           },
         ],
-        metadata: {
-          experimentId: 'exp-1',
-          phenotyperId: 'pheno-1',
-          resolution: 600,
-        },
-      };
-    }
-
-    it('rejects a `..` traversal that escapes the scan output directory', async () => {
-      const result = await mockIpcMain._invoke(
-        'graviscan:start-scan',
-        startScanParams(`${OUTPUT_DIR}/../../../etc/cron.d/evil.tiff`)
-      );
-
-      expect(result).toEqual({
-        success: false,
-        error: 'Path outside scan directory',
+        outputPaths,
+        sessionDir: '/x',
       });
-      expect(sessionHandlers.startScan).not.toHaveBeenCalled();
-    });
 
-    it('rejects an absolute output_path outside the scan output directory', async () => {
-      const result = await mockIpcMain._invoke(
-        'graviscan:start-scan',
-        startScanParams('/etc/cron.d/evil.tiff')
-      );
+      const result = await mockIpcMain._invoke('graviscan:start-scan', request);
 
-      expect(result).toEqual({
-        success: false,
-        error: 'Path outside scan directory',
-      });
-      expect(sessionHandlers.startScan).not.toHaveBeenCalled();
-    });
-
-    it('still starts the scan when every output_path is contained but does not exist yet (the ordinary case)', async () => {
-      // Resolved up front, matching `resolveContainedPathAllowingMissing`'s
-      // own first step (`path.resolve(candidatePath)`) — comparing against
-      // the raw forward-slash string here would make the mock's
-      // `existsSync` report "exists" on the very first check on Windows
-      // (where `path.resolve()` normalizes to backslashes), so the
-      // "missing tail" walk-up this test claims to exercise would never
-      // actually run (review-pr round 5 follow-up; matches the pattern
-      // already used correctly by the `ensure-dir` tests below).
-      const outputPath = path.resolve(
-        `${OUTPUT_DIR}/exp-1/wave0/sc-1/00_cy1_20260813T000000.tiff`
-      );
-      vi.mocked(fs.existsSync).mockImplementation((p) => p !== outputPath);
-
-      const result = await mockIpcMain._invoke(
-        'graviscan:start-scan',
-        startScanParams(outputPath)
-      );
-
-      expect(sessionHandlers.startScan).toHaveBeenCalled();
       const [, calledParams] = vi.mocked(sessionHandlers.startScan).mock
         .calls[0];
-      // The validated (path.resolve()-normalized) path is what gets used,
-      // not the caller's raw string — matching ensure-dir's own pattern.
-      expect(calledParams.scanners[0].plates[0].output_path).toBe(
-        path.resolve(outputPath)
+      expect(calledParams.scanners[0].plates[0]).toBe(builtPlate);
+      expect(calledParams.interval).toEqual(request.interval);
+      expect(calledParams.metadata).toEqual(request.metadata);
+      expect(result).toEqual({
+        success: true,
+        data: { success: true, outputPaths },
+      });
+    });
+
+    it('builds test-scan paths for a test scan, without a session plan', async () => {
+      const outputPaths = { 'sc-1:00': `${OUTPUT_DIR}/test/sc-1/00_1.tiff` };
+      vi.mocked(startScanPaths.buildTestScanPlan).mockResolvedValueOnce({
+        ok: true,
+        scanners: [],
+        outputPaths,
+        sessionDir: `${OUTPUT_DIR}/test`,
+      });
+      const testRequest = { test: true, scanners: request.scanners };
+
+      const result = await mockIpcMain._invoke(
+        'graviscan:start-scan',
+        testRequest
       );
-      // wrapHandler() wraps the underlying { success: true } in its own
-      // { success: true, data } envelope — matching every other
-      // successful-delegation response in this file.
-      expect(result).toEqual({ success: true, data: { success: true } });
+
+      const [deps, req] = vi.mocked(startScanPaths.buildTestScanPlan).mock
+        .calls[0];
+      expect(deps.outputDir).toBe('/home/user/.bloom/graviscan');
+      expect(req).toBe(testRequest);
+      expect(startScanPaths.buildStartScanPlan).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        success: true,
+        data: { success: true, outputPaths },
+      });
     });
 
-    it("rejects the whole call when the SECOND scanner's SECOND plate escapes containment — no scanner is started, not just the offending one", async () => {
-      const params = {
-        scanners: [
-          {
-            scannerId: 'sc-1',
-            saneName: 'epkowa:usb:001:005',
-            plates: [
-              {
-                plate_index: '00',
-                grid_mode: '2grid',
-                resolution: 600,
-                output_path: `${OUTPUT_DIR}/exp-1/wave0/sc-1/00.tiff`,
-                wave_number: 0,
-              },
-            ],
-          },
-          {
-            scannerId: 'sc-2',
-            saneName: 'epkowa:usb:001:006',
-            plates: [
-              {
-                plate_index: '00',
-                grid_mode: '2grid',
-                resolution: 600,
-                output_path: `${OUTPUT_DIR}/exp-1/wave0/sc-2/00.tiff`,
-                wave_number: 0,
-              },
-              {
-                plate_index: '01',
-                grid_mode: '2grid',
-                resolution: 600,
-                output_path: `${OUTPUT_DIR}/../../../etc/cron.d/evil.tiff`,
-                wave_number: 0,
-              },
-            ],
-          },
-        ],
-        metadata: { experimentId: 'exp-1', phenotyperId: 'pheno-1' },
-      };
+    it('does not start anything when the plan is refused', async () => {
+      vi.mocked(startScanPaths.buildStartScanPlan).mockResolvedValueOnce({
+        ok: false,
+        error: 'Experiment not found',
+      });
 
-      const result = await mockIpcMain._invoke('graviscan:start-scan', params);
+      const result = await mockIpcMain._invoke('graviscan:start-scan', request);
+
+      expect(result).toEqual({ success: false, error: 'Experiment not found' });
+      expect(sessionHandlers.startScan).not.toHaveBeenCalled();
+    });
+
+    it('reports a folder that cannot be created, without starting', async () => {
+      vi.mocked(startScanPaths.buildStartScanPlan).mockRejectedValueOnce(
+        new Error('EACCES: permission denied')
+      );
+
+      const result = await mockIpcMain._invoke('graviscan:start-scan', request);
 
       expect(result).toEqual({
         success: false,
-        error: 'Path outside scan directory',
+        error: 'Failed to create scan folder: EACCES: permission denied',
       });
       expect(sessionHandlers.startScan).not.toHaveBeenCalled();
     });
 
-    it('rejects a scanner with a non-array plates field instead of throwing an unhandled/internal error', async () => {
-      const result = await mockIpcMain._invoke('graviscan:start-scan', {
-        scanners: [
-          { scannerId: 'sc-1', saneName: 'epkowa:usb:001:005', plates: {} },
-        ],
-        metadata: { experimentId: 'exp-1', phenotyperId: 'pheno-1' },
+    it('does not return paths when the coordinator refuses to start', async () => {
+      vi.mocked(startScanPaths.buildStartScanPlan).mockResolvedValueOnce({
+        ok: true,
+        scanners: [],
+        outputPaths: { 'sc-1:00': plannedPath },
+        sessionDir: '/x',
       });
+      vi.mocked(sessionHandlers.startScan).mockResolvedValueOnce({
+        success: false,
+        error: 'No scanners came online',
+      });
+
+      const result = await mockIpcMain._invoke('graviscan:start-scan', request);
 
       expect(result).toEqual({
-        success: false,
-        error: expect.stringContaining('plates array'),
+        success: true,
+        data: { success: false, error: 'No scanners came online' },
       });
-      expect(sessionHandlers.startScan).not.toHaveBeenCalled();
-    });
-
-    it('rejects a plate with a non-string output_path instead of throwing an unhandled/internal error', async () => {
-      const result = await mockIpcMain._invoke('graviscan:start-scan', {
-        scanners: [
-          {
-            scannerId: 'sc-1',
-            saneName: 'epkowa:usb:001:005',
-            plates: [
-              {
-                plate_index: '00',
-                grid_mode: '2grid',
-                resolution: 600,
-                output_path: 12345,
-                wave_number: 0,
-              },
-            ],
-          },
-        ],
-        metadata: { experimentId: 'exp-1', phenotyperId: 'pheno-1' },
-      });
-
-      expect(result).toEqual({
-        success: false,
-        error: expect.stringContaining('output_path string'),
-      });
-      expect(sessionHandlers.startScan).not.toHaveBeenCalled();
     });
   });
 
@@ -1541,8 +1536,6 @@ describe('registerGraviScanHandlers', () => {
                 plate_index: '00',
                 grid_mode: '2grid',
                 resolution: 600,
-                output_path: `${OUTPUT_DIR}/exp-1/wave0/sc-1/00.tiff`,
-                wave_number: 0,
               },
             ],
           },

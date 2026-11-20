@@ -23,6 +23,7 @@ import * as imageHandlers from './image-handlers';
 import * as scannerUpsert from './scanner-upsert';
 import * as verifyPlatesHandlers from './verify-plates';
 import * as excelParser from './excel-parser';
+import { buildStartScanPlan, buildTestScanPlan } from './start-scan-paths';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
 import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
 import { isValidWaveNumber } from '../database-handlers';
@@ -285,14 +286,10 @@ export function registerGraviScanHandlers(
       return { success: false, error: 'Scan already in progress' };
     }
 
-    // Path-containment check (design.md Decision 20) — every plate's
-    // output_path is renderer-constructed from experimentId/waveNumber/
-    // scannerId/plateIndex with no containment guarantee of its own.
-    // Confirm each one still resolves inside the configured scan output
-    // directory before the coordinator/Python worker ever writes to it,
-    // mirroring every read-side path handler already in this file
-    // (ensure-dir/list-scan-files above). The file doesn't exist yet at
-    // this point — the whole reason for `AllowingMissing`.
+    // Every output path is built here, in the main process, from the
+    // database and the operator's choices (start-scan-paths.ts): the rig's
+    // session folder and file names, each checked to be inside the scan
+    // output directory. The renderer sends no paths.
     const outputDirResult = imageHandlers.getOutputDir();
     if (!outputDirResult.success || !outputDirResult.path) {
       return {
@@ -300,43 +297,36 @@ export function registerGraviScanHandlers(
         error: 'Cannot determine scan directory for path validation',
       };
     }
-    // Malformed-input guard: a `scanner` that isn't an object, a
-    // non-array `plates`, or a non-string `output_path` would otherwise
-    // throw synchronously inside `path.resolve()`/the array iteration
-    // below — before `wrapHandler()` gets a chance to turn it into the
-    // uniform `{success:false, error}` shape every other failure here
-    // uses, leaking an internal error message through this boundary
-    // instead.
-    const validatedScanners: typeof params.scanners = [];
-    for (const scanner of params?.scanners ?? []) {
-      if (!scanner || !Array.isArray(scanner.plates)) {
-        return {
-          success: false,
-          error:
-            'Malformed start-scan request: each scanner must include a plates array',
-        };
-      }
-      const validatedPlates: (typeof scanner.plates)[number][] = [];
-      for (const plate of scanner.plates) {
-        if (!plate || typeof plate.output_path !== 'string') {
-          return {
-            success: false,
-            error:
-              'Malformed start-scan request: each plate must include an output_path string',
-          };
-        }
-        const contained = resolveContainedPathAllowingMissing(
-          outputDirResult.path,
-          plate.output_path
-        );
-        if (!contained.ok) {
-          return { success: false, error: OUTSIDE_SCAN_DIR };
-        }
-        validatedPlates.push({ ...plate, output_path: contained.path });
-      }
-      validatedScanners.push({ ...scanner, plates: validatedPlates });
+    let plan: Awaited<ReturnType<typeof buildStartScanPlan>>;
+    try {
+      const now = () => new Date();
+      plan =
+        params?.test === true
+          ? await buildTestScanPlan(
+              { outputDir: outputDirResult.path, now },
+              params
+            )
+          : await buildStartScanPlan(
+              {
+                db,
+                outputDir: outputDirResult.path,
+                systemName: process.env.GRAVISCAN_SYSTEM_NAME || '',
+                now,
+              },
+              params
+            );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      console.error('[GraviScan IPC] Failed to prepare scan folder:', msg);
+      return { success: false, error: `Failed to create scan folder: ${msg}` };
     }
-    params = { ...params, scanners: validatedScanners };
+    if ('error' in plan) return { success: false, error: plan.error };
+    const outputPaths = plan.outputPaths;
+    params = {
+      scanners: plan.scanners,
+      interval: params?.interval,
+      metadata: params?.metadata,
+    };
 
     // Lazy coordinator creation — first start-scan creates + wires the coordinator
     let coordinator = getCoordinator();
@@ -352,7 +342,7 @@ export function registerGraviScanHandlers(
         };
       }
     }
-    return wrapHandler(() =>
+    const result = await wrapHandler(() =>
       sessionHandlers.startScan(coordinator, params, sessionFns, (error) => {
         const win = getMainWindow();
         if (win && !win.isDestroyed()) {
@@ -364,6 +354,11 @@ export function registerGraviScanHandlers(
         }
       })
     )();
+    // The renderer tracks each job by the path built above.
+    if (result.success && result.data.success) {
+      return { ...result, data: { ...result.data, outputPaths } };
+    }
+    return result;
   });
 
   ipcMain.handle('graviscan:get-scan-status', () =>

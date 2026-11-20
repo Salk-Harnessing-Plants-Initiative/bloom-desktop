@@ -85,9 +85,25 @@ function emitScanCompleteForPlates(
     // going through emitScanComplete().
     emitScanComplete(sub, {
       plate_index: plate.plate_index,
-      path: plate.output_path,
+      path: workerSavedPath(plate),
     });
   }
+}
+
+/** Fixed save time the mock worker stamps after `_et_`. */
+const MOCK_ET = '20260410T120500';
+
+/**
+ * Path the worker saves a plate to: the rig name built from its parts, with
+ * `_et_` (mirror of `compose_output_path()` in scan_worker.py).
+ */
+function workerSavedPath(plate: PlateConfig): string {
+  return path.join(
+    plate.output_dir!,
+    `${plate.exp_name}_wave${plate.wave_number}_st_${plate.st_timestamp}` +
+      `_et_${MOCK_ET}_cy${plate.cycle}_${plate.system_prefix}` +
+      `${plate.scanner_tag}_${plate.plate_index}.tif`
+  );
 }
 
 // Emit a worker event the way production does: `ScannerSubprocess.handleLine()`
@@ -246,6 +262,18 @@ describe('ScanCoordinator', () => {
     }));
   }
 
+  /** Name parts of a session plate, as Start Scan prepares them. */
+  const SESSION_PARTS = {
+    output_dir: '/tmp/scan_wave1_20260410T120000',
+    exp_name: 'scan',
+    experiment_name: 'scan',
+    wave_number: 1,
+    st_timestamp: '20260410T120000',
+    cycle: 1,
+    system_prefix: '',
+    scanner_tag: 'Sc1',
+  };
+
   function makePlatesMap(
     scannerIds: string[],
     gridMode = '2grid'
@@ -257,29 +285,25 @@ describe('ScanCoordinator', () => {
               plate_index: '00',
               grid_mode: '4grid',
               resolution: 600,
-              output_path: '/tmp/scan_st_20260410T120000_cy1_S1_00.tif',
-              wave_number: 1,
+              ...SESSION_PARTS,
             },
             {
               plate_index: '01',
               grid_mode: '4grid',
               resolution: 600,
-              output_path: '/tmp/scan_st_20260410T120000_cy1_S1_01.tif',
-              wave_number: 1,
+              ...SESSION_PARTS,
             },
             {
               plate_index: '10',
               grid_mode: '4grid',
               resolution: 600,
-              output_path: '/tmp/scan_st_20260410T120000_cy1_S1_10.tif',
-              wave_number: 1,
+              ...SESSION_PARTS,
             },
             {
               plate_index: '11',
               grid_mode: '4grid',
               resolution: 600,
-              output_path: '/tmp/scan_st_20260410T120000_cy1_S1_11.tif',
-              wave_number: 1,
+              ...SESSION_PARTS,
             },
           ]
         : [
@@ -287,15 +311,13 @@ describe('ScanCoordinator', () => {
               plate_index: '00',
               grid_mode: '2grid',
               resolution: 600,
-              output_path: '/tmp/scan_st_20260410T120000_cy1_S1_00.tif',
-              wave_number: 1,
+              ...SESSION_PARTS,
             },
             {
               plate_index: '01',
               grid_mode: '2grid',
               resolution: 600,
-              output_path: '/tmp/scan_st_20260410T120000_cy1_S1_01.tif',
-              wave_number: 1,
+              ...SESSION_PARTS,
             },
           ];
 
@@ -1345,47 +1367,155 @@ describe('ScanCoordinator', () => {
       );
     });
 
-    it('regex path rewriting only affects filename, not directory', async () => {
+    it('forwards the name parts with this grid start time and cycle, never rewriting a name (as on the rig)', async () => {
       vi.useFakeTimers();
 
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));
 
       const sub = createdSubprocesses[0];
-      let capturedPlates: PlateConfig[] = [];
+      const dispatched: PlateConfig[][] = [];
       sub.scan.mockImplementation((plates: PlateConfig[]) => {
-        capturedPlates = plates;
-        setImmediate(() => emitCycleDone(sub));
+        dispatched.push(plates);
+        setImmediate(() => {
+          emitScanCompleteForPlates(sub, plates);
+          emitCycleDone(sub);
+        });
       });
 
-      // Create plates with a date-like directory path
-      const inputOutputPath =
-        '/scans/20260410T000000/exp1_st_20260410T120000_cy1_S1_00.tif';
+      // Existing experiments may carry a date or a cycle marker in their
+      // name; the folder may look like a date too. None of it may change.
       const platesMap = new Map<string, PlateConfig[]>();
       platesMap.set('scanner-1', [
         {
           plate_index: '00',
           grid_mode: '2grid' as const,
           resolution: 600,
-          // Directory contains 20260410T000000 which matches \d{8}T\d{6}
-          output_path: inputOutputPath,
+          ...SESSION_PARTS,
+          output_dir: '/scans/Run20260101T000000_wave1_20260410T000000',
+          exp_name: 'Run20260101T000000',
+        },
+        {
+          plate_index: '01',
+          grid_mode: '2grid' as const,
+          resolution: 600,
+          ...SESSION_PARTS,
+          exp_name: 'Trial_cy1',
         },
       ]);
 
-      const scanPromise = coordinator.scanOnce(platesMap);
-      await vi.advanceTimersByTimeAsync(100_000);
+      const scanPromise = coordinator.scanInterval(platesMap, 60_000, 120_000);
+      await vi.advanceTimersByTimeAsync(400_000);
       await scanPromise;
 
-      // The directory portion should NOT have been modified. The production
-      // code rebuilds the path via path.join(dir, basename), which
-      // normalizes separators to the host OS's — path.normalize the
-      // expected dirname the same way, rather than hardcoding a POSIX
-      // literal, so this passes on Windows too.
-      expect(path.dirname(capturedPlates[0].output_path)).toBe(
-        path.normalize(path.dirname(inputOutputPath))
+      const sent = dispatched.flat();
+      const expName: Record<string, string> = {
+        '00': 'Run20260101T000000',
+        '01': 'Trial_cy1',
+      };
+      expect(new Set(sent.map((p) => p.cycle))).toEqual(new Set([1, 2]));
+      for (const p of sent) {
+        expect(p.exp_name).toBe(expName[p.plate_index]);
+        expect(p).not.toHaveProperty('output_path');
+        expect(p.st_timestamp).toMatch(/^\d{8}T\d{6}$/);
+        expect(p.st_timestamp).not.toBe(SESSION_PARTS.st_timestamp);
+      }
+      expect(sent.find((p) => p.plate_index === '00')!.output_dir).toBe(
+        '/scans/Run20260101T000000_wave1_20260410T000000'
       );
-      // The filename portion SHOULD have the new timestamp
-      expect(capturedPlates[0].output_path).not.toContain('st_20260410T120000');
+
+      vi.useRealTimers();
+    });
+
+    it('gives every scanner the same _st_ for a grid row, and each row its own (as on the rig)', async () => {
+      // Real rig files on Box: Sc1_00 and Sc2_00 share one _st_, and the
+      // next grid row (01) has a later _st_ shared by both scanners again.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-09T19:09:46Z'));
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(2));
+
+      const sent: Record<string, PlateConfig[][]> = {};
+      for (const sub of createdSubprocesses) {
+        sent[sub.scannerId] = [];
+        sub.scan.mockImplementation((plates: PlateConfig[]) => {
+          sent[sub.scannerId].push(plates);
+          // Each row takes a minute to scan.
+          setTimeout(() => {
+            emitScanCompleteForPlates(sub, plates);
+            emitCycleDone(sub);
+          }, 60_000);
+        });
+      }
+
+      const scanPromise = coordinator.scanOnce(
+        makePlatesMap(['scanner-1', 'scanner-2'], '4grid')
+      );
+      await vi.advanceTimersByTimeAsync(600_000);
+      await scanPromise;
+
+      const rows1 = sent['scanner-1'];
+      const rows2 = sent['scanner-2'];
+      expect(rows1.length).toBeGreaterThanOrEqual(2);
+      expect(rows2.length).toBe(rows1.length);
+      const rowSt = rows1.map((row, i) => {
+        const st = new Set([...row, ...rows2[i]].map((p) => p.st_timestamp));
+        // One _st_ for the whole row, on both scanners.
+        expect(st.size).toBe(1);
+        return [...st][0];
+      });
+      expect(rowSt[0]).toBe('20260809T190946');
+      // The next row starts later and gets its own _st_.
+      expect(rowSt[1] > rowSt[0]).toBe(true);
+
+      vi.useRealTimers();
+    });
+
+    it('starts at cycle 1 for a single scan after a continuous session (#498)', async () => {
+      vi.useFakeTimers();
+
+      const coordinator = await createCoordinator();
+      await coordinator.initialize(makeScanners(1));
+
+      const sub = createdSubprocesses[0];
+      const dispatched: PlateConfig[] = [];
+      sub.scan.mockImplementation((plates: PlateConfig[]) => {
+        dispatched.push(...plates);
+        setImmediate(() => {
+          emitScanCompleteForPlates(sub, plates);
+          emitCycleDone(sub);
+        });
+      });
+
+      const platesMap = new Map<string, PlateConfig[]>([
+        [
+          'scanner-1',
+          [
+            {
+              plate_index: '00',
+              grid_mode: '2grid' as const,
+              resolution: 600,
+              ...SESSION_PARTS,
+            },
+          ],
+        ],
+      ]);
+
+      // A continuous session of 3 cycles...
+      const session = coordinator.scanInterval(platesMap, 60_000, 180_000);
+      await vi.advanceTimersByTimeAsync(400_000);
+      await session;
+      expect(dispatched.map((p) => p.cycle)).toEqual([1, 2, 3]);
+
+      // ...then a new single-scan session, app still open.
+      dispatched.length = 0;
+      coordinator.startNewSession();
+      const single = coordinator.scanOnce(platesMap);
+      await vi.advanceTimersByTimeAsync(100_000);
+      await single;
+
+      expect(dispatched.map((p) => p.cycle)).toEqual([1]);
 
       vi.useRealTimers();
     });
@@ -1472,18 +1602,23 @@ describe('ScanCoordinator', () => {
       expect(fs.promises.access).toHaveBeenCalled();
     });
 
-    it('verifies the path reported by scan-complete, not the path it sent', async () => {
-      // The Python worker now composes the final filename (with _et_)
-      // itself at save time, so it can legitimately report a DIFFERENT
-      // path than the one the coordinator sent via sub.scan(). The
-      // coordinator must verify (and later use) the real reported path.
+    it('verifies the path reported by scan-complete, not the planned one', async () => {
+      // The Python worker builds the final filename (with _et_) itself at
+      // save time, so only its scan-complete event knows the real path.
+      // The coordinator must verify (and later use) that reported path,
+      // never the planned name (no `_et_`).
       const coordinator = await createCoordinator();
       await coordinator.initialize(makeScanners(1));
 
       const sub = createdSubprocesses[0];
-      const sentPath = '/tmp/scan_st_20260410T120000_cy1_S1_00.tif';
-      const realFinalPath =
-        '/tmp/scan_st_20260410T120000_et_20260410T120530_cy1_S1_00.tif';
+      const plannedPath = path.join(
+        SESSION_PARTS.output_dir,
+        'scan_wave1_st_20260410T120000_cy1_Sc1_00.tif'
+      );
+      const realFinalPath = path.join(
+        SESSION_PARTS.output_dir,
+        'scan_wave1_st_20260410T120000_et_20260410T120530_cy1_Sc1_00.tif'
+      );
 
       sub.scan.mockImplementation(() => {
         sub.emit('scan-complete', {
@@ -1501,15 +1636,15 @@ describe('ScanCoordinator', () => {
           plate_index: '00',
           grid_mode: '2grid',
           resolution: 600,
-          output_path: sentPath,
+          ...SESSION_PARTS,
         },
       ]);
 
       await coordinator.scanOnce(platesMap);
 
-      // Verification ran against the reported final path, not the sent one.
+      // Verification ran against the reported final path, not the planned one.
       expect(fs.promises.access).toHaveBeenCalledWith(realFinalPath);
-      expect(fs.promises.access).not.toHaveBeenCalledWith(sentPath);
+      expect(fs.promises.access).not.toHaveBeenCalledWith(plannedPath);
     });
 
     it('emits scan-error when stat rejects (filesystem race) with a per-plate jobId (task 10.5a — the 4th direct emit site)', async () => {
@@ -2108,7 +2243,7 @@ describe('ScanCoordinator', () => {
         // reports, yet the row still settles `done`.
         emitScanComplete(sub, {
           plate_index: plates[0].plate_index,
-          path: plates[0].output_path,
+          path: workerSavedPath(plates[0]),
         });
         process.nextTick(() => emitCycleDone(sub));
       });
@@ -2162,8 +2297,7 @@ describe('ScanCoordinator', () => {
               plate_index: '00',
               grid_mode: '2grid',
               resolution: 600,
-              output_path: tokenless,
-              wave_number: 1,
+              ...SESSION_PARTS,
             },
           ],
         ],
@@ -2220,7 +2354,7 @@ describe('ScanCoordinator', () => {
             type: 'scan-complete',
             scanner_id: 'scanner-1',
             plate_index: '00',
-            path: dispatched[0][0].output_path,
+            path: workerSavedPath(dispatched[0][0]),
           });
           emitCycleDone(sub);
         });
@@ -2238,8 +2372,7 @@ describe('ScanCoordinator', () => {
               plate_index: '00',
               grid_mode: '2grid',
               resolution: 600,
-              output_path: '/tmp/scan_st_20260410T120000_cy1_S1_00.tif',
-              wave_number: 1,
+              ...SESSION_PARTS,
             },
           ],
         ],
@@ -2253,11 +2386,14 @@ describe('ScanCoordinator', () => {
       await vi.advanceTimersByTimeAsync(100_000);
       await cycle2;
 
-      // Sanity: the two cycles really did dispatch different paths, or this
+      // Sanity: the two cycles really did dispatch different cycles, or this
       // test proves nothing.
       expect(dispatched).toHaveLength(2);
-      expect(dispatched[0][0].output_path).toContain('_cy1_');
-      expect(dispatched[1][0].output_path).toContain('_cy2_');
+      expect(dispatched[0][0].cycle).toBe(1);
+      expect(dispatched[1][0].cycle).toBe(2);
+      expect(path.basename(workerSavedPath(dispatched[0][0]))).toContain(
+        '_cy1_'
+      );
 
       const tallies = vi
         .mocked(scanLog)
@@ -2278,7 +2414,7 @@ describe('ScanCoordinator', () => {
 
       // The stale path must never have been verified as cycle 2's output.
       expect(fs.promises.access).not.toHaveBeenCalledWith(
-        dispatched[0][0].output_path
+        workerSavedPath(dispatched[0][0])
       );
     });
 
@@ -2396,17 +2532,15 @@ describe('ScanCoordinator', () => {
         // because it applies only to plates that were actually dispatched —
         // a plate whose scanner never received the row has no file to check
         // for (review round 7).
-        // Deliberately does NOT label the path `pre-_et_`: no `_et_`-stamped
-        // file exists to look for (#370), so the old wording sent the reader
-        // hunting for a filename that will never appear on disk.
-        expect(msg).not.toContain('_et_');
-        // The expected path carries experiment id, wave, scanner and cycle,
+        // The quoted path is the planned name: it carries no save time
+        // (only the worker knows it). An actionable line says the saved
+        // file also has `_et_` and its save time.
+        expect(msg).not.toMatch(/_et_\d/);
+        // The expected path carries experiment, wave, scanner and cycle,
         // and is named whether or not the line is actionable.
         expect(msg).toContain('.tif');
-        // And it must be the CYCLE-CORRECTED path (from platesToScan), not
-        // the stale one the row was built from. scanOnce() rewrites `_cy<N>_`
-        // per cycle; quoting the stale path would name the wrong cycle for a
-        // plate that is missing.
+        // And it must name THIS cycle (platesToScan carries the cycle sent
+        // with the row), not the one the plates were built with.
         expect(msg).toContain('_cy1_');
       }
 
@@ -2432,9 +2566,9 @@ describe('ScanCoordinator', () => {
         );
       });
 
-      // Two cycles: the fixture's output_path is built with `_cy1_`, so if
-      // the outcome carried the stale rowPlates rather than the rewritten
-      // platesToScan, cycle 2's diagnostic would still say `_cy1_`.
+      // Two cycles: the fixture plates are built with cycle 1, so if the
+      // outcome carried the stale rowPlates rather than platesToScan (with
+      // this row's cycle), cycle 2's diagnostic would still say `_cy1_`.
       const platesMap = makePlatesMap(['scanner-1']);
       const first = coordinator.scanOnce(platesMap);
       await vi.advanceTimersByTimeAsync(100_000);
@@ -2889,7 +3023,7 @@ describe('ScanCoordinator', () => {
               type: 'scan-complete',
               scanner_id: 'scanner-1',
               plate_index: plate.plate_index,
-              path: plate.output_path,
+              path: workerSavedPath(plate),
             };
             sub.emit('scan-complete', evt);
             sub.emit('event', evt);
@@ -2912,7 +3046,7 @@ describe('ScanCoordinator', () => {
               type: 'scan-complete',
               scanner_id: 'scanner-1',
               plate_index: okPlate.plate_index,
-              path: okPlate.output_path,
+              path: workerSavedPath(okPlate),
             };
             sub.emit('scan-complete', evt);
             sub.emit('event', evt);

@@ -14,6 +14,7 @@ import type {
 } from '../../types/graviscan';
 import { buildSaneName } from './scanner-handlers';
 import { scanLog } from './scan-logger';
+import { plannedPlatePath } from './scan-filename';
 
 // ---------------------------------------------------------------------------
 // Interface types
@@ -39,6 +40,8 @@ export interface ScannerRetryLookupDb {
 export interface ScanCoordinatorLike {
   readonly isScanning: boolean;
   initialize(scanners: ScannerConfig[]): Promise<void>;
+  /** Start counting cycles from 1 again; called once per session (#498). */
+  startNewSession(): void;
   scanOnce(platesPerScanner: Map<string, PlateConfig[]>): Promise<void>;
   scanInterval(
     platesPerScanner: Map<string, PlateConfig[]>,
@@ -137,7 +140,7 @@ export async function startScan(
         jobs[key] = {
           scannerId: s.scannerId,
           plateIndex: plate.plate_index,
-          outputPath: plate.output_path,
+          outputPath: plannedPlatePath(plate),
           plantBarcode: plate.plate_barcode ?? null,
           transplantDate: null,
           customNote: null,
@@ -220,6 +223,11 @@ export async function startScan(
     const handleComplete = () => {
       sessionFns.setScanSession(null);
     };
+
+    // Every session (single, continuous or test) is saved from cycle 1.
+    // Without this a single scan continued the previous session's count
+    // until the app restarted (#498).
+    coordinator.startNewSession();
 
     if (params.interval) {
       const intervalMs = params.interval.intervalSeconds * 1000;

@@ -206,6 +206,7 @@ describe('GraviScan TypeScript Types', () => {
       const mockCoordinator: ScanCoordinatorLike = {
         isScanning: false,
         initialize: async (_scanners: ScannerConfig[]) => {},
+        startNewSession: () => {},
         scanOnce: async (_plates: Map<string, PlateConfig[]>) => {},
         scanInterval: async (
           _plates: Map<string, PlateConfig[]>,

@@ -90,21 +90,8 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
     let cleanupComplete: (() => void) | undefined;
     let cleanupError: (() => void) | undefined;
     try {
-      const outputDirResult = unwrapGraviResult<{
-        success: boolean;
-        path?: string;
-        error?: string;
-      }>(await window.electron.gravi.getOutputDir());
-      if (!outputDirResult?.success || !outputDirResult.path) {
-        setError(
-          outputDirResult?.error ??
-            'Could not determine the scan output directory.'
-        );
-        return;
-      }
-      const outputDir = outputDirResult.path;
-      const timestamp = Date.now();
-
+      // The main process builds the test paths
+      // (`test/{scannerId}/{plate}_{epochMs}.tiff`); none are sent from here.
       pendingRef.current = new Map(
         scannerIds.map((id) => [
           id,
@@ -121,7 +108,6 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
             plate_index: p.plateIndex,
             grid_mode: gridModes[scannerId],
             resolution: TEST_SCAN_RESOLUTION,
-            output_path: `${outputDir}/test/${scannerId}/${p.plateIndex}_${timestamp}.tiff`,
           })),
         };
       });
@@ -170,7 +156,7 @@ export function useTestScan(params: UseTestScanParams): UseTestScanResult {
       const startResult = unwrapGraviResult<{
         success: boolean;
         error?: string;
-      }>(await gravi.startScan({ scanners }));
+      }>(await gravi.startScan({ test: true, scanners }));
       if (!startResult?.success) {
         resolveRef.current = null;
         resultsRef.current = Object.fromEntries(
