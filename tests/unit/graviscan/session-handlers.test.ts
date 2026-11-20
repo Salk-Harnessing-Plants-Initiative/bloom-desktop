@@ -37,6 +37,7 @@ function createMockCoordinator(
   return {
     isScanning: false,
     initialize: vi.fn().mockResolvedValue(undefined),
+    startNewSession: vi.fn(),
     scanOnce: vi.fn().mockResolvedValue(undefined),
     scanInterval: vi.fn().mockResolvedValue(undefined),
     cancelAll: vi.fn(),
@@ -162,6 +163,20 @@ describe('session-handlers', () => {
       expect(coordinator.initialize).toHaveBeenCalled();
       expect(coordinator.scanOnce).toHaveBeenCalled();
       expect(sessionFns.setScanSession).toHaveBeenCalled();
+    });
+
+    it('starts a new cycle count before a one-shot scan, so it is saved as cycle 1 (#498)', async () => {
+      const order: string[] = [];
+      vi.mocked(coordinator.startNewSession).mockImplementation(() => {
+        order.push('startNewSession');
+      });
+      vi.mocked(coordinator.scanOnce).mockImplementation(async () => {
+        order.push('scanOnce');
+      });
+
+      await startScan(coordinator, baseParams, sessionFns, onError);
+
+      expect(order).toEqual(['startNewSession', 'scanOnce']);
     });
 
     it('should call scanInterval for continuous mode', async () => {

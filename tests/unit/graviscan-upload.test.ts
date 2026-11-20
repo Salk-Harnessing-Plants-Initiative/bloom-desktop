@@ -318,6 +318,30 @@ describe('graviscan-upload', () => {
   });
 
   describe('uploadAllPendingScans — plate barcode', () => {
+    it('uploads a rig-named image under its full name plus a random suffix, keeping .tif (#370)', async () => {
+      const rigName =
+        'Perceptome_Screen_wave20_st_20260809T190946_et_20260809T121108_cy1_graviscan-desktop_Sc1_00';
+      db.graviScan.findMany.mockResolvedValue([
+        makeScan({
+          images: [
+            {
+              id: 'img-rig',
+              path: `/scans/Perceptome_Screen_wave20_20260809T190946/${rigName}.tif`,
+            },
+          ],
+        }),
+      ]);
+      const upload = vi.fn().mockResolvedValue({ error: null });
+      mockUploader.supabase.storage.from.mockReturnValue({ upload });
+
+      await uploadAllPendingScans(db);
+
+      const storagePath = String(upload.mock.calls[0][0]);
+      expect(storagePath).toMatch(
+        new RegExp(`^gravi-images/${rigName}_[0-9a-f-]{8}\\.tif$`)
+      );
+    });
+
     it('sends the scan plate barcode as plate_barcode, the field bloom-js 0.4.0 reads', async () => {
       db.graviScan.findMany.mockResolvedValue([
         makeScan({ plate_barcode: 'PLATE-042' }),

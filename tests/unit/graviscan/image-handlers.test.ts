@@ -566,6 +566,53 @@ describe('image-handlers', () => {
       expect(onProgress).toHaveBeenCalled();
     });
 
+    it('exports both scanners at the same plate index as separate files with rig names, one metadata.csv row each (#370)', async () => {
+      // Download Wave copies a wave's images into one folder by file name.
+      // With the earlier development names two scanners' plate 00 had the
+      // same name; with the rig's names the scanner position is in it.
+      const dir = '/scans/Perceptome_Screen_wave20_20260809T190946';
+      const sc1 = `${dir}/Perceptome_Screen_wave20_st_20260809T190946_et_20260809T121108_cy1_graviscan-desktop_Sc1_00.tif`;
+      const sc2 = `${dir}/Perceptome_Screen_wave20_st_20260809T190946_et_20260809T121112_cy1_graviscan-desktop_Sc2_00.tif`;
+      const row = (barcode: string, imagePath: string) => ({
+        wave_number: 20,
+        plate_barcode: barcode,
+        plate_index: '00',
+        grid_mode: '4grid',
+        capture_date: new Date('2026-08-09'),
+        experiment: { accession: { graviPlateAccessions: [] } },
+        images: [{ path: imagePath }],
+      });
+      db.graviScan.findMany.mockResolvedValue([
+        row('PLATE-A', sc1),
+        row('PLATE-B', sc2),
+      ]);
+      mockResolvePath.mockImplementation((p: string) => p);
+      vi.mocked(fs.promises.copyFile).mockClear();
+
+      const result = await downloadImages(db, {
+        experimentId: 'exp-1',
+        experimentName: 'Perceptome Screen',
+        targetDir: '/tmp/download',
+      });
+
+      expect(result.copied).toBe(2);
+      const dests = vi
+        .mocked(fs.promises.copyFile)
+        .mock.calls.map((call) => path.basename(String(call[1])));
+      expect(new Set(dests).size).toBe(2);
+
+      const csv = String(
+        vi
+          .mocked(fs.writeFileSync)
+          .mock.calls.find((call) =>
+            String(call[0]).endsWith('metadata.csv')
+          )![1]
+      );
+      expect(csv).toContain(path.basename(sc1));
+      expect(csv).toContain(path.basename(sc2));
+      mockResolvePath.mockReset();
+    });
+
     it('should not write plates.csv or sections.csv when the experiment has no plate accessions', async () => {
       db.graviScan.findMany.mockResolvedValue([
         {

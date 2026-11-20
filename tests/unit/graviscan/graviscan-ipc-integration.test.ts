@@ -35,6 +35,18 @@ vi.mock('../../../src/main/graviscan/session-handlers', () => ({
   cancelScan: vi.fn().mockResolvedValue({ success: true }),
 }));
 
+// Paths are built by start-scan-paths.ts (tested in start-scan-paths.test.ts);
+// this file covers the IPC round-trip only.
+vi.mock('../../../src/main/graviscan/start-scan-paths', () => ({
+  buildStartScanPlan: vi.fn().mockResolvedValue({
+    ok: true,
+    scanners: [],
+    outputPaths: {},
+    sessionDir: '/home/user/.bloom/graviscan/session',
+  }),
+  buildTestScanPlan: vi.fn(),
+}));
+
 vi.mock('../../../src/main/graviscan/image-handlers', () => ({
   getOutputDir: vi
     .fn()

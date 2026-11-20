@@ -29,6 +29,7 @@ from python.graviscan.scan_worker import (
     run_worker,
 )
 from python.graviscan.scan_regions import get_scan_region
+from python.tests.scan_plate_parts import DEFAULT_SAVED_NAME, plate_parts
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -144,17 +145,17 @@ class TestMockScan:
     @patch("time.sleep")
     def test_generates_tiff(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"
-        final = w._mock_scan("2grid", "00", 300, str(out))
+        final = w._mock_scan("2grid", "00", 300, plate_parts(tmp_path))
         assert os.path.exists(final)
+        assert os.path.dirname(final) == str(tmp_path)
+        assert DEFAULT_SAVED_NAME.match(os.path.basename(final))
         img = Image.open(final)
         assert img.format == "TIFF"
 
     @patch("time.sleep")
     def test_correct_dimensions(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"
-        final = w._mock_scan("2grid", "00", 300, str(out))
+        final = w._mock_scan("2grid", "00", 300, plate_parts(tmp_path))
         region = get_scan_region("2grid", "00")
         px = region.to_pixels(300)
         img = Image.open(final)
@@ -165,8 +166,8 @@ class TestMockScan:
     @patch("time.sleep")
     def test_tiff_has_metadata(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out = tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"
-        final = w._mock_scan("4grid", "01", 300, str(out))
+        plate = plate_parts(tmp_path, plate_index="01", grid_mode="4grid")
+        final = w._mock_scan("4grid", "01", 300, plate)
         img = Image.open(final)
         desc = json.loads(img.tag_v2[270])
         assert desc["grid_mode"] == "4grid"
@@ -552,7 +553,7 @@ class TestAtomicImageSave:
         # prefix, so the call site itself is pinned.
         w = _make_worker(scanner_id="rig-scanner-7", mock=True)
 
-        out_path = str(tmp_path / "plate_st_20260301T120000_cy1_S1_00.tif")
+        plate = plate_parts(tmp_path)
 
         real_open = builtins.open
 
@@ -563,7 +564,7 @@ class TestAtomicImageSave:
 
         with patch("time.sleep"):
             with patch("builtins.open", side_effect=refuse_rplusb):
-                stderr = _capture_stderr(w._mock_scan, "2grid", "00", 300, out_path)
+                stderr = _capture_stderr(w._mock_scan, "2grid", "00", 300, plate)
 
         assert "durability check skipped" in stderr
         assert "[rig-scanner-7]" in stderr, (
@@ -718,7 +719,7 @@ class TestAtomicWriteSurvivesRealSigkill:
     test seam in the live SANE write path."""
 
     def test_sigkill_during_write_leaves_no_truncated_final_file(self, tmp_path):
-        output_path = str(tmp_path / "plate_st_20260910T120000_cy1_S1_00.tif")
+        plate = plate_parts(tmp_path, st_timestamp="20260910T120000")
         env = os.environ.copy()
 
         proc = subprocess.Popen(
@@ -745,14 +746,7 @@ class TestAtomicWriteSurvivesRealSigkill:
 
             command = {
                 "action": "scan",
-                "plates": [
-                    {
-                        "plate_index": "00",
-                        "grid_mode": "2grid",
-                        "resolution": 300,
-                        "output_path": output_path,
-                    }
-                ],
+                "plates": [plate],
             }
             proc.stdin.write(json.dumps(command) + "\n")
             proc.stdin.flush()
@@ -792,9 +786,12 @@ class TestAtomicWriteSurvivesRealSigkill:
                 proc.kill()
                 proc.wait(timeout=10)
 
-        assert not os.path.exists(
-            output_path
-        ), "nothing should ever be written directly to the pre-_et_ path"
+        # Nothing but the interrupted temp file may be in the session folder:
+        # no file is ever written directly under a final (non-temp) name.
+        non_temp = [n for n in os.listdir(tmp_path) if not n.startswith(TMP_PREFIX)]
+        assert (
+            non_temp == []
+        ), f"nothing should ever be written directly to a final name: {non_temp}"
         # NB: glob() skips dotfiles, so this cannot match the .tmp- residue —
         # that exclusion is load-bearing and deliberate here.
         tif_files = glob.glob(str(tmp_path / "*.tif"))
@@ -831,7 +828,7 @@ class TestSaneScanUsesAtomicWrite:
         w._device = mock_device
         w._sane = MagicMock()
 
-        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        plate = plate_parts(tmp_path)
         real_replace = os.replace
         renames = []
 
@@ -848,11 +845,13 @@ class TestSaneScanUsesAtomicWrite:
         with patch(
             "python.graviscan.scan_worker.os.replace", side_effect=tracking_replace
         ):
-            _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+            _capture_stderr(w._sane_scan, "2grid", "00", 300, plate)
 
         assert len(renames) == 1, "the real scan path did not publish via os.replace"
         tifs = list(tmp_path.glob("*.tif"))
         assert len(tifs) == 1
+        assert renames[0][1] == str(tifs[0])
+        assert DEFAULT_SAVED_NAME.match(tifs[0].name)
         assert not glob.glob(os.path.join(str(tmp_path), f"{TMP_PREFIX}*"))
 
 
@@ -887,12 +886,13 @@ class TestSaneScanRetryLogic:
         w._sane = mock_sane
         w._device = mock_device
 
-        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
-        _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
-        # Final path is composed at save time (_et_ inserted) — the original
-        # out_path is never written; verify the actual saved .tif exists.
+        plate = plate_parts(tmp_path)
+        _capture_stderr(w._sane_scan, "2grid", "00", 300, plate)
+        # Final path is composed at save time from the plate's parts (_et_
+        # included); verify exactly that one .tif was saved.
         tifs = list(tmp_path.glob("*.tif"))
         assert len(tifs) == 1
+        assert DEFAULT_SAVED_NAME.match(tifs[0].name)
         assert call_count == 3  # failed 2, succeeded on 3rd
 
     @patch("time.sleep")
@@ -904,9 +904,7 @@ class TestSaneScanRetryLogic:
         w._device = mock_device
 
         with pytest.raises(RuntimeError, match="Scan failed after 5 attempts"):
-            _capture_stderr(
-                w._sane_scan, "2grid", "00", 300, str(tmp_path / "fail.tif")
-            )
+            _capture_stderr(w._sane_scan, "2grid", "00", 300, plate_parts(tmp_path))
 
     @patch("time.sleep")
     def test_a_rename_failure_propagates_through_the_same_retry_path(
@@ -934,14 +932,14 @@ class TestSaneScanRetryLogic:
         w._sane = mock_sane
         w._device = mock_device
 
-        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
+        plate = plate_parts(tmp_path)
 
         with patch(
             "python.graviscan.scan_worker.os.replace",
             side_effect=OSError("simulated rename refusal"),
         ) as mock_replace:
             with pytest.raises(RuntimeError, match="Scan failed after 5 attempts"):
-                _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+                _capture_stderr(w._sane_scan, "2grid", "00", 300, plate)
 
         assert mock_replace.call_count == 5, (
             "the rename failure must be retried by the same loop that "
@@ -1047,8 +1045,8 @@ class TestAchievedResolutionReadback:
         w._device_is_open = True
         w._device = _QuantizingDevice(Image.new("RGB", (50, 50)))
 
-        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
-        _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+        plate = plate_parts(tmp_path)
+        _capture_stderr(w._sane_scan, "2grid", "00", 300, plate)
 
         # 300 is not in SUPPORTED — the device rounds it to 400. The
         # worker must capture the ACHIEVED value, not silently keep 300.
@@ -1062,8 +1060,8 @@ class TestAchievedResolutionReadback:
         w._device_is_open = True
         w._device = _QuantizingDevice(Image.new("RGB", (50, 50)))
 
-        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
-        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+        plate = plate_parts(tmp_path)
+        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, plate)
 
         assert "300" in stderr
         assert "400" in stderr
@@ -1080,8 +1078,8 @@ class TestAchievedResolutionReadback:
         w._device_is_open = True
         w._device = _ExactDevice(Image.new("RGB", (50, 50)))
 
-        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
-        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+        plate = plate_parts(tmp_path)
+        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, plate)
 
         assert w._last_achieved_resolution == 300
         assert "mismatch" not in stderr.lower()
@@ -1098,8 +1096,8 @@ class TestAchievedResolutionReadback:
         w._device_is_open = True
         w._device = _ZeroReadbackDevice(Image.new("RGB", (50, 50)))
 
-        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
-        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, out_path)
+        plate = plate_parts(tmp_path)
+        stderr = _capture_stderr(w._sane_scan, "2grid", "00", 300, plate)
 
         assert w._last_achieved_resolution == 300
         assert "implausible" in stderr.lower()
@@ -1116,8 +1114,8 @@ class TestAchievedResolutionInOutput:
         w._device_is_open = True
         w._device = _QuantizingDevice(Image.new("RGB", (50, 50)))
 
-        out_path = str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif")
-        final_path = w._sane_scan("2grid", "00", 300, out_path)
+        plate = plate_parts(tmp_path)
+        final_path = w._sane_scan("2grid", "00", 300, plate)
 
         img = Image.open(final_path)
         desc = json.loads(img.tag_v2[270])
@@ -1139,12 +1137,7 @@ class TestAchievedResolutionInOutput:
 
         out = _capture_stdout(
             w._scan_plate,
-            {
-                "plate_index": "00",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"),
-            },
+            plate_parts(tmp_path),
         )
         events = [
             json.loads(line.removeprefix("EVENT:"))
@@ -1164,12 +1157,7 @@ class TestAchievedResolutionInOutput:
 
         out = _capture_stdout(
             w._scan_plate,
-            {
-                "plate_index": "00",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "scan_st_20260301T120000_cy1_S1_00.tif"),
-            },
+            plate_parts(tmp_path),
         )
         events = [
             json.loads(line.removeprefix("EVENT:"))
@@ -1273,14 +1261,7 @@ class TestRunCommandLoop:
         scan_cmd = json.dumps(
             {
                 "action": "scan",
-                "plates": [
-                    {
-                        "plate_index": "00",
-                        "grid_mode": "2grid",
-                        "resolution": 300,
-                        "output_path": str(tmp_path / "plate00.tif"),
-                    }
-                ],
+                "plates": [plate_parts(tmp_path)],
             }
         )
         quit_cmd = json.dumps({"action": "quit"})
@@ -1345,20 +1326,7 @@ class TestFullScanCycleMock:
         w = _make_worker()
         _capture_stdout(w.initialize)
 
-        out_path = str(tmp_path / "plate00_st_20260301T120000_cy1_S1_00.tif")
-        scan_cmd = json.dumps(
-            {
-                "action": "scan",
-                "plates": [
-                    {
-                        "plate_index": "00",
-                        "grid_mode": "2grid",
-                        "resolution": 300,
-                        "output_path": out_path,
-                    }
-                ],
-            }
-        )
+        scan_cmd = json.dumps({"action": "scan", "plates": [plate_parts(tmp_path)]})
         quit_cmd = json.dumps({"action": "quit"})
 
         with patch("sys.stdin", io.StringIO(f"{scan_cmd}\n{quit_cmd}\n")):
@@ -1374,10 +1342,12 @@ class TestFullScanCycleMock:
         assert "scan-complete" in types
         assert "cycle-done" in types
         # The actual file written is reported in the scan-complete event payload
-        # (final path includes _et_, composed at save time — not out_path itself).
+        # (output_dir + the rig name, _et_ composed at save time).
         complete_paths = _scan_complete_paths(out)
         assert len(complete_paths) == 1
         assert os.path.exists(complete_paths[0])
+        assert os.path.dirname(complete_paths[0]) == str(tmp_path)
+        assert DEFAULT_SAVED_NAME.match(os.path.basename(complete_paths[0]))
 
 
 class TestFourGridRowMerge:
@@ -1390,16 +1360,7 @@ class TestFourGridRowMerge:
 
         plates = []
         for idx in ("00", "01", "10", "11"):
-            plates.append(
-                {
-                    "plate_index": idx,
-                    "grid_mode": "4grid",
-                    "resolution": 300,
-                    "output_path": str(
-                        tmp_path / f"plate_{idx}_st_20260301T120000_cy1_S1_00.tif"
-                    ),
-                }
-            )
+            plates.append(plate_parts(tmp_path, plate_index=idx, grid_mode="4grid"))
 
         scan_cmd = json.dumps({"action": "scan", "plates": plates})
         quit_cmd = json.dumps({"action": "quit"})
@@ -1425,18 +1386,8 @@ class TestTwoGridIndividualScans:
         _capture_stdout(w.initialize)
 
         plates = [
-            {
-                "plate_index": "00",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p00_st_20260301T120000_cy1_S1_00.tif"),
-            },
-            {
-                "plate_index": "01",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p01_st_20260301T120000_cy1_S1_01.tif"),
-            },
+            plate_parts(tmp_path, plate_index="00", grid_mode="2grid"),
+            plate_parts(tmp_path, plate_index="01", grid_mode="2grid"),
         ]
         scan_cmd = json.dumps({"action": "scan", "plates": plates})
         quit_cmd = json.dumps({"action": "quit"})
@@ -1468,18 +1419,8 @@ class TestFourGridSinglePlateInRow:
 
         # Only plate "00" from top row — should NOT row-merge
         plates = [
-            {
-                "plate_index": "00",
-                "grid_mode": "4grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p00_st_20260301T120000_cy1_S1_00.tif"),
-            },
-            {
-                "plate_index": "10",
-                "grid_mode": "4grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p10_st_20260301T120000_cy1_S1_10.tif"),
-            },
+            plate_parts(tmp_path, plate_index="00", grid_mode="4grid"),
+            plate_parts(tmp_path, plate_index="10", grid_mode="4grid"),
         ]
         scan_cmd = json.dumps({"action": "scan", "plates": plates})
         quit_cmd = json.dumps({"action": "quit"})
@@ -1508,18 +1449,8 @@ class TestCancelMidCycle:
 
         # We'll cancel between the two plates
         plates = [
-            {
-                "plate_index": "00",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p00.tif"),
-            },
-            {
-                "plate_index": "01",
-                "grid_mode": "2grid",
-                "resolution": 300,
-                "output_path": str(tmp_path / "p01.tif"),
-            },
+            plate_parts(tmp_path, plate_index="00"),
+            plate_parts(tmp_path, plate_index="01"),
         ]
 
         original_scan_plate = w._scan_plate
@@ -1547,14 +1478,7 @@ class TestCancelFlagClearedOnNewScan:
 
         # New scan should clear the flag
         scan_cmd = {
-            "plates": [
-                {
-                    "plate_index": "00",
-                    "grid_mode": "2grid",
-                    "resolution": 300,
-                    "output_path": str(tmp_path / "p.tif"),
-                }
-            ],
+            "plates": [plate_parts(tmp_path)],
         }
         _capture_stdout(w._handle_scan, scan_cmd)
         assert w._cancel_requested is False
@@ -1686,12 +1610,7 @@ class TestScanPlateErrorEmitsEvent:
         with patch.object(w, "_mock_scan", side_effect=RuntimeError("boom")):
             out = _capture_stdout(
                 w._scan_plate,
-                {
-                    "plate_index": "00",
-                    "grid_mode": "2grid",
-                    "resolution": 300,
-                    "output_path": "/tmp/nope.tif",
-                },
+                plate_parts("/tmp/nope"),
             )
 
         events = [
@@ -1717,18 +1636,8 @@ class TestScanRowErrorAllPlates:
 
         with patch.object(w, "_mock_scan_row", side_effect=RuntimeError("row fail")):
             row_plates = [
-                {
-                    "plate_index": "00",
-                    "grid_mode": "4grid",
-                    "resolution": 300,
-                    "output_path": "/tmp/p00.tif",
-                },
-                {
-                    "plate_index": "01",
-                    "grid_mode": "4grid",
-                    "resolution": 300,
-                    "output_path": "/tmp/p01.tif",
-                },
+                plate_parts("/tmp/nope", plate_index="00", grid_mode="4grid"),
+                plate_parts("/tmp/nope", plate_index="01", grid_mode="4grid"),
             ]
             out = _capture_stdout(w._scan_row, row_plates)
 
@@ -1754,16 +1663,7 @@ class TestCycleDoneAlwaysEmitted:
         with patch.object(w, "_mock_scan", side_effect=RuntimeError("fail")):
             out = _capture_stdout(
                 w._handle_scan,
-                {
-                    "plates": [
-                        {
-                            "plate_index": "00",
-                            "grid_mode": "2grid",
-                            "resolution": 300,
-                            "output_path": str(tmp_path / "p.tif"),
-                        },
-                    ]
-                },
+                {"plates": [plate_parts(tmp_path)]},
             )
 
         events = [
@@ -1786,8 +1686,7 @@ class TestMetadataJSONRoundtrip:
     @patch("time.sleep")
     def test_roundtrip(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out_path = str(tmp_path / "meta.tif")
-        w._mock_scan("2grid", "00", 300, out_path)
+        out_path = w._mock_scan("2grid", "00", 300, plate_parts(tmp_path))
 
         img = Image.open(out_path)
         desc = json.loads(img.tag_v2[270])
@@ -1806,8 +1705,9 @@ class TestResolutionTagsMatchInput:
     @patch("time.sleep")
     def test_resolution_tags(self, mock_sleep, tmp_path):
         w = _make_worker()
-        out_path = str(tmp_path / "res.tif")
-        w._mock_scan("2grid", "00", 600, out_path)
+        out_path = w._mock_scan(
+            "2grid", "00", 600, plate_parts(tmp_path, resolution=600)
+        )
 
         img = Image.open(out_path)
         # tag 282 = XResolution
@@ -1825,10 +1725,11 @@ class TestMetadataDifferentGridModes:
     @patch("time.sleep")
     def test_grid_mode_metadata(self, mock_sleep, tmp_path):
         w = _make_worker()
-        path_2g = str(tmp_path / "2g.tif")
-        path_4g = str(tmp_path / "4g.tif")
-        w._mock_scan("2grid", "00", 300, path_2g)
-        w._mock_scan("4grid", "00", 300, path_4g)
+        # Separate session folders, so the two saves cannot share a name.
+        path_2g = w._mock_scan("2grid", "00", 300, plate_parts(tmp_path / "2g"))
+        path_4g = w._mock_scan(
+            "4grid", "00", 300, plate_parts(tmp_path / "4g", grid_mode="4grid")
+        )
 
         desc_2g = json.loads(Image.open(path_2g).tag_v2[270])
         desc_4g = json.loads(Image.open(path_4g).tag_v2[270])
@@ -2008,8 +1909,8 @@ class TestBuildTiffMetadata:
 class TestRealHardwarePathComposition:
     """11.1 real (non-mock) scan writes to its final _et_-stamped filename
     via a write-then-atomic-rename to a `.tmp-*` temp path (see
-    _atomic_image_save) — the caller-visible `output_path` (pre-_et_) is
-    never written to at all, only the final path ever appears on disk.
+    _atomic_image_save) — the final path is the plate's `output_dir` plus
+    the name built from its parts, and only that path ever appears on disk.
 
     Requires the physical GraviScan rig (a real SANE scanner attached).
     Excluded from default/CI runs via `-m "not hardware"` in pyproject.toml.
@@ -2034,10 +1935,10 @@ class TestRealHardwarePathComposition:
         w = ScanWorker(scanner_id="hw-test-scanner", device_name=device, mock=False)
         assert w.initialize(), "Failed to initialize real SANE device"
 
-        output_path = str(tmp_path / "hwtest_st_20260301T120000_cy1_S1_00.tif")
+        plate = plate_parts(tmp_path, exp_name="hwtest")
         final_path = None
         try:
-            final_path = w._sane_scan("2grid", "00", 300, output_path)
+            final_path = w._sane_scan("2grid", "00", 300, plate)
 
             # File was written once, directly, to its final name.
             assert os.path.exists(final_path)
@@ -2050,10 +1951,11 @@ class TestRealHardwarePathComposition:
             # _et_ timestamp segment appears after _st_ in the filename.
             assert st_match.start() < et_match.start()
 
-            # The caller-visible pre-_et_ path is never written to at all —
-            # the real write happens to a .tmp-* temp path, then an atomic
-            # rename lands only at the final (_et_-stamped) path.
-            assert not os.path.exists(output_path)
+            # The real write happens to a .tmp-* temp path, then an atomic
+            # rename lands only at the final (_et_-stamped) path in output_dir:
+            # it is the only entry left in the session folder.
+            assert os.path.dirname(final_path) == str(tmp_path)
+            assert os.listdir(tmp_path) == [basename]
         finally:
             if final_path and os.path.exists(final_path):
                 os.remove(final_path)
@@ -2092,14 +1994,14 @@ class TestRealHardwareMetadataFields:
         w = ScanWorker(scanner_id="hw-test-scanner", device_name=device, mock=False)
         assert w.initialize(), "Failed to initialize real SANE device"
 
-        output_path = str(tmp_path / "hwtest_st_20260301T120000_cy1_S1_00.tif")
+        plate = plate_parts(tmp_path, exp_name="hwtest")
         final_path = None
         try:
             final_path = w._sane_scan(
                 "2grid",
                 "00",
                 300,
-                output_path,
+                plate,
                 "hw-exp",
                 7,
                 "20260301T120000",
