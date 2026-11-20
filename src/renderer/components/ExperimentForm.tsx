@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { useEffect, useState } from 'react';
 import { useSpeciesList } from '../hooks/useSpeciesList';
 import { SpeciesSelect } from './SpeciesSelect';
+import { graviscanExpNameError } from '../../utils/graviscan-exp-name';
 
 const experimentSchema = z.object({
   name: z
@@ -14,6 +15,12 @@ const experimentSchema = z.object({
   species: z.string().min(1, 'Species is required'),
   scientist_id: z.string().min(1, 'Scientist is required'),
   accession_id: z.string().min(1, 'Accession is required'),
+});
+
+/** GraviScan names also may not use file-name marker words (st, cy1, ...). */
+const graviscanExperimentSchema = experimentSchema.superRefine((data, ctx) => {
+  const error = graviscanExpNameError(data.name);
+  if (error) ctx.addIssue({ code: 'custom', path: ['name'], message: error });
 });
 
 type ExperimentFormData = z.infer<typeof experimentSchema>;
@@ -76,7 +83,9 @@ export function ExperimentForm({
     setValue,
     watch,
   } = useForm<ExperimentFormData>({
-    resolver: zodResolver(experimentSchema),
+    resolver: zodResolver(
+      isGraviscan ? graviscanExperimentSchema : experimentSchema
+    ),
     defaultValues: {
       species: '',
       scientist_id: '',
