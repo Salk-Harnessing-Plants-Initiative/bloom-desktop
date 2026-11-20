@@ -8,8 +8,12 @@
  * the job recorded with its real saved path. The cycle comes from the file
  * name, so a late image from an earlier cycle keeps its own cycle (#503).
  *
+ * When a grid row completes, its shared start and end times are written
+ * onto every scan of that row, for every scanner, as on the rig.
+ *
  * Events are recorded one at a time, so a repeated event can't race its
- * twin into a second image row. A failure is logged and reported for that
+ * twin into a second image row, and a row's times are written after its
+ * images. A failure is logged and reported for that
  * plate; the next event is still recorded.
  */
 import * as path from 'path';
@@ -33,7 +37,28 @@ export interface ScanRecorderDeps {
   createImage: (data: GraviImageCreateInput) => Promise<unknown>;
   /** Log the problem and show it on the scan page for that plate. */
   reportError: (scannerId: string, plateIndex: string, message: string) => void;
+  /** Set a row's start and end times on its scans; returns how many. */
+  updateRowTimes: (args: RowTimesUpdate) => Promise<{ count: number }>;
+  /** Log a problem the operator doesn't need to act on. */
+  logProblem: (message: string) => void;
   now?: () => Date;
+}
+
+/** One grid row's shared times, for the scans of one session and cycle. */
+export interface RowTimesUpdate {
+  session_id: string;
+  plate_index: string;
+  cycle_number: number;
+  scan_started_at: string;
+  scan_ended_at: string;
+}
+
+/** The coordinator's `grid-complete` event. */
+export interface GridCompleteEvent {
+  cycle?: unknown;
+  gridIndex?: unknown;
+  scanStartedAt?: unknown;
+  scanEndedAt?: unknown;
 }
 
 /** The fields of a coordinator `scan-complete` event the recorder reads. */
@@ -44,18 +69,34 @@ export interface RecordableScanEvent {
   plateIndex?: unknown;
   path?: unknown;
   achieved_resolution?: unknown;
-  scan_started_at?: unknown;
 }
 
 export interface ScanRecorder {
   /** Queue `event` for recording; resolves once it has been handled. */
   record: (event: RecordableScanEvent) => Promise<void>;
+  /** Queue a row's times, after the images queued before it. */
+  recordRowTimes: (event: GridCompleteEvent) => Promise<void>;
   /** Resolves once every queued event has been handled. */
   idle: () => Promise<void>;
 }
 
 function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+/** "20260809T190946" (UTC, from a file name) as an ISO time. */
+function stToIso(st: string): string {
+  return new Date(
+    `${st.slice(0, 4)}-${st.slice(4, 6)}-${st.slice(6, 8)}T` +
+      `${st.slice(9, 11)}:${st.slice(11, 13)}:${st.slice(13, 15)}Z`
+  ).toISOString();
+}
+
+/** An ISO time string, or null if `value` isn't one. */
+function isoTime(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const t = new Date(value);
+  return Number.isNaN(t.getTime()) ? null : t.toISOString();
 }
 
 function errorText(error: unknown): string {
@@ -121,7 +162,9 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
             : session.resolution,
         format: 'tiff',
         capture_date: now(),
-        scan_started_at: text(event.scan_started_at) || null,
+        // The row's own start time: a late image keeps its row's, not the
+        // current row's. The row's end is set when the row completes.
+        scan_started_at: stToIso(parsed.stTimestamp),
       });
       const scanId = (created.data as { id?: unknown } | undefined)?.id;
       if (!created.success || typeof scanId !== 'string') {
@@ -148,14 +191,40 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
     }
   }
 
+  async function recordRowTimesOne(event: GridCompleteEvent): Promise<void> {
+    const session = deps.getSession();
+    if (!session || session.isTest || !session.sessionId) return;
+    const plateIndex = text(event.gridIndex);
+    const started = isoTime(event.scanStartedAt);
+    const ended = isoTime(event.scanEndedAt);
+    if (!plateIndex || typeof event.cycle !== 'number' || !started || !ended) {
+      return;
+    }
+    try {
+      await deps.updateRowTimes({
+        session_id: session.sessionId,
+        plate_index: plateIndex,
+        cycle_number: event.cycle,
+        scan_started_at: started,
+        scan_ended_at: ended,
+      });
+    } catch (error) {
+      deps.logProblem(
+        `Row times for plate ${plateIndex}, cycle ${event.cycle} weren't saved (${errorText(error)}).`
+      );
+    }
+  }
+
+  function enqueue(task: () => Promise<void>): Promise<void> {
+    // Each task catches its own failures; this keeps the queue alive if
+    // anything unexpected still throws.
+    queue = queue.then(task).catch((): void => undefined);
+    return queue;
+  }
+
   return {
-    record(event) {
-      const next = queue.then(() => recordOne(event));
-      // recordOne catches its own failures; this keeps the queue alive
-      // if anything unexpected still throws.
-      queue = next.catch((): void => undefined);
-      return queue;
-    },
+    record: (event) => enqueue(() => recordOne(event)),
+    recordRowTimes: (event) => enqueue(() => recordRowTimesOne(event)),
     idle: () => queue,
   };
 }

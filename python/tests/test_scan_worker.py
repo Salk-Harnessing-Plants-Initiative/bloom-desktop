@@ -1120,6 +1120,8 @@ class TestAchievedResolutionInOutput:
         img = Image.open(final_path)
         desc = json.loads(img.tag_v2[270])
         assert desc["resolution_dpi"] == 400
+        # The resolution asked for is kept next to the applied one (#508).
+        assert desc["requested_resolution_dpi"] == 300
 
         x_res = img.tag_v2.get(282)
         if hasattr(x_res, "numerator"):

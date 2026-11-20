@@ -79,14 +79,18 @@ afterAll(async () => {
 const SESSION_DIR = path.join(OUTPUT_DIR, 'Exp_wave1_20260809T190946');
 const PLATES = ['00', '01'];
 const CYCLES = [1, 2, 3];
-const savedFile = (cycle: number, plate: string) =>
+/** Every scanner's image of a row shares its `_st_`; `_et_` is per file. */
+const savedFile = (cycle: number, plate: string, tag: string) =>
   path.join(
     SESSION_DIR,
-    `Exp_wave1_st_20260809T19${cycle}000_et_20260809T19${cycle}500_cy${cycle}_Sc1_${plate}.tif`
+    `Exp_wave1_st_20260809T19${cycle}000_et_20260809T19${cycle}1${tag.slice(-1)}0_cy${cycle}_${tag}_${plate}.tif`
   );
+/** A grid row's shared times, as the coordinator's grid-complete sends them. */
+const rowStart = (cycle: number) => `2026-08-09T19:${cycle}0:00.000Z`;
+const rowEnd = (cycle: number) => `2026-08-09T19:${cycle}2:00.000Z`;
 
 describe('a session with the scan page closed for part of it (#502)', () => {
-  it('records every image exactly once, whether the page was open or not', async () => {
+  it('records every image exactly once, with its row times, whether the page was open or not', async () => {
     const scientist = await prisma.scientist.create({
       data: { name: 'Dr S', email: 's-closed@example.org' },
     });
@@ -96,9 +100,20 @@ describe('a session with the scan page closed for part of it (#502)', () => {
     const experiment = await prisma.experiment.create({
       data: { name: 'Exp', species: 'Alfalfa', scientist_id: scientist.id },
     });
-    const scanner = await prisma.graviScanner.create({
-      data: { name: 'epkowa:usb:001:005', usb_port: '1-1' },
-    });
+    const scanners = [
+      {
+        tag: 'Sc1',
+        row: await prisma.graviScanner.create({
+          data: { name: 'epkowa:usb:001:005', usb_port: '1-1' },
+        }),
+      },
+      {
+        tag: 'Sc2',
+        row: await prisma.graviScanner.create({
+          data: { name: 'epkowa:usb:001:006', usb_port: '1-2' },
+        }),
+      },
+    ];
 
     // The window exists only while the page is "open"; events sent while
     // it's closed reach nobody.
@@ -127,17 +142,19 @@ describe('a session with the scan page closed for part of it (#502)', () => {
     });
     if (!opened.ok) throw new Error(opened.error);
     const jobs: ScanSessionState['jobs'] = {};
-    for (const plate of PLATES) {
-      jobs[`${scanner.id}:${plate}`] = {
-        scannerId: scanner.id,
-        plateIndex: plate,
-        outputPath: path.join(SESSION_DIR, `planned_${plate}.tif`),
-        plantBarcode: null,
-        transplantDate: null,
-        customNote: null,
-        gridMode: '2grid',
-        status: 'pending',
-      };
+    for (const { row: scanner } of scanners) {
+      for (const plate of PLATES) {
+        jobs[`${scanner.id}:${plate}`] = {
+          scannerId: scanner.id,
+          plateIndex: plate,
+          outputPath: path.join(SESSION_DIR, `planned_${plate}.tif`),
+          plantBarcode: null,
+          transplantDate: null,
+          customNote: null,
+          gridMode: '2grid',
+          status: 'pending',
+        };
+      }
     }
     const session: ScanSessionState = {
       isActive: true,
@@ -163,23 +180,32 @@ describe('a session with the scan page closed for part of it (#502)', () => {
     for (const cycle of CYCLES) {
       // The operator leaves the page during cycle 2 and comes back for 3.
       pageOpen = cycle !== 2;
+      // Each plate position is one grid row, scanned by both scanners.
       for (const plate of PLATES) {
-        coordinator.emit('scan-started', {
-          scanner_id: scanner.id,
-          plate_index: plate,
-          cycle_number: cycle,
+        for (const { row: scanner } of scanners) {
+          coordinator.emit('scan-started', {
+            scanner_id: scanner.id,
+            plate_index: plate,
+            cycle_number: cycle,
+          });
+        }
+        for (const { row: scanner, tag } of scanners) {
+          const event = {
+            scanner_id: scanner.id,
+            plate_index: plate,
+            path: savedFile(cycle, plate, tag),
+            achieved_resolution: 600,
+          };
+          coordinator.emit('scan-complete', event);
+          // A redelivered event while the page is closed.
+          if (cycle === 2) coordinator.emit('scan-complete', event);
+        }
+        coordinator.emit('grid-complete', {
+          cycle,
+          gridIndex: plate,
+          scanStartedAt: rowStart(cycle),
+          scanEndedAt: rowEnd(cycle),
         });
-      }
-      for (const plate of PLATES) {
-        const event = {
-          scanner_id: scanner.id,
-          plate_index: plate,
-          path: savedFile(cycle, plate),
-          achieved_resolution: 600,
-        };
-        coordinator.emit('scan-complete', event);
-        // A redelivered event while the page is closed.
-        if (cycle === 2) coordinator.emit('scan-complete', event);
       }
     }
 
@@ -190,12 +216,25 @@ describe('a session with the scan page closed for part of it (#502)', () => {
     const scans = await prisma.graviScan.findMany({
       where: { session_id: opened.sessionId },
       include: { images: true },
-      orderBy: [{ cycle_number: 'asc' }, { plate_index: 'asc' }],
+      orderBy: [
+        { cycle_number: 'asc' },
+        { plate_index: 'asc' },
+        { path: 'asc' },
+      ],
     });
     expect(scans.map((s) => [s.cycle_number, s.plate_index])).toEqual(
-      CYCLES.flatMap((c) => PLATES.map((p) => [c, p]))
+      CYCLES.flatMap((c) =>
+        PLATES.flatMap((p) => [
+          [c, p],
+          [c, p],
+        ])
+      )
     );
     for (const s of scans) {
+      // Both scanners' grids in a row share the row's start and end times;
+      // each file keeps its own `_et_` save time in its name.
+      expect(s.scan_started_at?.toISOString()).toBe(rowStart(s.cycle_number!));
+      expect(s.scan_ended_at?.toISOString()).toBe(rowEnd(s.cycle_number!));
       expect(s.images).toHaveLength(1);
       expect(s.images[0]).toMatchObject({
         path: s.path,
@@ -211,10 +250,9 @@ describe('a session with the scan page closed for part of it (#502)', () => {
     expect(sessionRow?.cancelled).toBe(false);
 
     // Last cycle's jobs are recorded, and no error went to the page.
-    expect(Object.values(session.jobs).map((j) => j.status)).toEqual([
-      'recorded',
-      'recorded',
-    ]);
+    expect(
+      Object.values(session.jobs).every((j) => j.status === 'recorded')
+    ).toBe(true);
     expect(sent).not.toContain('graviscan:scan-error');
   });
 });

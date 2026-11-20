@@ -22,7 +22,7 @@ import { WedgeDetector, type WedgeDetectedEvent } from '../wedge-detector';
 import { SlackNotifier } from '../slack-notifier';
 import { scanLog } from './scan-logger';
 import type { GraviScanRecording } from './recording-wiring';
-import type { RecordableScanEvent } from './scan-recorder';
+import type { GridCompleteEvent, RecordableScanEvent } from './scan-recorder';
 import { advanceSessionCycle } from './session-lifecycle';
 
 // =============================================================================
@@ -442,6 +442,10 @@ export async function getOrCreateCoordinator(): Promise<ScanCoordinator> {
     // saved path on its job), whether or not the scan page is open.
     scanCoordinator.on('scan-complete', (event: RecordableScanEvent) => {
       void _recording?.recorder.record(event);
+    });
+    // A finished grid row's shared start and end times go onto its scans.
+    scanCoordinator.on('grid-complete', (event: GridCompleteEvent) => {
+      void _recording?.recorder.recordRowTimes(event);
     });
     // Each cycle's first scan-started resets the jobs for that cycle.
     scanCoordinator.on('scan-started', (event: { cycle_number?: unknown }) =>

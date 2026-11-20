@@ -47,6 +47,8 @@ function deps(s: any = session(), overrides: Record<string, unknown> = {}) {
     findImage: vi.fn().mockResolvedValue(null),
     createImage: vi.fn().mockResolvedValue({ id: 'img-1' }),
     reportError: vi.fn(),
+    updateRowTimes: vi.fn().mockResolvedValue({ count: 2 }),
+    logProblem: vi.fn(),
     now: () => new Date('2026-08-09T19:15:01Z'),
     ...overrides,
   } as any;
@@ -84,7 +86,8 @@ describe('scan recorder', () => {
       resolution: 599,
       format: 'tiff',
       capture_date: new Date('2026-08-09T19:15:01Z'),
-      scan_started_at: '2026-08-09T19:10:00Z',
+      // The row's own start, from the file's `_st_`, not the event's.
+      scan_started_at: '2026-08-09T19:09:46.000Z',
     });
     expect(d.createImage).toHaveBeenCalledWith({
       graviscan_id: 'scan-1',
@@ -219,5 +222,84 @@ describe('scan recorder', () => {
     expect(d.reportError).toHaveBeenCalledTimes(1);
     expect(d.reportError.mock.calls[0][2]).toContain('disk I/O error');
     expect(d.createImage).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives a late image its own row's start time, not the current row's (#503)", async () => {
+    const d = deps(session({ currentCycle: 4 }));
+    await createScanRecorder(d).record(
+      event({
+        path: fileFor(3, '20260809T180000'),
+        scan_started_at: '2026-08-09T19:30:00Z',
+      })
+    );
+    expect(d.createScan.mock.calls[0][0].scan_started_at).toBe(
+      '2026-08-09T18:00:00.000Z'
+    );
+  });
+});
+
+describe('row times (grid-complete)', () => {
+  const gridComplete = {
+    cycle: 3,
+    gridIndex: '00',
+    scanStartedAt: '2026-08-09T19:09:46.000Z',
+    scanEndedAt: '2026-08-09T19:11:20.000Z',
+  };
+
+  it("writes the row's shared start and end times onto every scan of that row, after the row's images are saved", async () => {
+    const d = deps();
+    const order: string[] = [];
+    d.createScan.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      order.push('scan');
+      return { success: true, data: { id: 'scan-1' } };
+    });
+    d.updateRowTimes.mockImplementation(async () => {
+      order.push('times');
+      return { count: 2 };
+    });
+    const r = createScanRecorder(d);
+    void r.record(event());
+    await r.recordRowTimes(gridComplete);
+
+    expect(order).toEqual(['scan', 'times']);
+    expect(d.updateRowTimes).toHaveBeenCalledWith({
+      session_id: 'sess-1',
+      plate_index: '00',
+      cycle_number: 3,
+      scan_started_at: '2026-08-09T19:09:46.000Z',
+      scan_ended_at: '2026-08-09T19:11:20.000Z',
+    });
+  });
+
+  it('writes nothing for a test scan, no session, or a malformed event', async () => {
+    for (const s of [null, session({ isTest: true, sessionId: null })]) {
+      const d = deps(s);
+      await createScanRecorder(d).recordRowTimes(gridComplete);
+      expect(d.updateRowTimes).not.toHaveBeenCalled();
+    }
+    const d = deps();
+    await createScanRecorder(d).recordRowTimes({
+      ...gridComplete,
+      scanEndedAt: 'not a time',
+    });
+    await createScanRecorder(d).recordRowTimes({
+      ...gridComplete,
+      cycle: undefined,
+    });
+    expect(d.updateRowTimes).not.toHaveBeenCalled();
+  });
+
+  it('logs a failed update and keeps recording', async () => {
+    const d = deps();
+    d.updateRowTimes.mockRejectedValue(new Error('locked'));
+    const r = createScanRecorder(d);
+    await r.recordRowTimes(gridComplete);
+    await r.record(event());
+    expect(d.logProblem).toHaveBeenCalledWith(
+      expect.stringContaining('locked')
+    );
+    expect(d.createScan).toHaveBeenCalled();
+    expect(d.reportError).not.toHaveBeenCalled();
   });
 });
