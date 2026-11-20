@@ -79,6 +79,34 @@ describe('graviscanExpNameError', () => {
   });
 });
 
+describe('graviscanExpNameError: 20-character limit', () => {
+  it('allows a name of exactly 20 characters', () => {
+    expect(graviscanExpNameError('ABCDEFGHIJKLMNOPQRST')).toBeNull();
+  });
+
+  it('refuses 21 characters and says why and how long it is', () => {
+    const msg = graviscanExpNameError('Perceptome Screen Str');
+    expect(msg).toContain('20 characters');
+    expect(msg).toContain('21');
+    expect(msg).toMatch(/file name/i);
+  });
+
+  it('does not count spaces around the name', () => {
+    expect(graviscanExpNameError('  ABCDEFGHIJKLMNOPQRST  ')).toBeNull();
+  });
+
+  it('reports the length before any marker, so a cut never invents a marker', () => {
+    // Cut to 20 this would read "Perceptome_Screen_St".
+    const msg = graviscanExpNameError('Perceptome Screen Stress');
+    expect(msg).toContain('20 characters');
+    expect(msg).not.toContain('"St"');
+  });
+
+  it('still refuses a marker word in a short name', () => {
+    expect(graviscanExpNameError('Plot st 2')).toContain('"st"');
+  });
+});
+
 describe('sanitizeExpName (shared with file names)', () => {
   it('cleans and cuts as the rig does', () => {
     expect(sanitizeExpName('Perceptome Screen')).toBe('Perceptome_Screen');

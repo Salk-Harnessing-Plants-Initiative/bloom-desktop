@@ -465,6 +465,34 @@ describe('ExperimentForm', () => {
       expect(mockCreate).not.toHaveBeenCalled();
     });
 
+    it('refuses a name longer than 20 characters and does not create it', async () => {
+      const user = userEvent.setup();
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={vi.fn()}
+          mode="graviscan"
+        />
+      );
+      await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+      const { nameInput, scientistSelect } = getFormElements();
+      const accessionSelect = document.getElementById(
+        'accession-select'
+      ) as HTMLSelectElement;
+
+      await user.type(nameInput, 'GA-Root-Growth-Kinetics-EXP');
+      await user.selectOptions(scientistSelect, 'sci-1');
+      await user.selectOptions(accessionSelect, 'grav-acc-1');
+      await user.click(screen.getByRole('button', { name: /create/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/at most 20 characters/)).toBeInTheDocument();
+      });
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
     it('sets experiment_type: graviscan and links the selected accession to the wave on submit', async () => {
       const user = userEvent.setup();
       mockCreate.mockResolvedValue({

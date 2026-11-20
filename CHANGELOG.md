@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- GraviScan: a new GraviScan experiment can't have `st`, `et`, `wave` with a number, `cy` with a number or `Sc` with a number as a word in its name, because those words mark the parts of a file name. Existing experiments aren't affected.
+- GraviScan: a new GraviScan experiment name can be at most 20 characters, so the whole name goes into its scans' file names, and can't have `st`, `et`, `wave` with a number, `cy` with a number or `Sc` with a number as a word in it, because those words mark the parts of a file name. Existing experiments aren't affected.
 
 ## [0.2.5] - 2026-10-30
 

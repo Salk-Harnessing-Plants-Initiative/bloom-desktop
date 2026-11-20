@@ -85,6 +85,17 @@ describe('db:experiments:create', () => {
     expect(await prisma.experiment.count()).toBe(1);
   });
 
+  it('refuses a GraviScan experiment named with more than 20 characters, and saves nothing', async () => {
+    const result = await create({
+      name: 'GA-Root-Growth-Kinetics-EXP',
+      species: 'Arabidopsis',
+      experiment_type: 'graviscan',
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('20 characters');
+    expect(await prisma.experiment.count()).toBe(0);
+  });
+
   it('creates a CylinderScan experiment with the same marker name', async () => {
     const result = await create({
       name: 'Plot st 2',

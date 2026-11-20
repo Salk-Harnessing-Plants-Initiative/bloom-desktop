@@ -21,6 +21,24 @@ describe('experimentCreateNameError', () => {
     ).toBeNull();
   });
 
+  it('refuses a GraviScan name longer than 20 characters', () => {
+    expect(
+      experimentCreateNameError({
+        name: 'GA-Root-Growth-Kinetics-EXP',
+        experiment_type: 'graviscan',
+      })
+    ).toContain('20 characters');
+  });
+
+  it('allows a long CylinderScan name', () => {
+    expect(
+      experimentCreateNameError({
+        name: 'GA-Root-Growth-Kinetics-EXP',
+        experiment_type: 'cylinderscan',
+      })
+    ).toBeNull();
+  });
+
   it('does not check CylinderScan experiments', () => {
     expect(
       experimentCreateNameError({
