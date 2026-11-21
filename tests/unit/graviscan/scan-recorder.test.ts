@@ -47,6 +47,7 @@ function deps(s: any = session(), overrides: Record<string, unknown> = {}) {
     findImage: vi.fn().mockResolvedValue(null),
     createImage: vi.fn().mockResolvedValue({ id: 'img-1' }),
     reportError: vi.fn(),
+    reportSessionError: vi.fn(),
     updateRowTimes: vi.fn().mockResolvedValue({ count: 2 }),
     logProblem: vi.fn(),
     now: () => new Date('2026-08-09T19:15:01Z'),
@@ -236,6 +237,31 @@ describe('scan recorder', () => {
       'saved on disk but not recorded in the database'
     );
     expect(d.getSession().jobs['s1:00'].status).toBe('error');
+    // The message says which image failed.
+    expect(d.reportError.mock.calls[0][2]).toMatch(/^Plate 00, cycle 3: /);
+  });
+
+  it("reports a failed late image as a general error, leaving this cycle's job alone", async () => {
+    const d = deps(session({ currentCycle: 4 }), {
+      createScan: vi
+        .fn()
+        .mockResolvedValue({ success: false, error: 'database is locked' }),
+    });
+    await createScanRecorder(d).record(event({ path: fileFor(3) }));
+
+    expect(d.reportError).not.toHaveBeenCalled();
+    expect(d.reportSessionError).toHaveBeenCalledWith(
+      `Plate 00, cycle 3: ${path.basename(fileFor(3))} was saved on disk but not recorded in the database (database is locked). It won't be uploaded or backed up until it is recorded.`
+    );
+    const job = d.getSession().jobs['s1:00'];
+    expect(job.status).toBe('pending');
+    expect(job.error).toBeUndefined();
+  });
+
+  it("doesn't put a late image's path on this cycle's job", async () => {
+    const d = deps(session({ currentCycle: 4 }));
+    await createScanRecorder(d).record(event({ path: fileFor(3) }));
+    expect(d.getSession().jobs['s1:00'].imagePath).toBeUndefined();
   });
 
   it('reports a failed image save, and keeps going for the next event', async () => {

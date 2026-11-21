@@ -43,6 +43,8 @@ export interface ScanRecorderDeps {
   createImage: (data: GraviImageCreateInput) => Promise<unknown>;
   /** Log the problem and show it on the scan page for that plate. */
   reportError: (scannerId: string, plateIndex: string, message: string) => void;
+  /** Log the problem and show it on the scan page, for no plate. */
+  reportSessionError: (message: string) => void;
   /** Set a row's start and end times on its scans; returns how many. */
   updateRowTimes: (args: RowTimesUpdate) => Promise<{ count: number }>;
   /** Log a problem the operator doesn't need to act on. */
@@ -154,19 +156,25 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
 
     // The planned path never exists on disk (the worker adds `_et_`), so
     // keep the real one; a test scan stops here, as it's never recorded.
-    job.imagePath = imagePath;
-    if (session.isTest || !session.sessionId) return;
+    if (session.isTest || !session.sessionId) {
+      job.imagePath = imagePath;
+      return;
+    }
 
-    const parsed = readStAndCycleFromScanFileName(path.basename(imagePath));
+    const fileName = path.basename(imagePath);
+    const parsed = readStAndCycleFromScanFileName(fileName);
     if (!parsed) {
       job.status = 'error';
-      job.error = notRecordedMessage(
-        path.basename(imagePath),
-        'its file name has no cycle'
-      );
+      job.error = notRecordedMessage(fileName, 'its file name has no cycle');
       deps.reportError(scannerId, plateIndex, job.error);
       return;
     }
+    // Whether this image is the job's current one: the running session's
+    // current cycle. A late image (an earlier cycle, or the previous
+    // session) never changes the job the page is waiting on.
+    const isCurrent =
+      session === deps.getSession() && parsed.cycle === session.currentCycle;
+    if (isCurrent) job.imagePath = imagePath;
 
     try {
       const created = await deps.createScan({
@@ -204,16 +212,20 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
           box_status: 'pending',
         });
       }
-      // A late image from an earlier cycle (#503) doesn't mark this
-      // cycle's job done.
-      if (parsed.cycle === session.currentCycle) job.status = 'recorded';
+      if (isCurrent) job.status = 'recorded';
     } catch (error) {
-      job.status = 'error';
-      job.error = notRecordedMessage(
-        path.basename(imagePath),
-        errorText(error)
-      );
-      deps.reportError(scannerId, plateIndex, job.error);
+      const message =
+        `Plate ${plateIndex}, cycle ${parsed.cycle}: ` +
+        notRecordedMessage(fileName, errorText(error));
+      if (isCurrent) {
+        job.status = 'error';
+        job.error = message;
+        deps.reportError(scannerId, plateIndex, message);
+      } else {
+        // Shown on the page as a general error, not as the plate that is
+        // being scanned now failing.
+        deps.reportSessionError(message);
+      }
     }
   }
 

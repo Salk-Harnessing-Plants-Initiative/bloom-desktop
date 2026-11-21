@@ -79,6 +79,15 @@ export function createGraviScanRecording(deps: {
         where: { graviscan_id: graviscanId, path: imagePath },
       }),
     createImage: (data) => deps.db.graviImage.create({ data }),
+    reportSessionError: (message) => {
+      scanLog(`[GraviScan:RECORD] ${message}`);
+      console.error('[GraviScan:RECORD]', message);
+      send('graviscan:scan-error', {
+        scannerId: null,
+        plateIndex: null,
+        error: message,
+      });
+    },
     updateRowTimes: ({ scan_started_at, scan_ended_at, ...row }) =>
       deps.db.graviScan.updateMany({
         where: row,
