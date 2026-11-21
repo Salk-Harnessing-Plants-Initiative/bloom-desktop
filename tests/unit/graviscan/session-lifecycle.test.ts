@@ -163,6 +163,22 @@ describe('startScan with session hooks', () => {
     expect(fns.getScanSession().isTest).toBe(true);
   });
 
+  it('closes the session row as failed when starting the scan throws after the row was opened', async () => {
+    const c = coordinator();
+    c.startNewSession.mockImplementation(() => {
+      throw new Error('coordinator not ready');
+    });
+    const h = hooks();
+
+    const result = await startScan(c, sessionParams, fns, vi.fn(), h);
+
+    expect(result).toEqual({ success: false, error: 'coordinator not ready' });
+    expect(h.onSessionEnd).toHaveBeenCalledTimes(1);
+    expect(h.onSessionEnd.mock.calls[0][0].sessionId).toBe('sess-1');
+    expect(h.onSessionEnd.mock.calls[0][1]).toBe('failed');
+    expect(fns.getScanSession()).toBeNull();
+  });
+
   it('ends the session once as completed when the scan finishes', async () => {
     const h = hooks();
     await startScan(coordinator(), sessionParams, fns, vi.fn(), h);

@@ -118,7 +118,9 @@ export async function startScan(
   onError?: (error: string) => void,
   hooks?: StartScanHooks
 ): Promise<{ success: boolean; error?: string; sessionId?: string }> {
-  let sessionSet = false;
+  // Set once the session (and its database row) exists; a failure after
+  // that ends it, so the row is closed rather than left open.
+  let session: ScanSessionState | null = null;
   try {
     if (!coordinator) {
       return { success: false, error: 'ScanCoordinator not initialized' };
@@ -223,7 +225,7 @@ export async function startScan(
 
     // Only set session state AFTER initialize succeeds — avoids briefly
     // reporting an active scan while the coordinator is still starting up.
-    const session: ScanSessionState = {
+    session = {
       isActive: true,
       isContinuous: !!params.interval,
       experimentId: params.metadata?.experimentId || '',
@@ -243,7 +245,7 @@ export async function startScan(
       isTest,
     };
     sessionFns.setScanSession(session);
-    sessionSet = true;
+    const started = session;
 
     // Build plates map for scanning
     const platesPerScanner = new Map<string, PlateConfig[]>();
@@ -255,12 +257,12 @@ export async function startScan(
     // completes, fails, or is cancelled (cancelScan).
     const handleError = (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      endScanSession(sessionFns, session, 'failed', hooks);
+      endScanSession(sessionFns, started, 'failed', hooks);
       onError?.(message);
     };
 
     const handleComplete = () => {
-      endScanSession(sessionFns, session, 'completed', hooks);
+      endScanSession(sessionFns, started, 'completed', hooks);
     };
 
     // Every session (single, continuous or test) is saved from cycle 1.
@@ -284,9 +286,8 @@ export async function startScan(
 
     return sessionId ? { success: true, sessionId } : { success: true };
   } catch (error) {
-    if (sessionSet) {
-      sessionFns.setScanSession(null);
-    }
+    // Clears the session and closes its row as failed (cancelled).
+    endScanSession(sessionFns, session, 'failed', hooks);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Start scan failed',
