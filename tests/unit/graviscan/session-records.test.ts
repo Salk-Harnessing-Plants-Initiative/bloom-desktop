@@ -146,6 +146,7 @@ describe('onSessionEnd', () => {
       expect(r.getLastSession()).toMatchObject({
         sessionId: 'sess-1',
         outcome,
+        verifying: false,
         verification: null,
       });
     }
@@ -173,6 +174,7 @@ describe('onSessionEnd', () => {
     expect(d.verify).not.toHaveBeenCalled();
     expect(r.getLastSession()).toMatchObject({
       outcome: 'completed',
+      verifying: false,
       verification: null,
     });
   });
@@ -192,8 +194,49 @@ describe('onSessionEnd', () => {
       experimentId: 'exp-1',
       waveNumber: 2,
       outcome: 'completed',
+      verifying: false,
       verification: result,
     });
+  });
+
+  it('keeps the summary as soon as the session ends, with the QR check pending until it finishes', async () => {
+    let finish!: (r: unknown) => void;
+    const verify = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+    );
+    const r = createSessionRecords(deps({ verify }));
+    const ending = r.hooks.onSessionEnd!(session(), 'completed');
+    await vi.waitFor(() => expect(verify).toHaveBeenCalled());
+
+    // A page opening now sees this session, with its QR check running.
+    expect(r.getLastSession()).toEqual({
+      sessionId: 'sess-1',
+      experimentId: 'exp-1',
+      waveNumber: 2,
+      outcome: 'completed',
+      verifying: true,
+      verification: null,
+    });
+
+    const result = { success: true, results: [], swaps: [] };
+    finish(result);
+    await ending;
+    expect(r.getLastSession()).toMatchObject({
+      verifying: false,
+      verification: result,
+    });
+  });
+
+  it('replaces the previous summary as soon as a newer session ends', async () => {
+    const verify = vi.fn(() => new Promise(() => {}));
+    const r = createSessionRecords(deps({ verify }));
+    await r.hooks.onSessionEnd!(session({ sessionId: 'sess-0' }), 'cancelled');
+    void r.hooks.onSessionEnd!(session(), 'completed');
+    await vi.waitFor(() => expect(verify).toHaveBeenCalled());
+    expect(r.getLastSession()?.sessionId).toBe('sess-1');
   });
 
   it('reports a failure to complete the row and still runs the QR check', async () => {
@@ -232,6 +275,9 @@ describe('onSessionEnd', () => {
       r.hooks.onSessionEnd!(session(), 'completed')
     ).resolves.toBeUndefined();
     expect(d.reportError).toHaveBeenCalledWith(expect.stringContaining('boom'));
-    expect(r.getLastSession()?.verification).toBeNull();
+    expect(r.getLastSession()).toMatchObject({
+      verifying: false,
+      verification: null,
+    });
   });
 });

@@ -692,7 +692,10 @@ export function useScanSession(
       ) {
         localStorage.removeItem(abnormalMarkerKey(experimentId, waveNumber));
         setAbnormalTermination(null);
-        if (last.verification?.results) {
+        if (last.verifying) {
+          // Its QR check is still running; results arrive as live events.
+          dispatch({ type: 'VERIFY_STARTED' });
+        } else if (last.verification?.results) {
           dispatch({
             type: 'VERIFY_RESTORED',
             payload: last.verification.results,

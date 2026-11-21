@@ -1350,6 +1350,7 @@ describe('useScanSession', () => {
           experimentId: 'exp-1',
           waveNumber: 0,
           outcome: 'completed',
+          verifying: false,
           verification: { success: true, results: [qr], swaps: [] },
         },
       },
@@ -1376,6 +1377,7 @@ describe('useScanSession', () => {
           experimentId: 'exp-1',
           waveNumber: 4,
           outcome: 'completed',
+          verifying: false,
           verification: null,
         },
       },
@@ -1388,5 +1390,43 @@ describe('useScanSession', () => {
         expectedCycles: 3,
       })
     );
+  });
+
+  it("opened during the session's QR check, shows the check running and no banner, then its results", async () => {
+    localStorage.setItem(MARKER, '{"expectedCycles":1}');
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: {
+        isActive: false,
+        lastSession: {
+          sessionId: 'sess-1',
+          experimentId: 'exp-1',
+          waveNumber: 0,
+          outcome: 'completed',
+          verifying: true,
+          verification: null,
+        },
+      },
+    });
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await waitFor(() =>
+      expect(result.current.verificationStatus).toBe('verifying')
+    );
+    expect(result.current.abnormalTermination).toBeNull();
+    expect(localStorage.getItem(MARKER)).toBeNull();
+    expect(result.current.verificationResults).toEqual({});
+
+    fire('verify-result', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      status: 'verified',
+    });
+    fire('verify-complete', { results: [], swaps: [] });
+    expect(result.current.verificationStatus).toBe('complete');
+    expect(result.current.verificationResults['sc-1:00']).toMatchObject({
+      status: 'verified',
+    });
   });
 });

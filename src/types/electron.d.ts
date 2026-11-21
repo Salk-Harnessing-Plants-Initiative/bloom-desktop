@@ -182,6 +182,8 @@ export interface GraviLastSession {
   experimentId: string;
   waveNumber: number;
   outcome: 'completed' | 'cancelled' | 'failed';
+  /** The QR check is still running; its results arrive as live events. */
+  verifying: boolean;
   verification: QRVerifyPlatesResult | null;
 }
 interface GraviGetOutputDirResult {

@@ -49,7 +49,9 @@ export interface LastSessionSummary {
   experimentId: string;
   waveNumber: number;
   outcome: SessionOutcome;
-  /** The QR result; null when the check didn't run or failed. */
+  /** The QR check is still running; its results arrive as live events. */
+  verifying: boolean;
+  /** The QR result; null while it runs, or when it didn't run or failed. */
   verification: VerifyPlatesResult | null;
 }
 
@@ -117,10 +119,9 @@ export function createSessionRecords(deps: SessionRecordsDeps): SessionRecords {
   }
 
   async function runQrCheck(
-    session: ScanSessionState
+    session: ScanSessionState,
+    plates: VerifyPlateInput[]
   ): Promise<VerifyPlatesResult | null> {
-    const plates = platesToVerify(session);
-    if (plates.length === 0) return null;
     try {
       return await deps.verify(
         plates,
@@ -140,18 +141,25 @@ export function createSessionRecords(deps: SessionRecordsDeps): SessionRecords {
     outcome: SessionOutcome
   ): Promise<void> {
     if (session.isTest || !session.sessionId) return;
-    // The last plate's rows may still be in flight; the QR check reads them.
-    await deps.waitForRecordings?.();
-    await completeRow(session.sessionId, outcome !== 'completed');
-    const verification =
-      outcome === 'completed' ? await runQrCheck(session) : null;
-    lastSession = {
+    // Kept at once, so a page opening from here on knows this session has
+    // ended (not one before it), and whether its QR check is still running.
+    const summary: LastSessionSummary = {
       sessionId: session.sessionId,
       experimentId: session.experimentId,
       waveNumber: session.waveNumber,
       outcome,
-      verification,
+      verifying: outcome === 'completed',
+      verification: null,
     };
+    lastSession = summary;
+    // The last plate's rows may still be in flight; the QR check reads them.
+    await deps.waitForRecordings?.();
+    await completeRow(session.sessionId, outcome !== 'completed');
+    const plates = outcome === 'completed' ? platesToVerify(session) : [];
+    if (plates.length > 0) {
+      summary.verification = await runQrCheck(session, plates);
+    }
+    summary.verifying = false;
   }
 
   return {
