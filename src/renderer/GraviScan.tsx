@@ -19,6 +19,7 @@ import { useContinuousMode } from './hooks/useContinuousMode';
 import { useScanSession } from './hooks/useScanSession';
 import { useTestScan } from './hooks/useTestScan';
 import { unwrapGraviResult } from './utils/graviIpc';
+import { startBlockedReason } from './utils/scanStartReadiness';
 import type { GridMode } from '../types/graviscan';
 
 /** V600 physical bed region used for the cadence estimate's calibration
@@ -264,6 +265,10 @@ export function GraviScan() {
         testScan={testScan}
         waveMissingMetadata={plateAssignments.waveMissingMetadata}
         anyPlateFilled={anyPlateFilled}
+        startBlockedReason={startBlockedReason(
+          scanners,
+          plateAssignments.assignmentsByScanner
+        )}
       />
 
       <QRVerificationBanner results={verificationResults} />

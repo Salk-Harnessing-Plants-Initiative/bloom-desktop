@@ -158,7 +158,15 @@ describe('GraviScan wiring module', () => {
         mockGetWindow,
         graviSessionFns,
         expect.any(Function), // () => scanCoordinator
-        getOrCreateCoordinator
+        getOrCreateCoordinator,
+        // Session records: opens and closes the session's database row.
+        expect.objectContaining({
+          hooks: expect.objectContaining({
+            openSessionRecord: expect.any(Function),
+            onSessionEnd: expect.any(Function),
+          }),
+          getLastSession: expect.any(Function),
+        })
       );
     });
   });
@@ -829,14 +837,38 @@ describe('GraviScan wiring module', () => {
       expect(ScanCoordinator).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps a finished plate's real saved path on its session job (QR check after returning to the page)", async () => {
+    it('records each finished image in the database through the coordinator, page open or not', async () => {
+      const db = {
+        graviScan: {
+          upsert: vi.fn().mockResolvedValue({ id: 'scan-1' }),
+          create: vi.fn(),
+        },
+        graviImage: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          create: vi.fn().mockResolvedValue({ id: 'img-1' }),
+        },
+      } as any;
+      await initGraviScan('graviscan', {} as any, db, () => null);
       const coordinator = await getOrCreateCoordinator();
       const dir = '/scans/Exp_wave1_20260809T190946';
       graviSessionFns.setScanSession({
         isActive: true,
+        isTest: false,
+        sessionId: 'sess-1',
+        experimentId: 'exp-1',
+        phenotyperId: 'ph-1',
+        waveNumber: 1,
+        resolution: 600,
+        currentCycle: 1,
         jobs: {
           'sc-1:00': {
+            scannerId: 'sc-1',
+            plateIndex: '00',
             status: 'pending',
+            gridMode: '2grid',
+            plantBarcode: null,
+            transplantDate: null,
+            customNote: null,
             outputPath: `${dir}/Exp_wave1_st_20260809T190946_cy1_Sc1_00.tif`,
           },
         },
@@ -848,10 +880,42 @@ describe('GraviScan wiring module', () => {
         plate_index: '00',
         path: saved,
       });
+      await vi.waitFor(() =>
+        expect(db.graviImage.create).toHaveBeenCalledWith({
+          data: {
+            graviscan_id: 'scan-1',
+            path: saved,
+            status: 'pending',
+            box_status: 'pending',
+          },
+        })
+      );
 
-      expect(
-        (graviSessionFns.getScanSession() as any).jobs['sc-1:00'].imagePath
-      ).toBe(saved);
+      const job = (graviSessionFns.getScanSession() as any).jobs['sc-1:00'];
+      expect(job.imagePath).toBe(saved);
+      expect(job.status).toBe('recorded');
+      expect(db.graviScan.upsert.mock.calls[0][0].create).toMatchObject({
+        session_id: 'sess-1',
+        cycle_number: 1,
+        path: saved,
+      });
+    });
+
+    it("resets the session's jobs when the coordinator starts the next cycle (#314)", async () => {
+      const coordinator = await getOrCreateCoordinator();
+      graviSessionFns.setScanSession({
+        isActive: true,
+        currentCycle: 1,
+        jobs: { 'sc-1:00': { status: 'recorded' } },
+      } as any);
+      (coordinator as unknown as EventEmitter).emit('scan-started', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        cycle_number: 2,
+      });
+      const s = graviSessionFns.getScanSession() as any;
+      expect(s.currentCycle).toBe(2);
+      expect(s.jobs['sc-1:00'].status).toBe('pending');
     });
 
     it('second call returns cached instance', async () => {

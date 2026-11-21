@@ -25,11 +25,18 @@ import * as verifyPlatesHandlers from './verify-plates';
 import * as excelParser from './excel-parser';
 import { buildStartScanPlan, buildTestScanPlan } from './start-scan-paths';
 import type { SessionFns, ScanCoordinatorLike } from './session-handlers';
-import type { VerifyPlateInput, VerifyProgressEvent } from './verify-plates';
+import type { VerifyPlateInput } from './verify-plates';
+import type { SessionRecords } from './session-records';
+import { verifyProgressToWindow, windowSender } from './recording-wiring';
 import { isValidWaveNumber } from '../database-handlers';
 import { BLOOM_OFF_MESSAGE, bloomConnectedHere } from '../config-store';
 
 let registered = false;
+/** A Start Scan or Test Scanners request is being set up (#505). */
+let starting = false;
+
+/** Refusal for a second start while the first is still being set up. */
+export const ALREADY_STARTING = 'A scan is already starting.';
 
 /**
  * Error returned to the renderer for any path that fails containment.
@@ -44,12 +51,15 @@ export function registerGraviScanHandlers(
   getMainWindow: () => BrowserWindow | null,
   sessionFns: SessionFns,
   getCoordinator: () => ScanCoordinatorLike | null,
-  createCoordinator?: () => Promise<ScanCoordinatorLike>
+  createCoordinator?: () => Promise<ScanCoordinatorLike>,
+  sessionRecords?: SessionRecords
 ): void {
   if (registered) {
     throw new Error('GraviScan IPC handlers are already registered');
   }
   registered = true;
+  // Checks the window at send time (it may close mid-scan or mid-verify).
+  const send = windowSender(getMainWindow);
 
   // Helper to wrap handlers with error handling
   function wrapHandler<T>(
@@ -285,7 +295,22 @@ export function registerGraviScanHandlers(
     if (current?.isActive) {
       return { success: false, error: 'Scan already in progress' };
     }
+    // One start at a time: a second request while this one is still
+    // building its plan, opening the session row or starting the scanners
+    // is refused, so two starts can't both get through (#505).
+    if (starting) return { success: false, error: ALREADY_STARTING };
+    starting = true;
+    try {
+      return await startScanRequest(params);
+    } finally {
+      starting = false;
+    }
+  });
 
+  async function startScanRequest(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    params: any
+  ) {
     // Every output path is built here, in the main process, from the
     // database and the operator's choices (start-scan-paths.ts): the rig's
     // session folder and file names, each checked to be inside the scan
@@ -323,6 +348,7 @@ export function registerGraviScanHandlers(
     if ('error' in plan) return { success: false, error: plan.error };
     const outputPaths = plan.outputPaths;
     params = {
+      test: params?.test === true,
       scanners: plan.scanners,
       interval: params?.interval,
       metadata: params?.metadata,
@@ -343,27 +369,34 @@ export function registerGraviScanHandlers(
       }
     }
     const result = await wrapHandler(() =>
-      sessionHandlers.startScan(coordinator, params, sessionFns, (error) => {
-        const win = getMainWindow();
-        if (win && !win.isDestroyed()) {
-          win.webContents.send('graviscan:scan-error', {
+      sessionHandlers.startScan(
+        coordinator,
+        params,
+        sessionFns,
+        (error) =>
+          send('graviscan:scan-error', {
             scannerId: null,
             plateIndex: null,
             error,
-          });
-        }
-      })
+          }),
+        sessionRecords?.hooks
+      )
     )();
     // The renderer tracks each job by the path built above.
     if (result.success && result.data.success) {
       return { ...result, data: { ...result.data, outputPaths } };
     }
     return result;
-  });
+  }
 
   ipcMain.handle('graviscan:get-scan-status', () =>
     wrapHandler(() =>
-      Promise.resolve(sessionHandlers.getScanStatus(sessionFns))
+      Promise.resolve(
+        sessionHandlers.getScanStatus(
+          sessionFns,
+          sessionRecords?.getLastSession() ?? null
+        )
+      )
     )()
   );
 
@@ -376,7 +409,11 @@ export function registerGraviScanHandlers(
 
   ipcMain.handle('graviscan:cancel-scan', () =>
     wrapHandler(() =>
-      sessionHandlers.cancelScan(getCoordinator(), sessionFns)
+      sessionHandlers.cancelScan(
+        getCoordinator(),
+        sessionFns,
+        sessionRecords?.hooks
+      )
     )()
   );
 
@@ -612,29 +649,7 @@ export function registerGraviScanHandlers(
         });
       }
 
-      // Check window at send-time, not registration-time (window may close mid-verify)
-      const send = (channel: string, payload?: unknown) => {
-        const win = getMainWindow();
-        if (win && !win.isDestroyed()) {
-          win.webContents.send(channel, payload);
-        }
-      };
-      const onProgress = (event: VerifyProgressEvent) => {
-        switch (event.type) {
-          case 'verify-started':
-            send('graviscan:verify-started');
-            break;
-          case 'verify-result':
-            send('graviscan:verify-result', event.result);
-            break;
-          case 'verify-complete':
-            send('graviscan:verify-complete', {
-              results: event.results,
-              swaps: event.swaps,
-            });
-            break;
-        }
-      };
+      const onProgress = verifyProgressToWindow(send);
       // NOTE: this handler intentionally returns verifyPlates()'s own
       // { success, results, swaps } envelope rather than wrapping it in
       // wrapHandler's { success, data }. The renderer contract for the
@@ -665,4 +680,5 @@ export function registerGraviScanHandlers(
  */
 export function _resetRegistration(): void {
   registered = false;
+  starting = false;
 }

@@ -67,8 +67,14 @@ def _build_tiff_metadata(
     st_timestamp: str = "",
     phenotyper_name: str = "",
     scanner_name: str = "",
+    requested_resolution: int | None = None,
 ) -> ImageFileDirectory_v2:
     """Build TIFF metadata tags for a scan image.
+
+    `resolution` is the resolution the scanner actually applied, and goes
+    into `resolution_dpi` and the XResolution/YResolution tags (the pixels
+    are at that resolution). `requested_resolution` is the one asked for
+    (#508); it defaults to `resolution`.
 
     Embeds scan provenance into standard TIFF tags so files are self-describing.
     Structured metadata (incl. experiment + phenotyper attribution) goes into
@@ -82,6 +88,9 @@ def _build_tiff_metadata(
             "grid_mode": grid_mode,
             "plate_index": plate_index,
             "resolution_dpi": resolution,
+            "requested_resolution_dpi": (
+                resolution if requested_resolution is None else requested_resolution
+            ),
             "scan_region_mm": {
                 "top": region.top,
                 "left": region.left,
@@ -671,6 +680,7 @@ class ScanWorker:
                     st_timestamp,
                     phenotyper_name,
                     scanner_name,
+                    requested_resolution=resolution,
                 )
                 _atomic_image_save(
                     image,

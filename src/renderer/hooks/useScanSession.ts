@@ -2,11 +2,11 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import type {
   GridMode,
   PlateAssignment,
-  QRVerifyPlateInput,
   QRVerifyPlateResult,
   ScanSessionJob,
   ScanSessionState,
 } from '../../types/graviscan';
+import type { GraviLastSession } from '../../types/electron';
 import { useWedgeContext } from '../contexts/WedgeContext';
 import { unwrapGraviResult } from '../utils/graviIpc';
 
@@ -31,6 +31,8 @@ export interface UseScanSessionParams {
 
 export interface UseScanSessionResult {
   isScanning: boolean;
+  /** Start Scan was pressed and the session is being set up. */
+  isStarting: boolean;
   pendingJobs: Record<string, ScanSessionJob>;
   progressByScanner: Record<string, number>;
   currentCycle: number;
@@ -67,37 +69,47 @@ function resolvePlateIndex(event: Record<string, unknown>): string {
   return (event.plate_index as string) ?? (event.plateIndex as string) ?? '';
 }
 
-/** `scan-coordinator.ts`'s forwarded scan-complete event only ever carries
- * the image location as `path` (spread verbatim from the worker's own
- * `ScanWorkerEvent`) — it is never duplicated as camelCase `imagePath` the
- * way `scanner_id`/`plate_index` are. Resolving both anyway, dual-casing-
- * style, is deliberate defense against a future relay change, not evidence
- * `imagePath` is expected today. */
+/** The coordinator's scan-complete event carries the saved file as `path`. */
 function resolveImagePath(event: Record<string, unknown>): string {
   return (event.path as string) ?? (event.imagePath as string) ?? '';
 }
 
-/** Mirrors `resolveImagePath()` — the coordinator only ever adds
- * `cycle_number` (snake_case) to the forwarded event, never a `cycleNumber`
- * duplicate. */
-function resolveCycleNumber(event: Record<string, unknown>): number | null {
-  const snake = event.cycle_number;
-  if (typeof snake === 'number') return snake;
-  const camel = event.cycleNumber;
-  if (typeof camel === 'number') return camel;
-  return null;
+/** "YYYY-MM-DD" for Start Scan. Plate assignments are typed as that
+ * string but hold a `Date` at runtime when loaded from the database
+ * (#315), so both are accepted. */
+export function toPlateDate(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : value.toISOString().slice(0, 10);
+  }
+  return typeof value === 'string' && value !== '' ? value.slice(0, 10) : null;
 }
 
-/** The Python worker emits `achieved_resolution` only on `scan-complete` —
- * the SANE device's actually-applied resolution, which may differ from the
- * pre-scan requested value (`database-handlers.ts:123-136`'s doc comment on
- * `graviscansCreate()`). No camelCase dual exists for this field either. */
-function resolveAchievedResolution(
-  event: Record<string, unknown>
-): number | undefined {
-  return typeof event.achieved_resolution === 'number'
-    ? event.achieved_resolution
-    : undefined;
+/** Each scanner's plate count, from a session's jobs. */
+function totalsByScanner(
+  jobs: Record<string, ScanSessionJob>
+): Record<string, number> {
+  const totals: Record<string, number> = {};
+  for (const job of Object.values(jobs)) {
+    totals[job.scannerId] = (totals[job.scannerId] ?? 0) + 1;
+  }
+  return totals;
+}
+
+/** Percent of each scanner's plates no longer pending. */
+function progressFor(
+  totals: Record<string, number>,
+  pending: Record<string, ScanSessionJob>
+): Record<string, number> {
+  const progress: Record<string, number> = {};
+  for (const [scannerId, total] of Object.entries(totals)) {
+    const remaining = Object.values(pending).filter(
+      (j) => j.scannerId === scannerId
+    ).length;
+    progress[scannerId] = Math.round(((total - remaining) / total) * 100);
+  }
+  return progress;
 }
 
 function jobKey(scannerId: string, plateIndex: string): string {
@@ -173,6 +185,7 @@ type Action =
       type: 'RESTORE';
       payload: {
         pendingJobs: Record<string, ScanSessionJob>;
+        scannerTotals: Record<string, number>;
         currentCycle: number;
         totalCycles: number;
         coordinatorState: 'idle' | 'scanning' | 'waiting';
@@ -183,7 +196,8 @@ type Action =
     }
   | { type: 'VERIFY_STARTED' }
   | { type: 'VERIFY_RESULT'; payload: QRVerifyPlateResult }
-  | { type: 'VERIFY_COMPLETE' };
+  | { type: 'VERIFY_COMPLETE' }
+  | { type: 'VERIFY_RESTORED'; payload: QRVerifyPlateResult[] };
 
 function reducer(state: ScanState, action: Action): ScanState {
   switch (action.type) {
@@ -221,7 +235,9 @@ function reducer(state: ScanState, action: Action): ScanState {
     }
     case 'JOB_ERROR': {
       const { key, error } = action.payload;
-      if (!(key in state.pendingJobs)) return state;
+      // An error for a plate already done (its image saved but not
+      // recorded) is still shown.
+      if (!(key in state.pendingJobs)) return { ...state, error };
       const nextPendingJobs = { ...state.pendingJobs };
       delete nextPendingJobs[key];
       return { ...state, pendingJobs: nextPendingJobs, error };
@@ -252,7 +268,7 @@ function reducer(state: ScanState, action: Action): ScanState {
       return { ...state, coordinatorState: 'scanning' };
     // A cancel and a clean natural completion leave identical state behind
     // — the only real difference between them is the `cancelled` flag
-    // finishSession() passes downstream, not what a session-ending action
+    // the main process records, not what a session-ending action
     // resets here. Sharing one case avoids two copies that could silently
     // drift apart again (design.md Decision 17 found and fixed exactly
     // that drift once already).
@@ -273,6 +289,13 @@ function reducer(state: ScanState, action: Action): ScanState {
         ...state,
         isScanning: true,
         pendingJobs: action.payload.pendingJobs,
+        // Rebuilt from the session's jobs, so per-scanner progress is right
+        // after returning to the page (#314).
+        scannerTotals: action.payload.scannerTotals,
+        progressByScanner: progressFor(
+          action.payload.scannerTotals,
+          action.payload.pendingJobs
+        ),
         currentCycle: action.payload.currentCycle,
         totalCycles: action.payload.totalCycles,
         coordinatorState: action.payload.coordinatorState,
@@ -293,6 +316,14 @@ function reducer(state: ScanState, action: Action): ScanState {
       };
     case 'VERIFY_COMPLETE':
       return { ...state, verificationStatus: 'complete' };
+    case 'VERIFY_RESTORED':
+      return {
+        ...state,
+        verificationStatus: 'complete',
+        verificationResults: Object.fromEntries(
+          action.payload.map((r) => [jobKey(r.scannerId, r.plateIndex), r])
+        ),
+      };
     default:
       return state;
   }
@@ -376,50 +407,10 @@ export function useScanSession(
     }
   }, [experimentId, waveNumber]);
 
-  const runVerification = useCallback(
-    async (jobsSnapshot: Record<string, ScanSessionJob>) => {
-      const ctx = sessionContextRef.current;
-      if (!ctx?.experimentId) return;
-
-      const plates: QRVerifyPlateInput[] = [];
-      for (const job of Object.values(jobsSnapshot)) {
-        if (!job.imagePath || !job.plantBarcode) continue;
-        plates.push({
-          scannerId: job.scannerId,
-          plateIndex: job.plateIndex,
-          imagePath: job.imagePath,
-          assignedPlateId: job.plantBarcode,
-        });
-      }
-      if (plates.length === 0) return;
-
-      dispatch({ type: 'VERIFY_STARTED' });
-      try {
-        const result = await window.electron.gravi.verifyPlates(
-          plates,
-          ctx.experimentId,
-          ctx.waveNumber
-        );
-        if (result?.results) {
-          for (const r of result.results as QRVerifyPlateResult[]) {
-            dispatch({ type: 'VERIFY_RESULT', payload: r });
-          }
-        }
-      } finally {
-        dispatch({ type: 'VERIFY_COMPLETE' });
-      }
-    },
-    []
-  );
-
-  const completedJobsRef = useRef<Record<string, ScanSessionJob>>({});
   // Immutable per-session job metadata, set once at START — unlike
   // `state.pendingJobs`, this is never pruned, so a duplicated/retried
   // scan-complete event can still look up the job it refers to after the
-  // first delivery already removed it from `pendingJobs`. The backend's
-  // own upsert (task 2.3/2.4) is what makes a repeated
-  // `database.graviscans.create()` call actually idempotent — this hook
-  // does not try to suppress the repeat call itself (tasks.md 12.3).
+  // first delivery already removed it from `pendingJobs`.
   const jobTemplateRef = useRef<Record<string, ScanSessionJob>>({});
   // Synchronous, ref-based completion tracking for the "are all jobs done"
   // decision inside the onScanComplete handler. `stateRef.current` is only
@@ -434,56 +425,12 @@ export function useScanSession(
   const allDoneFiredRef = useRef(false);
   // Re-entrancy guard for startScan() — see its own comment at the call site.
   const isStartingRef = useRef(false);
+  const [isStarting, setIsStarting] = useState(false);
 
-  const recordCompletedJob = useCallback(
-    async (
-      job: ScanSessionJob,
-      imagePath: string,
-      cycleNumber: number | null,
-      achievedResolution: number | undefined
-    ) => {
-      const ctx = sessionContextRef.current;
-      if (!ctx?.experimentId || !ctx.phenotyperId) return;
-      await window.electron.database.graviscans.create({
-        experiment_id: ctx.experimentId,
-        phenotyper_id: ctx.phenotyperId,
-        scanner_id: job.scannerId,
-        plate_index: job.plateIndex,
-        wave_number: ctx.waveNumber,
-        session_id: stateRef.current.sessionId,
-        cycle_number: cycleNumber,
-        plate_barcode: job.plantBarcode ?? null,
-        transplant_date: job.transplantDate ?? null,
-        custom_note: job.customNote ?? null,
-        path: imagePath,
-        grid_mode: job.gridMode,
-        // The scan's actually-achieved resolution (design.md Decision 15),
-        // not the pre-scan requested value — falls back to the requested
-        // value only if a given event genuinely omits the field.
-        resolution: achievedResolution ?? ctx.resolution,
-        format: 'tiff',
-      });
-    },
-    []
-  );
-
-  const finishSession = useCallback(
-    async (cancelled: boolean) => {
-      const sessionId = stateRef.current.sessionId;
-      clearAbnormalMarker();
-      if (sessionId) {
-        await window.electron.database.graviscanSessions.complete({
-          session_id: sessionId,
-          cancelled,
-        });
-      }
-      if (!cancelled) {
-        await runVerification(completedJobsRef.current);
-      }
-      completedJobsRef.current = {};
-    },
-    [clearAbnormalMarker, runVerification]
-  );
+  // The main process records every image, marks the session row complete
+  // and runs the QR check, whether or not this page is open. The page only
+  // clears its own abnormal-termination marker.
+  const endSession = clearAbnormalMarker;
 
   // ── IPC event listeners ──────────────────────────────────────────────
 
@@ -503,13 +450,13 @@ export function useScanSession(
       // regardless of what this hook thinks. `onCycleComplete`/
       // `onIntervalComplete` below are the sole authority on continuous-
       // mode session end (round-4 regression: this used to fire
-      // finishSession after cycle 1 while the backend kept scanning cycles
+      // the session end after cycle 1 while the backend kept scanning cycles
       // 2+ independently, silently overwriting each cycle's images).
       if (isContinuousRef.current) return;
       if (!allDoneFiredRef.current) {
         allDoneFiredRef.current = true;
         dispatch({ type: 'SCAN_ENDED' });
-        void finishSession(false);
+        endSession();
       }
     };
 
@@ -518,49 +465,10 @@ export function useScanSession(
         const scannerId = resolveScannerId(data);
         const plateIndex = resolvePlateIndex(data);
         const key = jobKey(scannerId, plateIndex);
-        const job = jobTemplateRef.current[key];
-        if (!job) return; // unknown job key — nothing to record
+        if (!(key in jobTemplateRef.current)) return; // not this session's
 
         const imagePath = resolveImagePath(data);
-        const cycleNumber = resolveCycleNumber(data);
-        const achievedResolution = resolveAchievedResolution(data);
-
-        completedJobsRef.current[key] = {
-          ...job,
-          status: 'complete',
-          imagePath,
-        };
         dispatch({ type: 'JOB_COMPLETE', payload: { key, imagePath } });
-
-        // Always recorded, even on a duplicated/retried event for a job
-        // already removed from `pendingJobs` — the backend's own upsert is
-        // what makes the repeat safe (tasks.md 12.3), not a hook-side guard.
-        void recordCompletedJob(job, imagePath, cycleNumber, achievedResolution)
-          .then(() => {
-            // Advances the backend's own per-job status past 'pending' so a
-            // later remount's RESTORE effect can tell this job apart from
-            // one still genuinely in flight (design.md Decision 14). A
-            // failure here only risks this specific job not being
-            // recognized as already-done on a *future* remount — the
-            // completed-job record itself already landed via
-            // recordCompletedJob above, so it's a quieter, non-blocking
-            // failure mode, not a data-loss one.
-            void gravi.markJobRecorded?.(key).catch((err: unknown) => {
-              console.error(
-                `Failed to mark job ${key} recorded:`,
-                err instanceof Error ? err.message : err
-              );
-            });
-          })
-          .catch((err: unknown) => {
-            dispatch({
-              type: 'ERROR',
-              payload: {
-                error: `Failed to save captured plate ${key}: ${err instanceof Error ? err.message : String(err)}`,
-              },
-            });
-          });
-
         markJobAccountedFor(key);
       }
     );
@@ -568,14 +476,21 @@ export function useScanSession(
     const cleanupError = gravi.onScanError((data: Record<string, unknown>) => {
       const scannerId = resolveScannerId(data);
       const plateIndex = resolvePlateIndex(data);
-      if (!scannerId || !plateIndex) return;
+      if (!scannerId || !plateIndex) {
+        // A session-wide problem from the main process (the scan failed,
+        // or the session's end or QR check couldn't be saved).
+        if (typeof data.error === 'string' && data.error) {
+          dispatch({ type: 'ERROR', payload: { error: data.error } });
+        }
+        return;
+      }
       const key = jobKey(scannerId, plateIndex);
       // Mirrors onScanComplete's own unknown-job guard: without this, a
       // stray scan-error for a key outside this session's jobTemplateRef
       // (a leftover event from a prior session, a hardware echo with a
       // mismatched plate index) would inflate completedKeysRef past what
       // this session actually has jobs for, risking a premature
-      // finishSession(false) while a real job is still in flight.
+      // session end while a real job is still in flight.
       if (!(key in jobTemplateRef.current)) return;
       dispatch({
         type: 'JOB_ERROR',
@@ -589,7 +504,7 @@ export function useScanSession(
       // also counting it here, a single-mode session where any one job
       // errors (the rest completing normally) would never reach "all done":
       // completedKeysRef could never reach the full job count, so
-      // SCAN_ENDED/finishSession would never fire and the session would be
+      // SCAN_ENDED would never fire and the session would be
       // stuck showing isScanning: true forever.
       markJobAccountedFor(key);
     });
@@ -614,12 +529,23 @@ export function useScanSession(
 
     const cleanupIntervalComplete = gravi.onIntervalComplete(() => {
       dispatch({ type: 'SCAN_ENDED' });
-      void finishSession(false);
+      endSession();
     });
 
     const cleanupCancelled = gravi.onCancelled(() => {
       dispatch({ type: 'CANCELLED' });
     });
+
+    // The QR check runs in the main process when a session completes.
+    const cleanupVerifyStarted = gravi.onVerifyStarted(() =>
+      dispatch({ type: 'VERIFY_STARTED' })
+    );
+    const cleanupVerifyResult = gravi.onVerifyResult((r) =>
+      dispatch({ type: 'VERIFY_RESULT', payload: r })
+    );
+    const cleanupVerifyComplete = gravi.onVerifyComplete(() =>
+      dispatch({ type: 'VERIFY_COMPLETE' })
+    );
 
     const cleanupStarted = gravi.onScanStarted(() => {
       // The first per-plate scan-started event of a new cycle is exactly
@@ -642,8 +568,11 @@ export function useScanSession(
       cleanupCancelled();
       cleanupStarted();
       cleanupIntervalWaiting?.();
+      cleanupVerifyStarted();
+      cleanupVerifyResult();
+      cleanupVerifyComplete();
     };
-  }, [finishSession, recordCompletedJob]);
+  }, [endSession]);
 
   // ── On-mount restore (design.md Decision 4) ──────────────────────────
 
@@ -656,28 +585,15 @@ export function useScanSession(
         return;
       }
 
+      // The main process marks each job recorded (or error) itself, so a
+      // job still 'pending' or 'scanning' is genuinely in flight.
       const jobs: Record<string, ScanSessionJob> = status.jobs ?? {};
       const pendingJobs: Record<string, ScanSessionJob> = {};
-      const restoredCompletedJobs: Record<string, ScanSessionJob> = {};
       for (const [key, job] of Object.entries(jobs)) {
         if (job.status === 'pending' || job.status === 'scanning') {
           pendingJobs[key] = job;
-        } else if (job.status === 'recorded' || job.status === 'complete') {
-          // markJobRecorded() (design.md Decision 14) is what makes this
-          // status reachable at all — without it every job would still
-          // report 'pending' here, indistinguishable from one genuinely
-          // still in flight. The backend keeps each finished plate's real
-          // saved path as `imagePath` (job-image-path.ts); the planned
-          // `outputPath` has no `_et_` and never exists on disk, so it is
-          // only a last resort.
-          restoredCompletedJobs[key] = {
-            ...job,
-            status: 'complete',
-            imagePath: job.imagePath ?? job.outputPath,
-          };
         }
       }
-      completedJobsRef.current = restoredCompletedJobs;
 
       if (
         typeof status.waveNumber === 'number' &&
@@ -721,6 +637,7 @@ export function useScanSession(
         type: 'RESTORE',
         payload: {
           pendingJobs,
+          scannerTotals: totalsByScanner(jobs),
           currentCycle: status.currentCycle ?? 0,
           totalCycles: status.totalCycles ?? 0,
           coordinatorState: status.coordinatorState ?? 'scanning',
@@ -759,11 +676,33 @@ export function useScanSession(
     if (!experimentId) return;
     let cancelled = false;
     (async () => {
-      const status = unwrapGraviResult<Partial<ScanSessionState>>(
-        await window.electron.gravi.getScanStatus()
-      );
+      const status = unwrapGraviResult<
+        Partial<ScanSessionState> & { lastSession?: GraviLastSession }
+      >(await window.electron.gravi.getScanStatus());
       if (cancelled) return;
       if (status?.isActive) return; // handled by the active-session restore above
+
+      // A session for this experiment and wave that ended while the page
+      // was closed ended normally: clear its marker and show its QR result.
+      const last = status?.lastSession;
+      if (
+        last &&
+        last.experimentId === experimentId &&
+        last.waveNumber === waveNumber
+      ) {
+        localStorage.removeItem(abnormalMarkerKey(experimentId, waveNumber));
+        setAbnormalTermination(null);
+        if (last.verifying) {
+          // Its QR check is still running; results arrive as live events.
+          dispatch({ type: 'VERIFY_STARTED' });
+        } else if (last.verification?.results) {
+          dispatch({
+            type: 'VERIFY_RESTORED',
+            payload: last.verification.results,
+          });
+        }
+        return;
+      }
 
       const marker = localStorage.getItem(
         abnormalMarkerKey(experimentId, waveNumber)
@@ -799,9 +738,8 @@ export function useScanSession(
 
   const startScan = useCallback(async () => {
     // Re-entrancy guard: a fast double-click on Start would otherwise run
-    // two overlapping setup chains (each calling gravi.startScan() and
-    // graviscanSessions.create() independently), with whichever dispatches
-    // 'START' last silently clobbering jobTemplateRef/completedJobsRef for
+    // two overlapping setup chains, with whichever dispatches
+    // 'START' last silently clobbering jobTemplateRef for
     // a physical scan the first call's hardware may still be running.
     // `isScanning` alone doesn't cover this — it stays false for this
     // entire async setup, only flipping true once 'START' dispatches.
@@ -813,6 +751,7 @@ export function useScanSession(
       return;
     }
     isStartingRef.current = true;
+    setIsStarting(true);
     try {
       if (!canStartScan) {
         dispatch({
@@ -842,7 +781,9 @@ export function useScanSession(
           plate_index: string;
           grid_mode: GridMode;
           resolution: number;
-          plate_barcode?: string | null;
+          plate_barcode: string | null;
+          transplant_date: string | null;
+          custom_note: string | null;
         }>;
       }> = [];
 
@@ -852,21 +793,26 @@ export function useScanSession(
         );
         const gridMode = gridModes[scannerId];
         const plates = assignments.map((a) => {
+          const transplantDate = toPlateDate(a.transplantDate);
           jobs[jobKey(scannerId, a.plateIndex)] = {
             scannerId,
             plateIndex: a.plateIndex,
             outputPath: '',
             plantBarcode: a.plantBarcode,
-            transplantDate: a.transplantDate,
+            transplantDate,
             customNote: a.customNote,
             gridMode,
             status: 'pending',
           };
+          // Each plate's details go to the main process once, here; it
+          // records them on every image of the plate.
           return {
             plate_index: a.plateIndex,
             grid_mode: gridMode,
             resolution,
-            plate_barcode: a.plantBarcode,
+            plate_barcode: a.plantBarcode ?? null,
+            transplant_date: transplantDate,
+            custom_note: a.customNote ?? null,
           };
         });
         if (plates.length > 0) {
@@ -898,6 +844,7 @@ export function useScanSession(
       const result = unwrapGraviResult<{
         success: boolean;
         error?: string;
+        sessionId?: string;
         outputPaths?: Record<string, string>;
       }>(
         await window.electron.gravi.startScan({
@@ -921,31 +868,18 @@ export function useScanSession(
         job.outputPath = result.outputPaths?.[key] ?? '';
       }
 
-      let sessionId: string | null = null;
-      const sessionResult =
-        await window.electron.database.graviscanSessions.create({
-          experiment_id: experimentId,
-          phenotyper_id: phenotyperId,
-          scan_mode: isContinuous ? 'continuous' : 'single',
-          interval_seconds: isContinuous ? intervalSeconds : null,
-          duration_seconds: isContinuous ? durationSeconds : null,
-          total_cycles: totalCycles,
-        });
-      if (sessionResult?.success && sessionResult.data) {
-        sessionId = (sessionResult.data as { id: string }).id;
-      }
+      // The main process created the session row before scanning started.
+      const sessionId = result.sessionId ?? null;
 
       // Snapshot the session's own experiment/phenotyper/wave/resolution
-      // once, here — every subsequent recordCompletedJob/runVerification/
-      // marker-clearing call for this session reads this snapshot, never
-      // the live selectors (design.md Decision 13).
+      // once, here — marker clearing for this session reads this snapshot,
+      // never the live selectors (design.md Decision 13).
       sessionContextRef.current = {
         experimentId,
         phenotyperId,
         waveNumber,
         resolution,
       };
-      completedJobsRef.current = {};
       jobTemplateRef.current = jobs;
       completedKeysRef.current = new Set();
       allDoneFiredRef.current = false;
@@ -961,22 +895,6 @@ export function useScanSession(
         },
       });
 
-      // The coordinator has already physically started scanning by this
-      // point (gravi.startScan() above succeeded) — a failure here can't
-      // un-start it, but a null sessionId silently degrades
-      // graviscansCreate's upsert-based idempotency (task 2.3/2.4) back to
-      // a plain create() for every job this session completes. Dispatched
-      // AFTER 'START' so it isn't immediately wiped by START's own state
-      // reset.
-      if (!sessionResult?.success) {
-        dispatch({
-          type: 'ERROR',
-          payload: {
-            error: `Scan started, but session tracking failed to save (${sessionResult?.error ?? 'unknown error'}) — duplicate-write protection will not apply this session.`,
-          },
-        });
-      }
-
       if (experimentId) {
         localStorage.setItem(
           abnormalMarkerKey(experimentId, waveNumber),
@@ -990,6 +908,7 @@ export function useScanSession(
       });
     } finally {
       isStartingRef.current = false;
+      setIsStarting(false);
     }
   }, [
     canStartScan,
@@ -1019,17 +938,18 @@ export function useScanSession(
         return;
       }
       dispatch({ type: 'CANCELLED' });
-      await finishSession(true);
+      endSession();
     } catch (err) {
       dispatch({
         type: 'ERROR',
         payload: { error: err instanceof Error ? err.message : String(err) },
       });
     }
-  }, [finishSession]);
+  }, [endSession]);
 
   return {
     isScanning: state.isScanning,
+    isStarting,
     pendingJobs: state.pendingJobs,
     progressByScanner: state.progressByScanner,
     currentCycle: state.currentCycle,

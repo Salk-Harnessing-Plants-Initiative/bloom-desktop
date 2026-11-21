@@ -137,6 +137,9 @@ interface GraviStartScanScanner {
     grid_mode: string;
     resolution: number;
     plate_barcode?: string | null;
+    /** "YYYY-MM-DD", or null. */
+    transplant_date?: string | null;
+    custom_note?: string | null;
   }>;
 }
 /** A session scan. The main process builds every path. */
@@ -166,6 +169,22 @@ interface GraviStartOrCancelScanResult {
   error?: string;
   /** Start Scan only: output path per job key `${scannerId}:${plateIndex}`. */
   outputPaths?: Record<string, string>;
+  /** Start Scan only: the session row the main process created. */
+  sessionId?: string;
+}
+/**
+ * The last session that ended (in `getScanStatus` while none is active),
+ * so the scan page can show its outcome and QR result after returning.
+ * Mirrors `LastSessionSummary` in the main process.
+ */
+export interface GraviLastSession {
+  sessionId: string;
+  experimentId: string;
+  waveNumber: number;
+  outcome: 'completed' | 'cancelled' | 'failed';
+  /** The QR check is still running; its results arrive as live events. */
+  verifying: boolean;
+  verification: QRVerifyPlatesResult | null;
 }
 interface GraviGetOutputDirResult {
   success: boolean;

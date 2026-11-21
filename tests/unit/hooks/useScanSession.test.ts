@@ -46,6 +46,9 @@ function baseParams(
   };
 }
 
+/** The abnormal-termination marker for baseParams()'s experiment and wave. */
+const MARKER = 'graviscan:session-in-progress:exp-1:0';
+
 function wedgeWrapper({ children }: { children: ReactNode }) {
   return createElement(WedgeProvider, null, children);
 }
@@ -135,6 +138,9 @@ describe('useScanSession', () => {
       onIntervalStart: on('interval-start'),
       onIntervalWaiting: on('interval-waiting'),
       onOvertime: on('overtime'),
+      onVerifyStarted: on('verify-started'),
+      onVerifyResult: on('verify-result'),
+      onVerifyComplete: on('verify-complete'),
     };
     win.electron.database.graviscans = { create: graviscansCreate };
     win.electron.database.graviscanSessions = {
@@ -372,64 +378,7 @@ describe('useScanSession', () => {
     expect(onRestoreWaveNumber).not.toHaveBeenCalled();
   });
 
-  it('verification invocation passes the current waveNumber (including 0) alongside experimentId', async () => {
-    const { result } = renderHook(
-      () => useScanSession(baseParams({ waveNumber: 0 })),
-      {
-        wrapper: wedgeWrapper,
-      }
-    );
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      imagePath: '/out/00.tiff',
-    });
-    await waitFor(() =>
-      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
-    );
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '01',
-      imagePath: '/out/01.tiff',
-    });
-
-    await waitFor(() => expect(verifyPlates).toHaveBeenCalled());
-    expect(verifyPlates).toHaveBeenCalledWith(expect.any(Array), 'exp-1', 0);
-  });
-
   // ── Backend persistence wiring (task 12.3) ──────────────────────────────
-
-  it('startScan() success calls graviscanSessions.create with experiment/phenotyper/mode/interval/duration', async () => {
-    const { result } = renderHook(
-      () =>
-        useScanSession(
-          baseParams({
-            isContinuous: true,
-            intervalMinutes: 10,
-            durationMinutes: 120,
-          })
-        ),
-      { wrapper: wedgeWrapper }
-    );
-
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    expect(graviscanSessionsCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        experiment_id: 'exp-1',
-        phenotyper_id: 'pheno-1',
-        scan_mode: 'continuous',
-        interval_seconds: 600,
-        duration_seconds: 7200,
-      })
-    );
-  });
 
   it('startScan() sends the choices and scanner order, no paths; the main process builds them', async () => {
     const { result } = renderHook(
@@ -465,13 +414,17 @@ describe('useScanSession', () => {
         plate_index: '00',
         grid_mode: '2grid',
         resolution: 1200,
-        plate_barcode: expect.anything(),
+        plate_barcode: 'PLATE_001',
+        transplant_date: '2026-08-01',
+        custom_note: null,
       },
       {
         plate_index: '01',
         grid_mode: '2grid',
         resolution: 1200,
         plate_barcode: 'PLATE_002',
+        transplant_date: '2026-08-01',
+        custom_note: null,
       },
     ]);
     for (const p of req.scanners[0].plates) {
@@ -544,7 +497,7 @@ describe('useScanSession', () => {
     // Cycle 1's plates are all in — the backend still has 2 more cycles to
     // go, so the session must not end here.
     expect(result.current.isScanning).toBe(true);
-    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+    expect(localStorage.getItem(MARKER)).not.toBeNull();
 
     fire('cycle-complete', { cycle: 1 });
     expect(result.current.currentCycle).toBe(2);
@@ -563,7 +516,7 @@ describe('useScanSession', () => {
       cycleNumber: 2,
     });
     expect(result.current.isScanning).toBe(true);
-    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+    expect(localStorage.getItem(MARKER)).not.toBeNull();
 
     fire('cycle-complete', { cycle: 2 });
     fire('scan-complete', {
@@ -579,7 +532,7 @@ describe('useScanSession', () => {
       cycleNumber: 3,
     });
     expect(result.current.isScanning).toBe(true);
-    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+    expect(localStorage.getItem(MARKER)).not.toBeNull();
 
     fire('interval-complete', {
       cyclesCompleted: 3,
@@ -588,9 +541,7 @@ describe('useScanSession', () => {
     });
 
     await waitFor(() => expect(result.current.isScanning).toBe(false));
-    expect(graviscanSessionsComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ session_id: 'sess-1', cancelled: false })
-    );
+    expect(localStorage.getItem(MARKER)).toBeNull();
   });
 
   it('coordinatorState turns "waiting" on interval-waiting and back to "scanning" on the next cycle\'s first scan-started (regression: "Waiting for next cycle..." never appeared because coordinatorState was never driven by a live event)', async () => {
@@ -675,117 +626,6 @@ describe('useScanSession', () => {
 
     fire('scan-started', { scannerId: 'sc-1', plateIndex: '00' });
     expect(result.current.coordinatorState).toBe('idle');
-  });
-
-  it('each job completion calls graviscans.create with all fields graviscansCreate requires', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams()), {
-      wrapper: wedgeWrapper,
-    });
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      imagePath: '/out/00.tiff',
-      cycleNumber: 1,
-    });
-
-    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
-    expect(graviscansCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        experiment_id: 'exp-1',
-        phenotyper_id: 'pheno-1',
-        scanner_id: 'sc-1',
-        plate_index: '00',
-        wave_number: 0,
-        session_id: 'sess-1',
-        cycle_number: 1,
-        grid_mode: '2grid',
-        resolution: 1200,
-        path: '/out/00.tiff',
-      })
-    );
-  });
-
-  it('a duplicated job-completion event calling graviscans.create twice for the same job is safe (dedup happens in the handler)', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams()), {
-      wrapper: wedgeWrapper,
-    });
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      imagePath: '/out/00.tiff',
-      cycleNumber: 1,
-    });
-    await waitFor(() => expect(graviscansCreate).toHaveBeenCalledTimes(1));
-
-    // A duplicated IPC event redelivers scan-complete for the same job.
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      imagePath: '/out/00.tiff',
-      cycleNumber: 1,
-    });
-    await waitFor(() => expect(graviscansCreate).toHaveBeenCalledTimes(2));
-    expect(graviscansCreate.mock.calls[1][0]).toMatchObject({
-      scanner_id: 'sc-1',
-      plate_index: '00',
-      cycle_number: 1,
-    });
-  });
-
-  it('clean session completion calls graviscanSessions.complete with cancelled: false', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams()), {
-      wrapper: wedgeWrapper,
-    });
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      imagePath: '/out/00.tiff',
-    });
-    await waitFor(() =>
-      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
-    );
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '01',
-      imagePath: '/out/01.tiff',
-    });
-
-    await waitFor(() =>
-      expect(graviscanSessionsComplete).toHaveBeenCalledWith({
-        session_id: 'sess-1',
-        cancelled: false,
-      })
-    );
-  });
-
-  it('a successful cancel calls graviscanSessions.complete with cancelled: true', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams()), {
-      wrapper: wedgeWrapper,
-    });
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    await act(async () => {
-      await result.current.cancelScan();
-    });
-
-    expect(graviscanSessionsComplete).toHaveBeenCalledWith({
-      session_id: 'sess-1',
-      cancelled: true,
-    });
   });
 
   // ── Abnormal-termination marker (task 12.5, Decision 5) ─────────────────
@@ -1127,32 +967,6 @@ describe('useScanSession', () => {
 
   // ── Regressions found by review-pr round 1 ──────────────────────────────
 
-  it('resolves the real scan-complete event shape: `path` (not `imagePath`) and `cycle_number` (not `cycleNumber`)', async () => {
-    const { result } = renderHook(() => useScanSession(baseParams()), {
-      wrapper: wedgeWrapper,
-    });
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    // scan-coordinator.ts's real forwarded event: only `path` and
-    // `cycle_number`, never `imagePath`/`cycleNumber` — no camelCase
-    // duplicates exist for these two fields (unlike scanner_id/plate_index).
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      path: '/out/00.tiff',
-      cycle_number: 3,
-    });
-    await waitFor(() =>
-      expect(result.current.pendingJobs['sc-1:00']).toBeUndefined()
-    );
-
-    expect(graviscansCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ path: '/out/00.tiff', cycle_number: 3 })
-    );
-  });
-
   it('two scan-complete events for the last two remaining jobs, delivered synchronously with no render between them, both correctly resolve and end the session exactly once', async () => {
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
@@ -1176,14 +990,10 @@ describe('useScanSession', () => {
 
     await waitFor(() => expect(result.current.isScanning).toBe(false));
     expect(Object.keys(result.current.pendingJobs)).toHaveLength(0);
-    // finishSession must have run exactly once — graviscanSessions.complete
-    // is its own unique signal for that.
-    await waitFor(() =>
-      expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1)
-    );
+    expect(localStorage.getItem(MARKER)).toBeNull();
   });
 
-  it('a duplicated scan-complete for an already-completed job (after the session already ended) does not re-fire finishSession', async () => {
+  it('a duplicated scan-complete for an already-completed job (after the session already ended) does not end the session again', async () => {
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });
@@ -1201,9 +1011,10 @@ describe('useScanSession', () => {
       plateIndex: '01',
       path: '/out/01.tiff',
     });
-    await waitFor(() =>
-      expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1)
-    );
+    await waitFor(() => expect(localStorage.getItem(MARKER)).toBeNull());
+    // A marker from a newer start must survive a stray repeat of the old
+    // session's last event.
+    localStorage.setItem(MARKER, '{"expectedCycles":1}');
 
     // A retried/duplicated IPC event for a job that already completed.
     fire('scan-complete', {
@@ -1211,7 +1022,7 @@ describe('useScanSession', () => {
       plateIndex: '00',
       path: '/out/00.tiff',
     });
-    expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(MARKER)).not.toBeNull();
   });
 
   it('a session where one job errors and the other completes still reaches "all done" (round-2 regression: errored jobs must count toward completion too)', async () => {
@@ -1236,9 +1047,7 @@ describe('useScanSession', () => {
 
     await waitFor(() => expect(result.current.isScanning).toBe(false));
     expect(Object.keys(result.current.pendingJobs)).toHaveLength(0);
-    await waitFor(() =>
-      expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1)
-    );
+    expect(localStorage.getItem(MARKER)).toBeNull();
   });
 
   it('a stray scan-error for a job outside this session (unknown scanner/plate key) does not count toward "all done" (round-3 regression)', async () => {
@@ -1266,7 +1075,7 @@ describe('useScanSession', () => {
 
     expect(result.current.isScanning).toBe(true);
     expect(Object.keys(result.current.pendingJobs)).toHaveLength(1);
-    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+    expect(localStorage.getItem(MARKER)).not.toBeNull();
   });
 
   it('startScan() called twice in rapid succession only starts one session', async () => {
@@ -1282,7 +1091,6 @@ describe('useScanSession', () => {
     });
 
     expect(startScan).toHaveBeenCalledTimes(1);
-    expect(graviscanSessionsCreate).toHaveBeenCalledTimes(1);
   });
 
   it('clicking Start while a scan is already in progress surfaces an error instead of silently no-oping (regression)', async () => {
@@ -1317,26 +1125,9 @@ describe('useScanSession', () => {
     expect(result.current.isScanning).toBe(false);
   });
 
-  it('a failed graviscanSessions.create() surfaces an error but still starts the session (hardware already started)', async () => {
-    graviscanSessionsCreate.mockResolvedValue({
-      success: false,
-      error: 'db locked',
-    });
-    const { result } = renderHook(() => useScanSession(baseParams()), {
-      wrapper: wedgeWrapper,
-    });
-
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    expect(result.current.isScanning).toBe(true);
-    expect(result.current.error).toMatch(/db locked/);
-  });
-
   // ── Session context freeze (task 22.1, design.md Decision 13) ───────────
 
-  it("a mid-scan wave switch does not misattribute a still-in-flight job's DB write, verification, or marker-clearing (regression: contextRef mirrored live selector state)", async () => {
+  it("a mid-scan wave switch does not misattribute a still-in-flight session's marker-clearing (regression: contextRef mirrored live selector state)", async () => {
     const { result, rerender } = renderHook((props) => useScanSession(props), {
       initialProps: baseParams({ waveNumber: 0 }),
       wrapper: wedgeWrapper,
@@ -1357,22 +1148,12 @@ describe('useScanSession', () => {
       plateIndex: '00',
       imagePath: '/out/00.tiff',
     });
-    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
-    expect(graviscansCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ wave_number: 0 })
-    );
-
     fire('scan-complete', {
       scannerId: 'sc-1',
       plateIndex: '01',
       imagePath: '/out/01.tiff',
     });
-    await waitFor(() => expect(verifyPlates).toHaveBeenCalled());
-    expect(verifyPlates).toHaveBeenCalledWith(expect.any(Array), 'exp-1', 0);
-
-    await waitFor(() =>
-      expect(graviscanSessionsComplete).toHaveBeenCalledTimes(1)
-    );
+    await waitFor(() => expect(result.current.isScanning).toBe(false));
     // The session's own marker (wave 0) is cleared — no marker for wave 5
     // was ever written, so this also confirms clearAbnormalMarker targeted
     // the frozen wave, not the live one.
@@ -1381,115 +1162,145 @@ describe('useScanSession', () => {
     ).toBeNull();
   });
 
-  it("a job completing after a mid-scan restore records against the backend session's own experimentId/waveNumber/resolution, not this hook instance's current props (regression: restore never froze a session context either)", async () => {
-    getScanStatus.mockResolvedValue({
-      success: true,
-      data: {
-        isActive: true,
-        experimentId: 'exp-restored',
-        phenotyperId: 'pheno-restored',
-        waveNumber: 7,
-        resolution: 2400,
-        currentCycle: 1,
-        totalCycles: 1,
-        coordinatorState: 'scanning',
-        scanStartedAt: 1000,
-        nextScanAt: null,
-        jobs: {
-          'sc-1:00': {
-            scannerId: 'sc-1',
-            plateIndex: '00',
-            outputPath: '/out/00.tiff',
-            plantBarcode: 'PLATE_001',
-            transplantDate: null,
-            customNote: null,
-            gridMode: '2grid',
-            status: 'pending',
-          },
-        },
-      },
+  // ── Records written by the main process ────────────────────────────────
+
+  it('never writes scan records, marks jobs or runs the QR check itself; the main process does', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await act(async () => {
+      await result.current.startScan();
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      path: '/out/00.tiff',
+    });
+    fire('scan-complete', {
+      scannerId: 'sc-1',
+      plateIndex: '01',
+      path: '/out/01.tiff',
+    });
+    await waitFor(() => expect(result.current.isScanning).toBe(false));
+    await act(async () => {
+      await result.current.startScan();
+      await result.current.cancelScan();
     });
 
+    expect(graviscansCreate).not.toHaveBeenCalled();
+    expect(graviscanSessionsCreate).not.toHaveBeenCalled();
+    expect(graviscanSessionsComplete).not.toHaveBeenCalled();
+    expect(markJobRecorded).not.toHaveBeenCalled();
+    expect(verifyPlates).not.toHaveBeenCalled();
+  });
+
+  it('sends a transplant date loaded as a Date as "YYYY-MM-DD" (#315)', async () => {
     const { result } = renderHook(
       () =>
-        useScanSession(baseParams({ experimentId: 'exp-1', waveNumber: 0 })),
+        useScanSession(
+          baseParams({
+            assignmentsByScanner: {
+              'sc-1': [
+                plate({
+                  transplantDate: new Date(
+                    '2026-08-01T00:00:00Z'
+                  ) as unknown as string,
+                  customNote: 'low germination',
+                }),
+              ],
+            },
+          })
+        ),
       { wrapper: wedgeWrapper }
     );
-
-    await waitFor(() => expect(result.current.isScanning).toBe(true));
-
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      imagePath: '/out/00.tiff',
+    await act(async () => {
+      await result.current.startScan();
     });
-
-    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
-    expect(graviscansCreate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        experiment_id: 'exp-restored',
-        phenotyper_id: 'pheno-restored',
-        wave_number: 7,
-        resolution: 2400,
-      })
-    );
+    expect(startScan.mock.calls[0][0].scanners[0].plates[0]).toMatchObject({
+      transplant_date: '2026-08-01',
+      custom_note: 'low germination',
+    });
   });
 
-  // ── completedJobsRef restore on remount (task 23.1, design.md Decision 14) ─
-
-  it('marks a job recorded (window.electron.gravi.markJobRecorded) once its DB write succeeds', async () => {
+  it("shows the main process's message and stays stopped when the session couldn't be saved", async () => {
+    const message =
+      "The scan didn't start: the session couldn't be saved to the database (disk full). Nothing was scanned. Try again; if it keeps happening, restart the app.";
+    startScan.mockResolvedValue({
+      success: true,
+      data: { success: false, error: message },
+    });
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });
     await act(async () => {
       await result.current.startScan();
     });
-
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      imagePath: '/out/00.tiff',
-    });
-
-    await waitFor(() =>
-      expect(markJobRecorded).toHaveBeenCalledWith('sc-1:00')
-    );
+    expect(result.current.error).toBe(message);
+    expect(result.current.isScanning).toBe(false);
+    expect(localStorage.getItem(MARKER)).toBeNull();
   });
 
-  it('a markJobRecorded() rejection is logged, not surfaced as a blocking ERROR (review-pr round 5 follow-up)', async () => {
-    const consoleError = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
-    markJobRecorded.mockRejectedValue(new Error('IPC channel closed'));
+  it('shows the QR check from the main process as it runs', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    fire('verify-started');
+    expect(result.current.verificationStatus).toBe('verifying');
+    fire('verify-result', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      status: 'verified',
+    });
+    expect(result.current.verificationResults['sc-1:00']).toMatchObject({
+      status: 'verified',
+    });
+    fire('verify-complete', { results: [], swaps: [] });
+    expect(result.current.verificationStatus).toBe('complete');
+  });
 
+  it('shows an error for a plate whose image was saved but not recorded', async () => {
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });
     await act(async () => {
       await result.current.startScan();
     });
-
     fire('scan-complete', {
       scannerId: 'sc-1',
       plateIndex: '00',
-      imagePath: '/out/00.tiff',
+      path: '/out/00.tiff',
     });
-
-    await waitFor(() =>
-      expect(consoleError).toHaveBeenCalledWith(
-        'Failed to mark job sc-1:00 recorded:',
-        'IPC channel closed'
-      )
-    );
-    // Still non-blocking — the completed-job record itself already landed
-    // via recordCompletedJob; only a future remount's ability to recognize
-    // this job as already-done is at risk, not this session's own state.
-    expect(result.current.error).toBeNull();
-
-    consoleError.mockRestore();
+    fire('scan-error', {
+      scannerId: 'sc-1',
+      plateIndex: '00',
+      error: '00.tiff was saved on disk but not recorded in the database',
+    });
+    expect(result.current.error).toMatch(/not recorded in the database/);
   });
 
-  it('a job already recorded before a mid-scan remount is still included in QR verification after restore (regression: completedJobsRef was never rebuilt on restore)', async () => {
+  it('shows a session-wide error from the main process', async () => {
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    fire('scan-error', {
+      scannerId: null,
+      plateIndex: null,
+      error: "The QR check after the scan didn't run (boom).",
+    });
+    expect(result.current.error).toMatch(/QR check/);
+  });
+
+  it("rebuilds each scanner's progress after returning to the page mid-session (#314)", async () => {
+    const job = (plateIndex: string, status: string) => ({
+      scannerId: 'sc-1',
+      plateIndex,
+      outputPath: `/out/${plateIndex}.tiff`,
+      plantBarcode: null,
+      transplantDate: null,
+      customNote: null,
+      gridMode: '4grid',
+      status,
+    });
     getScanStatus.mockResolvedValue({
       success: true,
       data: {
@@ -1501,115 +1312,122 @@ describe('useScanSession', () => {
         currentCycle: 1,
         totalCycles: 1,
         coordinatorState: 'scanning',
-        scanStartedAt: 1000,
-        nextScanAt: null,
         jobs: {
-          'sc-1:00': {
-            scannerId: 'sc-1',
-            plateIndex: '00',
-            outputPath: '/out/00.tiff',
-            plantBarcode: 'PLATE_001',
-            transplantDate: null,
-            customNote: null,
-            gridMode: '2grid',
-            status: 'recorded',
-          },
-          'sc-1:01': {
-            scannerId: 'sc-1',
-            plateIndex: '01',
-            outputPath: '/out/01.tiff',
-            plantBarcode: 'PLATE_002',
-            transplantDate: null,
-            customNote: null,
-            gridMode: '2grid',
-            status: 'pending',
-          },
+          'sc-1:00': job('00', 'recorded'),
+          // Its image arrived; its rows are still being saved.
+          'sc-1:01': job('01', 'complete'),
+          'sc-1:10': job('10', 'pending'),
+          'sc-1:11': job('11', 'pending'),
         },
       },
     });
-
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });
-
     await waitFor(() => expect(result.current.isScanning).toBe(true));
-    // Only the still-pending job restores into pendingJobs.
-    expect(result.current.pendingJobs['sc-1:00']).toBeUndefined();
-    expect(result.current.pendingJobs['sc-1:01']).toBeDefined();
+    expect(result.current.progressByScanner['sc-1']).toBe(50);
 
     fire('scan-complete', {
       scannerId: 'sc-1',
-      plateIndex: '01',
-      imagePath: '/out/01.tiff',
+      plateIndex: '10',
+      path: '/out/10.tiff',
     });
-
-    await waitFor(() => expect(verifyPlates).toHaveBeenCalled());
-    const plates = verifyPlates.mock.calls[0][0] as Array<{
-      plateIndex: string;
-    }>;
-    expect(plates.map((p) => p.plateIndex).sort()).toEqual(['00', '01']);
+    expect(result.current.progressByScanner['sc-1']).toBe(75);
   });
 
-  // ── achieved_resolution persistence (task 24.1, design.md Decision 15) ──
-
-  it("persists the scan-complete event's achieved_resolution, not the requested DPI (regression: recordCompletedJob wrote ctx.resolution unconditionally)", async () => {
-    const { result } = renderHook(
-      () => useScanSession(baseParams({ resolution: 1200 })),
-      { wrapper: wedgeWrapper }
-    );
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    fire('scan-complete', {
+  it('on return after a session ended while away, clears its marker and shows its QR result', async () => {
+    localStorage.setItem(MARKER, '{"expectedCycles":1}');
+    const qr = {
       scannerId: 'sc-1',
       plateIndex: '00',
-      imagePath: '/out/00.tiff',
-      achieved_resolution: 1180,
+      status: 'verified',
+    };
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: {
+        isActive: false,
+        lastSession: {
+          sessionId: 'sess-1',
+          experimentId: 'exp-1',
+          waveNumber: 0,
+          outcome: 'completed',
+          verifying: false,
+          verification: { success: true, results: [qr], swaps: [] },
+        },
+      },
     });
-
-    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
-    expect(graviscansCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ resolution: 1180 })
-    );
-  });
-
-  it('falls back to the requested resolution when a scan-complete event omits achieved_resolution', async () => {
-    const { result } = renderHook(
-      () => useScanSession(baseParams({ resolution: 1200 })),
-      { wrapper: wedgeWrapper }
-    );
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    fire('scan-complete', {
-      scannerId: 'sc-1',
-      plateIndex: '00',
-      imagePath: '/out/00.tiff',
-    });
-
-    await waitFor(() => expect(graviscansCreate).toHaveBeenCalled());
-    expect(graviscansCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ resolution: 1200 })
-    );
-  });
-
-  it('a failed database.graviscans.create() (recordCompletedJob) surfaces an error rather than failing silently', async () => {
-    graviscansCreate.mockRejectedValue(new Error('disk full'));
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });
-    await act(async () => {
-      await result.current.startScan();
-    });
+    await waitFor(() =>
+      expect(result.current.verificationStatus).toBe('complete')
+    );
+    expect(result.current.verificationResults['sc-1:00']).toMatchObject(qr);
+    expect(result.current.abnormalTermination).toBeNull();
+    expect(localStorage.getItem(MARKER)).toBeNull();
+  });
 
-    fire('scan-complete', {
+  it("still shows the abnormal-termination banner when the last session was another wave's", async () => {
+    localStorage.setItem(MARKER, '{"expectedCycles":3}');
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: {
+        isActive: false,
+        lastSession: {
+          sessionId: 'sess-9',
+          experimentId: 'exp-1',
+          waveNumber: 4,
+          outcome: 'completed',
+          verifying: false,
+          verification: null,
+        },
+      },
+    });
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await waitFor(() =>
+      expect(result.current.abnormalTermination).toEqual({
+        expectedCycles: 3,
+      })
+    );
+  });
+
+  it("opened during the session's QR check, shows the check running and no banner, then its results", async () => {
+    localStorage.setItem(MARKER, '{"expectedCycles":1}');
+    getScanStatus.mockResolvedValue({
+      success: true,
+      data: {
+        isActive: false,
+        lastSession: {
+          sessionId: 'sess-1',
+          experimentId: 'exp-1',
+          waveNumber: 0,
+          outcome: 'completed',
+          verifying: true,
+          verification: null,
+        },
+      },
+    });
+    const { result } = renderHook(() => useScanSession(baseParams()), {
+      wrapper: wedgeWrapper,
+    });
+    await waitFor(() =>
+      expect(result.current.verificationStatus).toBe('verifying')
+    );
+    expect(result.current.abnormalTermination).toBeNull();
+    expect(localStorage.getItem(MARKER)).toBeNull();
+    expect(result.current.verificationResults).toEqual({});
+
+    fire('verify-result', {
       scannerId: 'sc-1',
       plateIndex: '00',
-      path: '/out/00.tiff',
+      status: 'verified',
     });
-
-    await waitFor(() => expect(result.current.error).toMatch(/disk full/));
+    fire('verify-complete', { results: [], swaps: [] });
+    expect(result.current.verificationStatus).toBe('complete');
+    expect(result.current.verificationResults['sc-1:00']).toMatchObject({
+      status: 'verified',
+    });
   });
 });

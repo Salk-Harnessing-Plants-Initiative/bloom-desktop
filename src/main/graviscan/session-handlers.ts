@@ -11,10 +11,17 @@ import type {
   PlateConfig,
   ScannerConfig,
   ScanSessionJob,
+  ScanSessionState,
 } from '../../types/graviscan';
 import { buildSaneName } from './scanner-handlers';
 import { scanLog } from './scan-logger';
 import { plannedPlatePath } from './scan-filename';
+import {
+  endScanSession,
+  sessionNotSavedMessage,
+  type StartScanHooks,
+} from './session-lifecycle';
+import type { LastSessionSummary } from './session-records';
 
 // ---------------------------------------------------------------------------
 // Interface types
@@ -79,10 +86,16 @@ export interface SessionFns {
 // ---------------------------------------------------------------------------
 
 interface StartScanParams {
+  /** A test scan: no session row, nothing recorded. */
+  test?: boolean;
   scanners: Array<{
     scannerId: string;
     saneName: string;
-    plates: (PlateConfig & { plate_barcode?: string | null })[];
+    plates: (PlateConfig & {
+      plate_barcode?: string | null;
+      transplant_date?: string | null;
+      custom_note?: string | null;
+    })[];
   }>;
   interval?: { intervalSeconds: number; durationSeconds: number };
   metadata?: {
@@ -102,9 +115,12 @@ export async function startScan(
   coordinator: ScanCoordinatorLike | null,
   params: StartScanParams,
   sessionFns: SessionFns,
-  onError?: (error: string) => void
-): Promise<{ success: boolean; error?: string }> {
-  let sessionSet = false;
+  onError?: (error: string) => void,
+  hooks?: StartScanHooks
+): Promise<{ success: boolean; error?: string; sessionId?: string }> {
+  // Set once the session (and its database row) exists; a failure after
+  // that ends it, so the row is closed rather than left open.
+  let session: ScanSessionState | null = null;
   try {
     if (!coordinator) {
       return { success: false, error: 'ScanCoordinator not initialized' };
@@ -142,8 +158,8 @@ export async function startScan(
           plateIndex: plate.plate_index,
           outputPath: plannedPlatePath(plate),
           plantBarcode: plate.plate_barcode ?? null,
-          transplantDate: null,
-          customNote: null,
+          transplantDate: plate.transplant_date ?? null,
+          customNote: plate.custom_note ?? null,
           gridMode: plate.grid_mode,
           status: 'pending',
         };
@@ -185,19 +201,40 @@ export async function startScan(
       };
     }
 
+    const isTest = params.test === true;
+    const totalCycles =
+      sessIntervalMs > 0 ? Math.ceil(sessDurationMs / sessIntervalMs) : 1;
+
+    // The session's database row, once the scanners are up and before
+    // anything is scanned. If it can't be saved, nothing is scanned.
+    let sessionId: string | null = params.metadata?.sessionId || null;
+    if (!isTest && hooks?.openSessionRecord) {
+      const opened = await hooks.openSessionRecord({
+        experimentId: params.metadata?.experimentId || '',
+        phenotyperId: params.metadata?.phenotyperId || '',
+        scanMode: params.interval ? 'continuous' : 'single',
+        intervalSeconds: params.interval?.intervalSeconds ?? null,
+        durationSeconds: params.interval?.durationSeconds ?? null,
+        totalCycles,
+      });
+      if ('error' in opened) {
+        return { success: false, error: sessionNotSavedMessage(opened.error) };
+      }
+      sessionId = opened.sessionId;
+    }
+
     // Only set session state AFTER initialize succeeds — avoids briefly
     // reporting an active scan while the coordinator is still starting up.
-    sessionFns.setScanSession({
+    session = {
       isActive: true,
       isContinuous: !!params.interval,
       experimentId: params.metadata?.experimentId || '',
       phenotyperId: params.metadata?.phenotyperId || '',
       resolution: params.metadata?.resolution || 300,
-      sessionId: params.metadata?.sessionId || null,
+      sessionId,
       jobs,
       currentCycle: 0,
-      totalCycles:
-        sessIntervalMs > 0 ? Math.ceil(sessDurationMs / sessIntervalMs) : 1,
+      totalCycles,
       intervalMs: sessIntervalMs,
       scanStartedAt: Date.now(),
       scanEndedAt: null,
@@ -205,8 +242,10 @@ export async function startScan(
       coordinatorState: 'scanning',
       nextScanAt: null,
       waveNumber: params.metadata?.waveNumber || 0,
-    });
-    sessionSet = true;
+      isTest,
+    };
+    sessionFns.setScanSession(session);
+    const started = session;
 
     // Build plates map for scanning
     const platesPerScanner = new Map<string, PlateConfig[]>();
@@ -214,14 +253,16 @@ export async function startScan(
       platesPerScanner.set(s.scannerId, s.plates);
     }
 
+    // The session ends exactly once, whichever happens first: it
+    // completes, fails, or is cancelled (cancelScan).
     const handleError = (err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      sessionFns.setScanSession(null);
+      endScanSession(sessionFns, started, 'failed', hooks);
       onError?.(message);
     };
 
     const handleComplete = () => {
-      sessionFns.setScanSession(null);
+      endScanSession(sessionFns, started, 'completed', hooks);
     };
 
     // Every session (single, continuous or test) is saved from cycle 1.
@@ -243,11 +284,10 @@ export async function startScan(
         .catch(handleError);
     }
 
-    return { success: true };
+    return sessionId ? { success: true, sessionId } : { success: true };
   } catch (error) {
-    if (sessionSet) {
-      sessionFns.setScanSession(null);
-    }
+    // Clears the session and closes its row as failed (cancelled).
+    endScanSession(sessionFns, session, 'failed', hooks);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Start scan failed',
@@ -259,10 +299,15 @@ export async function startScan(
 // getScanStatus
 // ---------------------------------------------------------------------------
 
-export function getScanStatus(sessionFns: SessionFns): Record<string, any> {
+export function getScanStatus(
+  sessionFns: SessionFns,
+  lastSession: LastSessionSummary | null = null
+): Record<string, any> {
   const session = sessionFns.getScanSession();
   if (!session) {
-    return { isActive: false };
+    // The last session's outcome and QR result, for a page that returns
+    // after the session ended.
+    return lastSession ? { isActive: false, lastSession } : { isActive: false };
   }
   return {
     isActive: session.isActive,
@@ -297,8 +342,10 @@ export function markJobRecorded(sessionFns: SessionFns, jobKey: string): void {
 
 export async function cancelScan(
   coordinator: ScanCoordinatorLike | null,
-  sessionFns: SessionFns
+  sessionFns: SessionFns,
+  hooks?: StartScanHooks
 ): Promise<{ success: boolean; error?: string }> {
+  const session = sessionFns.getScanSession();
   try {
     if (!coordinator) {
       return { success: false, error: 'ScanCoordinator not initialized' };
@@ -306,11 +353,13 @@ export async function cancelScan(
 
     coordinator.cancelAll();
     await coordinator.shutdown();
+    endScanSession(sessionFns, session, 'cancelled', hooks);
     sessionFns.setScanSession(null);
 
     return { success: true };
   } catch (error) {
     // Always clear session — even if shutdown fails, the scan is cancelled
+    endScanSession(sessionFns, session, 'cancelled', hooks);
     sessionFns.setScanSession(null);
     return {
       success: false,

@@ -14,6 +14,19 @@ from python.tests.scan_plate_parts import plate_parts
 class TestBuildTiffMetadata:
     """Test the _build_tiff_metadata helper."""
 
+    def test_records_requested_and_applied_resolution(self):
+        """#508: both values are in the description; the resolution tags
+        are the applied value, since the pixels are at that resolution."""
+        region = get_scan_region("2grid", "00")
+        ifd = _build_tiff_metadata(
+            "scanner-001", "2grid", "00", 1199, region, requested_resolution=1200
+        )
+        desc = json.loads(ifd[270])
+        assert desc["resolution_dpi"] == 1199
+        assert desc["requested_resolution_dpi"] == 1200
+        assert float(ifd[282]) == 1199.0
+        assert float(ifd[283]) == 1199.0
+
     def test_returns_ifd_with_standard_tags(self):
         region = get_scan_region("2grid", "00")
         ifd = _build_tiff_metadata("scanner-001", "2grid", "00", 300, region)
@@ -24,6 +37,8 @@ class TestBuildTiffMetadata:
         assert desc["grid_mode"] == "2grid"
         assert desc["plate_index"] == "00"
         assert desc["resolution_dpi"] == 300
+        # Requested defaults to the applied resolution (#508).
+        assert desc["requested_resolution_dpi"] == 300
         assert "scan_region_mm" in desc
         assert desc["scan_region_mm"]["top"] == region.top
         assert desc["scan_region_mm"]["left"] == region.left
@@ -175,3 +190,4 @@ class TestMockScanTiffMetadata:
                 assert desc["grid_mode"] == grid_mode
                 assert desc["plate_index"] == plate_index
                 assert desc["resolution_dpi"] == 600
+                assert desc["requested_resolution_dpi"] == 600

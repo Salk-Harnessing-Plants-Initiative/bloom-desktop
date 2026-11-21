@@ -106,6 +106,8 @@ describe('buildStartScanPlan', () => {
       phenotyper_name: 'Jane Doe',
       scanner_name: 'Left rear',
       plate_barcode: null,
+      transplant_date: null,
+      custom_note: null,
     });
     expect(a).not.toHaveProperty('output_path');
     expect(b.scanner_tag).toBe('Sc2');
@@ -140,6 +142,55 @@ describe('buildStartScanPlan', () => {
     expect(plan.scanners[0].plates[0].scanner_tag).toBe('Sc2');
     expect(plan.scanners[1].plates[0].scanner_tag).toBe('Sc3');
     expect(planned(plan, 'scanner-b:00')).toContain('_Sc3_00.tif');
+  });
+
+  it("keeps each plate's barcode, transplant date and note for its records", async () => {
+    const plan = await buildStartScanPlan(
+      deps(),
+      request({
+        scanners: [
+          {
+            scannerId: 'scanner-a',
+            saneName: 'epkowa:a',
+            plates: [
+              {
+                ...plate('00', 'PLATE_002'),
+                transplant_date: '2026-08-01',
+                custom_note: 'low germination',
+              },
+            ],
+          },
+        ],
+      })
+    );
+    if ('error' in plan) throw new Error(plan.error);
+    expect(plan.scanners[0].plates[0]).toMatchObject({
+      plate_barcode: 'PLATE_002',
+      transplant_date: '2026-08-01',
+      custom_note: 'low germination',
+    });
+  });
+
+  it('accepts a transplant date sent as a Date (plate assignments hold Dates at runtime, #315)', async () => {
+    const plan = await buildStartScanPlan(
+      deps(),
+      request({
+        scanners: [
+          {
+            scannerId: 'scanner-a',
+            saneName: 'epkowa:a',
+            plates: [
+              {
+                ...plate('00'),
+                transplant_date: new Date('2026-08-01T00:00:00.000Z') as never,
+              },
+            ],
+          },
+        ],
+      })
+    );
+    if ('error' in plan) throw new Error(plan.error);
+    expect(plan.scanners[0].plates[0].transplant_date).toBe('2026-08-01');
   });
 
   it('keeps the plate barcode', async () => {
@@ -270,6 +321,17 @@ describe('buildStartScanPlan', () => {
         expect(fs.readdirSync(outputDir)).toEqual([]);
       }
     );
+
+    it.each([
+      ['a transplant date that is not a date', { transplant_date: 'soon' }],
+      ['a transplant date that is a number', { transplant_date: 42 }],
+      ['a note that is not text', { custom_note: 42 }],
+      ['a barcode that is not text', { plate_barcode: 42 }],
+    ])('%s', async (_label, fields) => {
+      const req = request();
+      Object.assign(req.scanners[0].plates[0], fields);
+      expect(await refused(req)).toMatch(/malformed/i);
+    });
 
     it('a SANE device name that is not a string', async () => {
       const req = request();

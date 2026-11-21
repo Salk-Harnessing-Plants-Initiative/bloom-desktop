@@ -20,6 +20,8 @@ export interface ScanControlSectionProps {
   testScan: UseTestScanResult;
   waveMissingMetadata: boolean;
   anyPlateFilled: boolean;
+  /** Why Start Scan can't be pressed yet (a scanner not ready), or null. */
+  startBlockedReason: string | null;
 }
 
 function formatOvertime(overtimeMs: number): string {
@@ -34,6 +36,7 @@ export function ScanControlSection({
   testScan,
   waveMissingMetadata,
   anyPlateFilled,
+  startBlockedReason,
 }: ScanControlSectionProps) {
   const [isCancelling, setIsCancelling] = useState(false);
   const [overtimeMs, setOvertimeMs] = useState<number | null>(null);
@@ -55,6 +58,18 @@ export function ScanControlSection({
   const intervalError = continuousMode.isContinuous
     ? continuousMode.validate()
     : null;
+
+  // Start Scan and Test Scan block each other, including while either is
+  // still being set up (#505).
+  const startDisabled =
+    !scanSession.canStartScan ||
+    scanSession.isScanning ||
+    scanSession.isStarting ||
+    testScan.isTesting ||
+    !!startBlockedReason ||
+    !!intervalError;
+  const testDisabled =
+    testScan.isTesting || scanSession.isScanning || scanSession.isStarting;
 
   async function handleCancel() {
     setIsCancelling(true);
@@ -82,6 +97,15 @@ export function ScanControlSection({
           className="bg-red-50 border border-red-500 text-red-800 rounded p-2 text-sm"
         >
           {testScan.error}
+        </div>
+      )}
+
+      {startBlockedReason && !scanSession.isScanning && (
+        <div
+          data-testid="start-blocked-reason"
+          className="bg-amber-50 border border-amber-300 text-amber-800 rounded p-2 text-sm"
+        >
+          {startBlockedReason}
         </div>
       )}
 
@@ -184,15 +208,9 @@ export function ScanControlSection({
         <button
           type="button"
           onClick={() => void scanSession.startScan()}
-          disabled={
-            !scanSession.canStartScan ||
-            scanSession.isScanning ||
-            !!intervalError
-          }
+          disabled={startDisabled}
           className={`px-6 py-2 rounded-lg font-semibold shadow-sm transition-all ${
-            !scanSession.canStartScan ||
-            scanSession.isScanning ||
-            !!intervalError
+            startDisabled
               ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
               : 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md'
           }`}
@@ -214,9 +232,9 @@ export function ScanControlSection({
         <button
           type="button"
           onClick={() => void testScan.testAllScanners()}
-          disabled={testScan.isTesting || scanSession.isScanning}
+          disabled={testDisabled}
           className={`px-6 py-2 rounded-lg font-semibold border transition-all ${
-            testScan.isTesting || scanSession.isScanning
+            testDisabled
               ? 'border-gray-300 text-gray-400 cursor-not-allowed'
               : 'border-gray-400 text-gray-700 hover:bg-gray-50'
           }`}

@@ -12,6 +12,7 @@ function scanSession(
 ): UseScanSessionResult {
   return {
     isScanning: false,
+    isStarting: false,
     pendingJobs: {},
     progressByScanner: {},
     currentCycle: 0,
@@ -70,6 +71,7 @@ function baseProps(overrides: Record<string, unknown> = {}) {
     testScan: testScan(),
     waveMissingMetadata: false,
     anyPlateFilled: true,
+    startBlockedReason: null,
     ...overrides,
   };
 }
@@ -451,5 +453,38 @@ describe('ScanControlSection', () => {
       />
     );
     expect(screen.getByTestId('cadence-warning-banner')).toBeInTheDocument();
+  });
+
+  // ── Starting guards (#159, #505) ────────────────────────────────────────
+
+  it('disables Start Scan and says why while a scanner with plates is not ready (#159)', () => {
+    const reason =
+      "Scanner 2 is still connecting. Start Scan will be available when it's ready.";
+    render(
+      <ScanControlSection {...baseProps({ startBlockedReason: reason })} />
+    );
+    expect(screen.getByRole('button', { name: 'Start Scan' })).toBeDisabled();
+    expect(screen.getByTestId('start-blocked-reason')).toHaveTextContent(
+      reason
+    );
+  });
+
+  it('disables Start Scan while a test scan runs', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({ testScan: testScan({ isTesting: true }) })}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Start Scan' })).toBeDisabled();
+  });
+
+  it('disables both Start Scan and Test Scan while a session is starting (#505)', () => {
+    render(
+      <ScanControlSection
+        {...baseProps({ scanSession: scanSession({ isStarting: true }) })}
+      />
+    );
+    expect(screen.getByRole('button', { name: 'Start Scan' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Test Scan' })).toBeDisabled();
   });
 });
