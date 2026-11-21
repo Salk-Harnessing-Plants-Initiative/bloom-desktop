@@ -1314,7 +1314,8 @@ describe('useScanSession', () => {
         coordinatorState: 'scanning',
         jobs: {
           'sc-1:00': job('00', 'recorded'),
-          'sc-1:01': job('01', 'recorded'),
+          // Its image arrived; its rows are still being saved.
+          'sc-1:01': job('01', 'complete'),
           'sc-1:10': job('10', 'pending'),
           'sc-1:11': job('11', 'pending'),
         },

@@ -122,8 +122,14 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
   const now = deps.now ?? (() => new Date());
   let queue: Promise<void> = Promise.resolve();
 
-  async function recordOne(event: RecordableScanEvent): Promise<void> {
-    if (typeof event.path !== 'string') return;
+  /**
+   * Take in an image as soon as its event arrives, synchronously: find its
+   * session and job, and mark the job done if this is its current image,
+   * so a page restored while the rows are still being saved doesn't wait
+   * for it. Returns the database write to queue, or null.
+   */
+  function accept(event: RecordableScanEvent): (() => Promise<void>) | null {
+    if (typeof event.path !== 'string') return null;
     const imagePath = event.path;
     const scannerId = text(event.scanner_id) || text(event.scannerId);
     const plateIndex = text(event.plate_index) || text(event.plateIndex);
@@ -150,7 +156,7 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
           `${imagePath} was not recorded: it is not in the folder of the current or the previous session.`
         );
       }
-      return;
+      return null;
     }
     const job = session.jobs[key];
 
@@ -158,7 +164,8 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
     // keep the real one; a test scan stops here, as it's never recorded.
     if (session.isTest || !session.sessionId) {
       job.imagePath = imagePath;
-      return;
+      job.status = 'complete';
+      return null;
     }
 
     const fileName = path.basename(imagePath);
@@ -167,15 +174,45 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
       job.status = 'error';
       job.error = notRecordedMessage(fileName, 'its file name has no cycle');
       deps.reportError(scannerId, plateIndex, job.error);
-      return;
+      return null;
     }
     // Whether this image is the job's current one: the running session's
     // current cycle. A late image (an earlier cycle, or the previous
     // session) never changes the job the page is waiting on.
     const isCurrent =
       session === deps.getSession() && parsed.cycle === session.currentCycle;
-    if (isCurrent) job.imagePath = imagePath;
+    if (isCurrent) {
+      job.imagePath = imagePath;
+      job.status = 'complete';
+    }
+    return () =>
+      write(session, job, event, {
+        imagePath,
+        fileName,
+        scannerId,
+        plateIndex,
+        cycle: parsed.cycle,
+        stTimestamp: parsed.stTimestamp,
+        isCurrent,
+      });
+  }
 
+  /** Save an accepted image's GraviScan and GraviImage rows. */
+  async function write(
+    session: ScanSessionState,
+    job: ScanSessionState['jobs'][string],
+    event: RecordableScanEvent,
+    image: {
+      imagePath: string;
+      fileName: string;
+      scannerId: string;
+      plateIndex: string;
+      cycle: number;
+      stTimestamp: string;
+      isCurrent: boolean;
+    }
+  ): Promise<void> {
+    const { imagePath, fileName, scannerId, plateIndex, isCurrent } = image;
     try {
       const created = await deps.createScan({
         experiment_id: session.experimentId,
@@ -184,7 +221,7 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
         plate_index: plateIndex,
         wave_number: session.waveNumber,
         session_id: session.sessionId,
-        cycle_number: parsed.cycle,
+        cycle_number: image.cycle,
         plate_barcode: job.plantBarcode,
         transplant_date: job.transplantDate,
         custom_note: job.customNote,
@@ -198,7 +235,7 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
         capture_date: now(),
         // The row's own start time: a late image keeps its row's, not the
         // current row's. The row's end is set when the row completes.
-        scan_started_at: stToIso(parsed.stTimestamp),
+        scan_started_at: stToIso(image.stTimestamp),
       });
       const scanId = (created.data as { id?: unknown } | undefined)?.id;
       if (!created.success || typeof scanId !== 'string') {
@@ -215,7 +252,7 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
       if (isCurrent) job.status = 'recorded';
     } catch (error) {
       const message =
-        `Plate ${plateIndex}, cycle ${parsed.cycle}: ` +
+        `Plate ${plateIndex}, cycle ${image.cycle}: ` +
         notRecordedMessage(fileName, errorText(error));
       if (isCurrent) {
         job.status = 'error';
@@ -261,7 +298,10 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
   }
 
   return {
-    record: (event) => enqueue(() => recordOne(event)),
+    record: (event) => {
+      const task = accept(event);
+      return task ? enqueue(task) : queue;
+    },
     recordRowTimes: (event) => enqueue(() => recordRowTimesOne(event)),
     idle: () => queue,
   };

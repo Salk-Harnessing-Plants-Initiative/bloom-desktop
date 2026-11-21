@@ -101,6 +101,35 @@ describe('scan recorder', () => {
     expect(job.imagePath).toBe(fileFor(3));
   });
 
+  it('marks the plate done as soon as its image arrives, before its rows are saved', async () => {
+    let save!: (r: unknown) => void;
+    const d = deps(session(), {
+      createScan: vi.fn(
+        () =>
+          new Promise((resolve) => {
+            save = resolve;
+          })
+      ),
+    });
+    // Another image is still being saved ahead of it in the queue.
+    const r = createScanRecorder(d);
+    const recording = r.record(event());
+    const job = d.getSession().jobs['s1:00'];
+    expect(job.status).toBe('complete');
+    expect(job.imagePath).toBe(fileFor(3));
+
+    await vi.waitFor(() => expect(d.createScan).toHaveBeenCalled());
+    save({ success: true, data: { id: 'scan-1' } });
+    await recording;
+    expect(job.status).toBe('recorded');
+  });
+
+  it("marks a test scan's plate done when its image arrives", async () => {
+    const d = deps(session({ isTest: true, sessionId: null }));
+    void createScanRecorder(d).record(event());
+    expect(d.getSession().jobs['s1:00'].status).toBe('complete');
+  });
+
   it("uses the file's own cycle, not the coordinator's current one (#503)", async () => {
     const d = deps();
     const r = createScanRecorder(d);
