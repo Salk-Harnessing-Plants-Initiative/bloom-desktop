@@ -72,6 +72,7 @@ export function createGraviScanRecording(deps: {
 
   const recorder = createScanRecorder({
     getSession: () => deps.getScanSession() ?? lastEnded,
+    getPreviousSession: () => lastEnded,
     createScan: (data) => graviscansCreate(deps.db, { ...data }),
     findImage: (graviscanId, imagePath) =>
       deps.db.graviImage.findFirst({
@@ -133,7 +134,9 @@ export function createGraviScanRecording(deps: {
 
   const onSessionEnd = sessionRecords.hooks.onSessionEnd;
   sessionRecords.hooks.onSessionEnd = (session, outcome) => {
-    lastEnded = session;
+    // A test scan is never recorded, so it never replaces the session a
+    // late image may still belong to.
+    if (!session.isTest) lastEnded = session;
     return onSessionEnd(session, outcome);
   };
 

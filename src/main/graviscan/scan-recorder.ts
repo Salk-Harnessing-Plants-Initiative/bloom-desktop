@@ -30,8 +30,14 @@ export interface GraviImageCreateInput {
 }
 
 export interface ScanRecorderDeps {
-  /** The session the event belongs to (current, or the one just ended). */
+  /** The current session, or the one just ended if none is running. */
   getSession: () => ScanSessionState | null;
+  /**
+   * The last recorded (non-test) session that ended. A late image can
+   * arrive after a new session or a test scan has started; it is matched
+   * to its own session by folder.
+   */
+  getPreviousSession?: () => ScanSessionState | null;
   createScan: (data: GraviScanCreateInput) => Promise<DatabaseResponse>;
   findImage: (graviscanId: string, imagePath: string) => Promise<unknown>;
   createImage: (data: GraviImageCreateInput) => Promise<unknown>;
@@ -115,16 +121,36 @@ export function createScanRecorder(deps: ScanRecorderDeps): ScanRecorder {
   let queue: Promise<void> = Promise.resolve();
 
   async function recordOne(event: RecordableScanEvent): Promise<void> {
-    const session = deps.getSession();
-    if (!session || typeof event.path !== 'string') return;
+    if (typeof event.path !== 'string') return;
     const imagePath = event.path;
-
     const scannerId = text(event.scanner_id) || text(event.scannerId);
     const plateIndex = text(event.plate_index) || text(event.plateIndex);
     const key = `${scannerId}:${plateIndex}`;
-    if (!Object.prototype.hasOwnProperty.call(session.jobs, key)) return;
+
+    // The session whose folder this image is in: the current one, or the
+    // previous one for a late image. Own keys only, never inherited ones.
+    const candidates = [deps.getSession(), deps.getPreviousSession?.()];
+    let hasJob = false;
+    let session: ScanSessionState | null = null;
+    for (const c of candidates) {
+      if (!c || !Object.prototype.hasOwnProperty.call(c.jobs, key)) continue;
+      hasJob = true;
+      if (path.dirname(imagePath) === path.dirname(c.jobs[key].outputPath)) {
+        session = c;
+        break;
+      }
+    }
+    if (!session) {
+      // A plate of ours whose file is in no known session folder: keep a
+      // trace in the scan log, so the file can be found and recorded.
+      if (hasJob) {
+        deps.logProblem(
+          `${imagePath} was not recorded: it is not in the folder of the current or the previous session.`
+        );
+      }
+      return;
+    }
     const job = session.jobs[key];
-    if (path.dirname(imagePath) !== path.dirname(job.outputPath)) return;
 
     // The planned path never exists on disk (the worker adds `_et_`), so
     // keep the real one; a test scan stops here, as it's never recorded.

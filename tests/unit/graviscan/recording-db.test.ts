@@ -191,4 +191,100 @@ describe('a session recorded by the main process', () => {
       scans.map((s) => s.path).sort()
     );
   });
+
+  it("records session A's late image under A after a test scan has started", async () => {
+    const scientist = await prisma.scientist.create({
+      data: { name: 'Dr L', email: 's-late@example.org' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'L', email: 'p-late@example.org' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: { name: 'Exp', species: 'Alfalfa', scientist_id: scientist.id },
+    });
+    const scanner = await prisma.graviScanner.create({
+      data: { name: 'epkowa:usb:001:007', usb_port: '1-3' },
+    });
+
+    let current: ScanSessionState | null = null;
+    const recording = createGraviScanRecording({
+      db: prisma,
+      getMainWindow: () => null,
+      getScanSession: () => current,
+      getOutputDir: () => path.dirname(DIR),
+    });
+    const opened = await recording.sessionRecords.hooks.openSessionRecord({
+      experimentId: experiment.id,
+      phenotyperId: phenotyper.id,
+      scanMode: 'single',
+      intervalSeconds: null,
+      durationSeconds: null,
+      totalCycles: 1,
+    });
+    if (!opened.ok) throw new Error(opened.error);
+
+    const job = (dir: string) => ({
+      scannerId: scanner.id,
+      plateIndex: '00',
+      outputPath: path.join(dir, 'planned_00.tif'),
+      plantBarcode: null,
+      transplantDate: null,
+      customNote: null,
+      gridMode: '2grid',
+      status: 'pending' as const,
+    });
+    const base = {
+      isActive: true,
+      isContinuous: false,
+      experimentId: experiment.id,
+      phenotyperId: phenotyper.id,
+      resolution: 600,
+      currentCycle: 1,
+      totalCycles: 1,
+      intervalMs: 0,
+      scanStartedAt: 0,
+      scanEndedAt: null,
+      scanDurationMs: 0,
+      coordinatorState: 'scanning' as const,
+      nextScanAt: null,
+      waveNumber: 1,
+    };
+    const sessionA: ScanSessionState = {
+      ...base,
+      sessionId: opened.sessionId,
+      isTest: false,
+      jobs: { [`${scanner.id}:00`]: job(DIR) },
+    };
+    // Session A's row times out and A ends (cancelled) before its image arrives.
+    current = null;
+    await recording.sessionRecords.hooks.onSessionEnd(sessionA, 'cancelled');
+
+    // The user then runs Test Scan, which uses its own `test/` folder.
+    const testDir = path.join(path.dirname(DIR), 'test');
+    const testScan: ScanSessionState = {
+      ...base,
+      sessionId: null,
+      isTest: true,
+      jobs: { [`${scanner.id}:00`]: job(testDir) },
+    };
+    // It ends, and a new test scan is running when A's image arrives.
+    await recording.sessionRecords.hooks.onSessionEnd(testScan, 'completed');
+    current = testScan;
+
+    // A's late image finally arrives.
+    await recording.recorder.record({
+      scanner_id: scanner.id,
+      plate_index: '00',
+      path: file(1, '00'),
+    });
+
+    const rows = await prisma.graviScan.findMany({
+      where: { session_id: opened.sessionId },
+      include: { images: true },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].path).toBe(file(1, '00'));
+    expect(rows[0].images).toHaveLength(1);
+    expect(testScan.jobs[`${scanner.id}:00`].imagePath).toBeUndefined();
+  });
 });

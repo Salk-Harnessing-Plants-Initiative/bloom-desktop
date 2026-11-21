@@ -153,6 +153,36 @@ describe('scan recorder', () => {
     expect(d.createImage).toHaveBeenCalledTimes(1);
   });
 
+  it('records a late image from the previous session under that session, while a new one runs', async () => {
+    const previous = session();
+    const current = session({
+      sessionId: 'sess-2',
+      jobs: {
+        's1:00': {
+          ...previous.jobs['s1:00'],
+          outputPath: path.join('/scans', 'Exp_wave3_20260810T090000', 'p.tif'),
+        },
+      },
+    });
+    const d = deps(current, { getPreviousSession: () => previous });
+    await createScanRecorder(d).record(event());
+    expect(d.createScan.mock.calls[0][0]).toMatchObject({
+      session_id: 'sess-1',
+      wave_number: 2,
+      path: fileFor(3),
+    });
+    expect(current.jobs['s1:00'].imagePath).toBeUndefined();
+  });
+
+  it('logs an image that belongs to neither the current nor the previous session, and records nothing', async () => {
+    const d = deps(session(), { getPreviousSession: () => null });
+    const stray = path.join('/scans', 'Old_wave1_20260801T080000', 'x_cy1.tif');
+    await createScanRecorder(d).record(event({ path: stray }));
+    expect(d.createScan).not.toHaveBeenCalled();
+    expect(d.logProblem).toHaveBeenCalledWith(expect.stringContaining(stray));
+    expect(d.reportError).not.toHaveBeenCalled();
+  });
+
   it('ignores events when there is no session', async () => {
     const d = deps(null);
     await createScanRecorder(d).record(event());
@@ -181,7 +211,6 @@ describe('scan recorder', () => {
   it.each([
     ['no job', { plate_index: '01' }],
     ['an inherited key', { scanner_id: '__proto__', plate_index: '' }],
-    ['another session folder', { path: '/scans/Other_wave1/x_cy3.tif' }],
     ['no path', { path: undefined }],
   ])('ignores an event for %s', async (_label, extra) => {
     const d = deps();
