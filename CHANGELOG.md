@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - GraviScan: Box backup no longer skips images when two scanners scan the same plate position ([#370](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/370)).
 - GraviScan: scans are now saved to the database, uploaded to Bloom and backed up to Box even when the Capture Scan page is closed. The main process records each image and ends the session, so leaving the page during a scan loses nothing ([#502](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/502)). Before this, the development branch saved no image rows at all, so no scan reached Box, Bloom or Download Wave.
+- GraviScan: an image that arrives after its session ended is still recorded under that session, even if a new session or a test scan has started.
 - GraviScan: an image that arrives late, after its row timed out, is recorded under its own cycle, not the next one ([#503](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/503)).
 - GraviScan: an image that was saved but couldn't be recorded in the database is shown on the scan page, and is no longer left as "pending" ([#479](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/479), [#330](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/330)).
 - GraviScan: each scan's start and end times are saved, shared by every grid in the same row, as on the rig. The end time was never saved before. A late image keeps its own row's start time.
