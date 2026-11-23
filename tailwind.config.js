@@ -1,7 +1,12 @@
 const colors = require('tailwindcss/colors');
 
 module.exports = {
-  content: ['./src/renderer/**/*.{js,jsx,ts,tsx,ejs}'],
+  // src/components holds shared components the pages use (search boxes, forms):
+  // without it, classes only they use are never generated.
+  content: [
+    './src/renderer/**/*.{js,jsx,ts,tsx,ejs}',
+    './src/components/**/*.{js,jsx,ts,tsx}',
+  ],
   darkMode: false,
   theme: {
     extend: {
