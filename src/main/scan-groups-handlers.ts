@@ -14,12 +14,8 @@ import { toIsoDate } from '../utils/wave-dates';
 
 /** The part of the Prisma client these handlers use, so tests can pass a fake. */
 export interface ScanGroupsDbLike {
+  $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
   scan: {
-    groupBy(args: {
-      by: ['experiment_id'];
-      where: { deleted: false };
-      _count: { _all: true };
-    }): Promise<Array<{ experiment_id: string; _count: { _all: number } }>>;
     findMany(args: {
       where: { experiment_id: string; deleted: false };
       select: { capture_date: true };
@@ -45,28 +41,67 @@ function fail(error: unknown): DatabaseResponse<never> {
   };
 }
 
-/** Experiments with non-deleted scans, with their counts, sorted by name. */
+/**
+ * A scan's capture time in ms. The pilot app stored capture_date as text, newer scans
+ * store a number, and SQLite ranks any text above any number, so MAX over the raw
+ * column would put every pilot experiment first. Text is read as UTC: hours off at
+ * most, which is enough to order experiments.
+ */
+const CAPTURED_MS = `CASE typeof("capture_date")
+    WHEN 'integer' THEN "capture_date"
+    WHEN 'real' THEN CAST("capture_date" AS INTEGER)
+    WHEN 'text' THEN CAST(ROUND((julianday("capture_date") - 2440587.5) * 86400000) AS INTEGER)
+    ELSE NULL
+  END`;
+
+/** Non-deleted scans counted per experiment, with each one's most recent capture. */
+const EXPERIMENT_COUNTS_SQL = `
+SELECT "experiment_id", COUNT(*) AS "scan_count", MAX(${CAPTURED_MS}) AS "latest_ms"
+FROM "Scan"
+WHERE "deleted" = 0
+GROUP BY "experiment_id"`;
+
+interface ExperimentCountRow {
+  experiment_id: string;
+  scan_count: number | bigint;
+  latest_ms: number | bigint | null;
+}
+
+/**
+ * Experiments with non-deleted scans, with their counts, the one with the most recent
+ * scan first (ties by name). Sorted by name, a station's many older experiments came
+ * first and the ones being scanned now were at the bottom of a long list.
+ */
 export async function listExperimentScanCounts(
   deps: ScanGroupsDeps
 ): Promise<DatabaseResponse<ExperimentScanCount[]>> {
   try {
-    const counts = await deps.db.scan.groupBy({
-      by: ['experiment_id'],
-      where: { deleted: false },
-      _count: { _all: true },
-    });
+    const counts = await deps.db.$queryRawUnsafe<ExperimentCountRow[]>(
+      EXPERIMENT_COUNTS_SQL
+    );
     const experiments = await deps.db.experiment.findMany({
       where: { id: { in: counts.map((c) => c.experiment_id) } },
       select: { id: true, name: true },
     });
     const nameOf = new Map(experiments.map((e) => [e.id, e.name]));
+    const latestOf = new Map(
+      counts.map((c) => [
+        c.experiment_id,
+        c.latest_ms === null ? 0 : Number(c.latest_ms),
+      ])
+    );
     const data = counts
       .map((c) => ({
         experiment_id: c.experiment_id,
         experiment_name: nameOf.get(c.experiment_id) ?? 'Unknown experiment',
-        scan_count: c._count._all,
+        scan_count: Number(c.scan_count),
       }))
-      .sort((a, b) => a.experiment_name.localeCompare(b.experiment_name));
+      .sort(
+        (a, b) =>
+          (latestOf.get(b.experiment_id) ?? 0) -
+            (latestOf.get(a.experiment_id) ?? 0) ||
+          a.experiment_name.localeCompare(b.experiment_name)
+      );
     return { success: true, data };
   } catch (error) {
     return fail(error);

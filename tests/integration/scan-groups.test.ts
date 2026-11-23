@@ -70,13 +70,21 @@ describe('scan groups on a real database', () => {
     db.close();
   }
 
+  function db3Experiment(id: string, name: string) {
+    const db = new Database(dbPath);
+    db.prepare(
+      `INSERT INTO "Experiment" ("id", "name", "species") VALUES (?, ?, 'Arabidopsis')`
+    ).run(id, name);
+    db.close();
+  }
+
   /** "YYYY-MM-DD HH:MM:SS" as the pilot app wrote it, in local time. */
   const pilotText = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
       d.getDate()
     ).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:00:00`;
 
-  it('counts scans per experiment, with text and number dates and without deleted ones', async () => {
+  it('counts scans per experiment, most recent first, with text and number dates and without deleted ones', async () => {
     addScan('a', 'weep', new Date(2026, 9, 28, 10).getTime());
     addScan('b', 'weep', pilotText(new Date(2026, 4, 18, 10)));
     addScan('c', 'weep', new Date(2026, 9, 28, 11).getTime(), true);
@@ -86,10 +94,27 @@ describe('scan groups on a real database', () => {
     expect(result).toEqual({
       success: true,
       data: [
-        { experiment_id: 'alf', experiment_name: 'Alfalfa', scan_count: 1 },
         { experiment_id: 'weep', experiment_name: 'weep6-MBZ', scan_count: 2 },
+        { experiment_id: 'alf', experiment_name: 'Alfalfa', scan_count: 1 },
       ],
     });
+  });
+
+  it('places an experiment with only pilot text dates by its real date, not after every number date', async () => {
+    // SQLite ranks any text above any number, so MAX over the raw column would put
+    // this 2025 pilot experiment first. It must come after the 2026 one.
+    addScan('a', 'alf', pilotText(new Date(2025, 5, 2, 10)));
+    addScan('b', 'weep', new Date(2026, 10, 20, 11).getTime());
+    // A newer pilot text date still wins over an older number date.
+    db3Experiment('kcs', 'KCS');
+    addScan('c', 'kcs', pilotText(new Date(2026, 10, 21, 9)));
+
+    const result = await listExperimentScanCounts({ db: prisma });
+    expect(result.data?.map((e) => e.experiment_id)).toEqual([
+      'kcs',
+      'weep',
+      'alf',
+    ]);
   });
 
   it('lists the days of an experiment with mixed text and number dates, newest first', async () => {

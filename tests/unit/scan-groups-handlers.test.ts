@@ -28,17 +28,23 @@ const local = (day: number, hour: number, minute = 0) =>
 
 function fakeDb(scans: FakeScan[]) {
   const db = {
+    // The grouped count: one row per experiment with non-deleted scans, its count
+    // (SQLite's COUNT comes back as a BigInt) and its most recent capture in ms.
+    $queryRawUnsafe: vi.fn(async () => {
+      const groups = new Map<string, { n: number; latest: number }>();
+      for (const s of scans.filter((s) => !s.deleted)) {
+        const g = groups.get(s.experiment_id) ?? { n: 0, latest: 0 };
+        g.n += 1;
+        g.latest = Math.max(g.latest, s.capture_date.getTime());
+        groups.set(s.experiment_id, g);
+      }
+      return [...groups].map(([experiment_id, g]) => ({
+        experiment_id,
+        scan_count: BigInt(g.n),
+        latest_ms: g.latest,
+      }));
+    }),
     scan: {
-      groupBy: vi.fn(async () => {
-        const counts = new Map<string, number>();
-        for (const s of scans.filter((s) => !s.deleted)) {
-          counts.set(s.experiment_id, (counts.get(s.experiment_id) ?? 0) + 1);
-        }
-        return [...counts].map(([experiment_id, n]) => ({
-          experiment_id,
-          _count: { _all: n },
-        }));
-      }),
       findMany: vi.fn(
         async (args: { where: { experiment_id: string; deleted: false } }) =>
           scans
@@ -64,17 +70,23 @@ const scan = (
 ): FakeScan => ({ experiment_id, capture_date, deleted });
 
 describe('listExperimentScanCounts', () => {
-  it('counts non-deleted scans per experiment, sorted by name', async () => {
+  it('counts non-deleted scans per experiment, most recent scan first', async () => {
     const { db } = fakeDb([
       scan('kcs', local(1, 9)),
       scan('kcs', local(2, 9)),
-      scan('kcs', local(2, 10), true),
+      // Deleted: neither counted nor used for the order.
+      scan('kcs', local(30, 10), true),
       scan('weep', local(28, 10)),
       scan('alf', local(5, 9)),
     ]);
     expect(await listExperimentScanCounts({ db })).toEqual({
       success: true,
       data: [
+        {
+          experiment_id: 'weep',
+          experiment_name: 'weep6-MBZ-Interaction-EXP1',
+          scan_count: 1,
+        },
         {
           experiment_id: 'alf',
           experiment_name: 'Alfalfa-wave3',
@@ -85,13 +97,22 @@ describe('listExperimentScanCounts', () => {
           experiment_name: 'KCS-drought-2026',
           scan_count: 2,
         },
-        {
-          experiment_id: 'weep',
-          experiment_name: 'weep6-MBZ-Interaction-EXP1',
-          scan_count: 1,
-        },
       ],
     });
+  });
+
+  it('orders experiments with the same most recent scan time by name', async () => {
+    const { db } = fakeDb([
+      scan('weep', local(28, 10)),
+      scan('kcs', local(28, 10)),
+      scan('alf', local(28, 10)),
+    ]);
+    const result = await listExperimentScanCounts({ db });
+    expect(result.data?.map((e) => e.experiment_id)).toEqual([
+      'alf',
+      'kcs',
+      'weep',
+    ]);
   });
 
   it('leaves out experiments whose scans are all deleted', async () => {
@@ -113,7 +134,7 @@ describe('listExperimentScanCounts', () => {
 
   it('reports a database error', async () => {
     const { db, raw } = fakeDb([]);
-    raw.scan.groupBy.mockRejectedValue(new Error('database is locked'));
+    raw.$queryRawUnsafe.mockRejectedValue(new Error('database is locked'));
     expect(await listExperimentScanCounts({ db })).toEqual({
       success: false,
       error: 'database is locked',
