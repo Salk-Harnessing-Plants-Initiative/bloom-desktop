@@ -1,9 +1,10 @@
 /**
  * Unit Tests: Export Scans' experiment → day → scan list (#436). The page opens with
- * experiments only, loads a row when it's opened or ticked, and searches by name.
+ * experiments only, newest first, and loads a row when it's opened or ticked. The
+ * filters are tested in Export-filters.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { Export } from '../../../src/renderer/Export';
@@ -57,18 +58,19 @@ const selectedCount = (text: string) =>
   waitFor(() => expect(screen.getByText(text)).toBeInTheDocument());
 
 describe('Export Scans list', () => {
-  it('opens with collapsed experiments and their counts, sorted by name, loading no scans', async () => {
+  it('opens with collapsed experiments and their counts, most recent scan first, loading no scans', async () => {
     render(<Export />);
 
     const rows = await screen.findAllByRole('button', { expanded: false });
+    // weep6 has the newest scan (Nov 4); the other two tie on Oct 28, so by name.
     expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining('weep6-MBZ-Interaction-EXP1'),
       expect.stringContaining('Alfalfa-wave3'),
       expect.stringContaining('KCS-drought-2026'),
-      expect.stringContaining('weep6-MBZ-Interaction-EXP1'),
     ]);
     expect(screen.getByText('3 scans')).toBeInTheDocument();
     expect(api.experimentDays).not.toHaveBeenCalled();
-    expect(api.list).not.toHaveBeenCalled();
+    expect(api.dayScans).not.toHaveBeenCalled();
   });
 
   it('opening an experiment loads only its days; opening a day loads only its scans', async () => {
@@ -86,22 +88,15 @@ describe('Export Scans list', () => {
       expect.stringContaining('Oct 28, 2026'),
     ]);
     expect(api.experimentDays).toHaveBeenCalledTimes(1);
-    expect(api.experimentDays).toHaveBeenCalledWith('weep');
-    expect(api.list).not.toHaveBeenCalled();
+    expect(api.experimentDays).toHaveBeenCalledWith('weep', {});
+    expect(api.dayScans).not.toHaveBeenCalled();
 
     await open(user, 'Oct 28, 2026');
     expect(await screen.findByText('PLANT-w1')).toBeInTheDocument();
     expect(screen.getByText('PLANT-w2')).toBeInTheDocument();
     expect(screen.queryByText('PLANT-w3')).not.toBeInTheDocument();
-    expect(api.list).toHaveBeenCalledTimes(1);
-    expect(api.list).toHaveBeenCalledWith({
-      page: 1,
-      pageSize: 1000,
-      experimentId: 'weep',
-      dateFrom: '2026-10-28',
-      dateTo: '2026-10-28',
-      summary: true,
-    });
+    expect(api.dayScans).toHaveBeenCalledTimes(1);
+    expect(api.dayScans).toHaveBeenCalledWith('weep', '2026-10-28', {});
   });
 
   it('keeps opened rows loaded when they are closed and reopened', async () => {
@@ -118,7 +113,7 @@ describe('Export Scans list', () => {
 
     expect(screen.getByText('PLANT-w1')).toBeInTheDocument();
     expect(api.experimentDays).toHaveBeenCalledTimes(1);
-    expect(api.list).toHaveBeenCalledTimes(1);
+    expect(api.dayScans).toHaveBeenCalledTimes(1);
   });
 
   it('ticking an unopened experiment loads and selects all its scans; unticking clears them', async () => {
@@ -224,30 +219,6 @@ describe('Export Scans list', () => {
     await user.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('Nov 4, 2026')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-
-  it('searches experiments by any part of the name, ignoring case, and keeps hidden selections', async () => {
-    const user = userEvent.setup();
-    render(<Export />);
-    await screen.findByText('weep6-MBZ-Interaction-EXP1');
-    await user.click(box('Select all scans in KCS-drought-2026'));
-    await selectedCount('1 scan selected');
-
-    await user.type(screen.getByRole('searchbox'), 'mbz');
-    const list = screen.getByRole('list');
-    expect(
-      within(list).getByText('weep6-MBZ-Interaction-EXP1')
-    ).toBeInTheDocument();
-    expect(
-      within(list).queryByText('KCS-drought-2026')
-    ).not.toBeInTheDocument();
-    expect(screen.getByText('1 scan selected')).toBeInTheDocument();
-
-    await user.clear(screen.getByRole('searchbox'));
-    await user.type(screen.getByRole('searchbox'), 'nothing');
-    expect(
-      screen.getByText('No experiments match “nothing”.')
-    ).toBeInTheDocument();
   });
 
   it('says when the experiments could not be loaded', async () => {

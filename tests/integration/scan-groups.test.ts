@@ -12,6 +12,7 @@ import * as path from 'path';
 import Database from 'better-sqlite3';
 import { PrismaClient } from '@prisma/client';
 import {
+  listDayScans,
   listExperimentScanCounts,
   listExperimentScanDays,
 } from '../../src/main/scan-groups-handlers';
@@ -134,5 +135,51 @@ describe('scan groups on a real database', () => {
         { day: '2026-05-18', scan_count: 1 },
       ],
     });
+  });
+
+  it('searches by phenotyper, name and dates, with pilot text dates, consistently at every level', async () => {
+    const db = new Database(dbPath);
+    db.exec(
+      `INSERT INTO "Phenotyper" ("id", "name", "email") VALUES ('em', 'Emily', 'emily@example.org');`
+    );
+    db.close();
+    addScan('a', 'weep', new Date(2026, 10, 20, 11).getTime());
+    addScan('b', 'weep', pilotText(new Date(2025, 10, 20, 10)));
+    addScan('c', 'alf', new Date(2026, 10, 19, 9).getTime());
+    addScan('d', 'alf', new Date(2026, 10, 20, 9).getTime(), true);
+    // Emily's scan: same columns, other phenotyper.
+    const raw = new Database(dbPath);
+    raw.exec(`UPDATE "Scan" SET "phenotyper_id" = 'em' WHERE "id" = 'c'`);
+    raw.close();
+
+    const deps = { db: prisma };
+    const cases: Array<[object, string[]]> = [
+      [{ search: 'Nov 20' }, ['a', 'b']],
+      [{ search: 'Nov 20, 2025' }, ['b']],
+      [{ search: 'emily' }, ['c']],
+      [{ search: 'Nov 2026' }, ['a', 'c']],
+      [{ dateFrom: '2026-11-19', dateTo: '2026-11-20' }, ['a', 'c']],
+      [{ dateTo: '2025-12-31' }, ['b']],
+      [{ search: 'weep6', dateFrom: '2026-01-01' }, ['a']],
+      [{ search: 'weep6' }, ['a', 'b']],
+    ];
+    for (const [filter, expected] of cases) {
+      const ids: string[] = [];
+      const counts = (await listExperimentScanCounts(deps, filter)).data!;
+      for (const exp of counts) {
+        const days = (
+          await listExperimentScanDays(deps, exp.experiment_id, filter)
+        ).data!;
+        expect(days.reduce((n, d) => n + d.scan_count, 0)).toBe(exp.scan_count);
+        for (const d of days) {
+          const scans = (
+            await listDayScans(deps, exp.experiment_id, d.day, filter)
+          ).data!;
+          expect(scans).toHaveLength(d.scan_count);
+          ids.push(...scans.map((s) => s.id));
+        }
+      }
+      expect({ filter, ids: ids.sort() }).toEqual({ filter, ids: expected });
+    }
   });
 });

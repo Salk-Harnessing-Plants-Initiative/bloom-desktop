@@ -4,17 +4,27 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import {
+  listDayScans,
   listExperimentScanCounts,
   listExperimentScanDays,
+  readFilter,
   registerScanGroupsHandlers,
   type ScanGroupsDbLike,
 } from '../../src/main/scan-groups-handlers';
 
 interface FakeScan {
+  id: string;
   experiment_id: string;
   capture_date: Date;
   deleted: boolean;
+  phenotyper_id: string;
+  plant_id: string;
 }
+
+const PHENOTYPERS: Record<string, string> = {
+  emily: 'Emily Smith',
+  ana: 'Ana Lopez',
+};
 
 const EXPERIMENTS = [
   { id: 'kcs', name: 'KCS-drought-2026' },
@@ -45,13 +55,25 @@ function fakeDb(scans: FakeScan[]) {
       }));
     }),
     scan: {
-      findMany: vi.fn(
-        async (args: { where: { experiment_id: string; deleted: false } }) =>
-          scans
-            .filter(
-              (s) => s.experiment_id === args.where.experiment_id && !s.deleted
-            )
-            .map((s) => ({ capture_date: s.capture_date }))
+      findMany: vi.fn(async (args: { where: { experiment_id?: string } }) =>
+        scans
+          .filter(
+            (s) =>
+              !s.deleted &&
+              (!args.where.experiment_id ||
+                s.experiment_id === args.where.experiment_id)
+          )
+          .map((s) => ({
+            id: s.id,
+            experiment_id: s.experiment_id,
+            plant_id: s.plant_id,
+            capture_date: s.capture_date,
+            scanner_name: 'SlowScanner',
+            experiment: {
+              name: EXPERIMENTS.find((e) => e.id === s.experiment_id)!.name,
+            },
+            phenotyper: { name: PHENOTYPERS[s.phenotyper_id] },
+          }))
       ),
     },
     experiment: {
@@ -63,11 +85,21 @@ function fakeDb(scans: FakeScan[]) {
   return { db: db as ScanGroupsDbLike, raw: db };
 }
 
+let nextId = 0;
 const scan = (
   experiment_id: string,
   capture_date: Date,
-  deleted = false
-): FakeScan => ({ experiment_id, capture_date, deleted });
+  deleted = false,
+  phenotyper_id = 'emily',
+  plant_id = 'PLANT-1'
+): FakeScan => ({
+  id: `scan-${++nextId}`,
+  experiment_id,
+  capture_date,
+  deleted,
+  phenotyper_id,
+  plant_id,
+});
 
 describe('listExperimentScanCounts', () => {
   it('counts non-deleted scans per experiment, most recent scan first', async () => {
@@ -196,8 +228,136 @@ describe('listExperimentScanDays', () => {
   });
 });
 
+describe('filters (#471)', () => {
+  const SCANS = () => [
+    scan('weep', local(20, 11), false, 'emily', 'ECQM33-005-1-10'),
+    scan('weep', local(20, 23, 30), false, 'ana', 'ECQM33-001-1-2'),
+    scan('weep', local(19, 9), false, 'emily', 'WT-SEM-3'),
+    scan('kcs', local(20, 10), false, 'ana', 'KCS-1'),
+    scan('kcs', local(20, 10, 5), true, 'emily', 'KCS-2'),
+    scan('alf', local(1, 9), false, 'emily', 'ALF-1'),
+  ];
+
+  it('counts only matching scans, most recent matching scan first', async () => {
+    const { db } = fakeDb(SCANS());
+    const result = await listExperimentScanCounts({ db }, { search: 'emily' });
+    expect(result.data).toEqual([
+      {
+        experiment_id: 'weep',
+        experiment_name: 'weep6-MBZ-Interaction-EXP1',
+        scan_count: 2,
+      },
+      { experiment_id: 'alf', experiment_name: 'Alfalfa-wave3', scan_count: 1 },
+    ]);
+  });
+
+  it('uses the grouped query only without a filter', async () => {
+    const { db, raw } = fakeDb(SCANS());
+    await listExperimentScanCounts({ db }, {});
+    expect(raw.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+    await listExperimentScanCounts({ db }, { search: 'emily' });
+    expect(raw.$queryRawUnsafe).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [{ search: 'emi' }],
+    [{ search: 'Oct 20, 2026' }],
+    [{ search: '005-1' }],
+    [{ search: 'weep' }],
+    [{ search: 'ana' }],
+    [{ search: 'kcs' }],
+    [{ search: 'oct 2026' }],
+    [{ dateFrom: '2026-10-20', dateTo: '2026-10-20' }],
+    [{ search: 'emily', dateFrom: '2026-10-19' }],
+  ])(
+    'with %j, each count equals its days, and each day what opening it lists',
+    async (filter) => {
+      const { db } = fakeDb(SCANS());
+      const counts = (await listExperimentScanCounts({ db }, filter)).data!;
+      expect(counts.length).toBeGreaterThan(0);
+      for (const exp of counts) {
+        const days = (
+          await listExperimentScanDays({ db }, exp.experiment_id, filter)
+        ).data!;
+        expect(days.reduce((n, d) => n + d.scan_count, 0)).toBe(exp.scan_count);
+        for (const d of days) {
+          const listed = (
+            await listDayScans({ db }, exp.experiment_id, d.day, filter)
+          ).data!;
+          expect(listed).toHaveLength(d.scan_count);
+        }
+      }
+    }
+  );
+
+  it('matches a typed date by local day, late in the evening too', async () => {
+    const { db } = fakeDb(SCANS());
+    const days = await listExperimentScanDays({ db }, 'weep', {
+      search: 'Oct 20, 2026',
+    });
+    expect(days.data).toEqual([{ day: '2026-10-20', scan_count: 2 }]);
+  });
+
+  it("lists a day's matching scans newest first, as summaries", async () => {
+    const { db } = fakeDb(SCANS());
+    const result = await listDayScans({ db }, 'weep', '2026-10-20', {});
+    expect(result.data?.map((s) => s.plant_id)).toEqual([
+      'ECQM33-001-1-2',
+      'ECQM33-005-1-10',
+    ]);
+    expect(result.data?.[0]).toEqual({
+      id: expect.any(String),
+      experiment_id: 'weep',
+      plant_id: 'ECQM33-001-1-2',
+      capture_date: local(20, 23, 30),
+      scanner_name: 'SlowScanner',
+      experiment: { name: 'weep6-MBZ-Interaction-EXP1' },
+    });
+  });
+
+  it('never lists deleted scans', async () => {
+    const { db } = fakeDb(SCANS());
+    const result = await listDayScans({ db }, 'kcs', '2026-10-20', {
+      search: 'KCS-2',
+    });
+    expect(result.data).toEqual([]);
+  });
+
+  it('rejects a bad day or filter without reading', async () => {
+    const { db, raw } = fakeDb(SCANS());
+    expect((await listDayScans({ db }, 'weep', 'Oct 20')).success).toBe(false);
+    expect((await listExperimentScanCounts({ db }, 'soy')).success).toBe(false);
+    expect(
+      (await listExperimentScanCounts({ db }, { dateFrom: '2026-13-01' }))
+        .success
+    ).toBe(false);
+    expect(
+      (await listExperimentScanDays({ db }, 'weep', { search: 5 })).success
+    ).toBe(false);
+    expect(raw.scan.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('readFilter', () => {
+  it('keeps set parts and drops empty ones', () => {
+    expect(readFilter(undefined)).toEqual({});
+    expect(readFilter({ search: '', dateFrom: '' })).toEqual({});
+    expect(
+      readFilter({ search: 'soy', dateFrom: '2026-11-01', other: 1 })
+    ).toEqual({ search: 'soy', dateFrom: '2026-11-01' });
+  });
+
+  it('refuses wrong types and dates', () => {
+    expect(readFilter('soy')).toBe('filter must be an object');
+    expect(readFilter({ search: 5 })).toBe('search must be a string');
+    expect(readFilter({ dateTo: '11/20/2026' })).toBe(
+      'dateTo must be a date (YYYY-MM-DD)'
+    );
+  });
+});
+
 describe('registerScanGroupsHandlers', () => {
-  it('registers both requests', async () => {
+  it('registers the three requests', async () => {
     const { db } = fakeDb([scan('weep', local(28, 10))]);
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
     registerScanGroupsHandlers({
@@ -215,5 +375,10 @@ describe('registerScanGroupsHandlers', () => {
       success: true,
       data: [{ day: '2026-10-28', scan_count: 1 }],
     });
+    expect(
+      await handlers.get('db:scans:dayScans')!({}, 'weep', '2026-10-28', {
+        search: 'oct 28',
+      })
+    ).toMatchObject({ success: true, data: [{ experiment_id: 'weep' }] });
   });
 });

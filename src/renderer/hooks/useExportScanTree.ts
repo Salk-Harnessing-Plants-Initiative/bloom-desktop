@@ -2,17 +2,13 @@
  * Export Scans' experiments → days → scans (#436). Only what is opened or ticked is
  * loaded: an experiment's days when it's opened, a day's scans when it's opened.
  * Ticking an experiment or day that isn't loaded loads it first, then selects its
- * scans; Export waits meanwhile (pending > 0). What has loaded stays loaded.
+ * scans; Export waits meanwhile (pending > 0). What has loaded stays loaded until
+ * the filter changes (#471): then rows load again, filtered, and the selection stays.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ScanSummary } from '../../types/database';
-import type { ExperimentScanDay } from '../../types/scan-groups';
-
-// Summaries carry no image rows, so a page can hold many (MAX_SUMMARY_PAGE_SIZE).
-const SCANS_PAGE_SIZE = 1000;
-// Guards against an endless loop if paging ever miscounts; a day is far smaller.
-const MAX_SCAN_PAGES = 1000;
+import type { ExperimentScanDay, ScanFilter } from '../../types/scan-groups';
 
 export type Loaded<T> =
   | { status: 'loading' }
@@ -26,42 +22,38 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
-async function fetchDays(experimentId: string): Promise<ExperimentScanDay[]> {
-  const result =
-    await window.electron.database.scans.experimentDays(experimentId);
+async function fetchDays(
+  experimentId: string,
+  filter: ScanFilter
+): Promise<ExperimentScanDay[]> {
+  const result = await window.electron.database.scans.experimentDays(
+    experimentId,
+    filter
+  );
   if (!result.success || !result.data) {
     throw new Error(result.error ?? 'Unknown error');
   }
   return result.data;
 }
 
-/** One experiment's scans on one local day, page by page. */
+/** One experiment's matching scans on one local day. */
 async function fetchDayScans(
   experimentId: string,
-  day: string
+  day: string,
+  filter: ScanFilter
 ): Promise<ScanSummary[]> {
-  const all: ScanSummary[] = [];
-  for (let page = 1; page <= MAX_SCAN_PAGES; page++) {
-    const result = await window.electron.database.scans.list({
-      page,
-      pageSize: SCANS_PAGE_SIZE,
-      experimentId,
-      dateFrom: day,
-      dateTo: day,
-      summary: true,
-    });
-    if (!result.success || !result.data) {
-      throw new Error(result.error ?? 'Unknown error');
-    }
-    all.push(...result.data.scans);
-    if (all.length >= result.data.total || result.data.scans.length === 0) {
-      return all;
-    }
+  const result = await window.electron.database.scans.dayScans(
+    experimentId,
+    day,
+    filter
+  );
+  if (!result.success || !result.data) {
+    throw new Error(result.error ?? 'Unknown error');
   }
-  throw new Error(`Scan pages did not end after ${MAX_SCAN_PAGES} pages`);
+  return result.data;
 }
 
-export function useExportScanTree() {
+export function useExportScanTree(filter: ScanFilter = {}) {
   const [days, setDays] = useState<Record<string, Loaded<ExperimentScanDay[]>>>(
     {}
   );
@@ -78,20 +70,42 @@ export function useExportScanTree() {
   const wanted = useRef(new Map<string, boolean>());
   // Each loaded day's scans, for unticking without waiting for state.
   const loadedScans = useRef(new Map<string, ScanSummary[]>());
+  // The filter rows load with, and a count of filter changes: a row that finishes
+  // loading after the filter changed is dropped, not shown under the new one.
+  const filterRef = useRef(filter);
+  const generation = useRef(0);
+  const filterKey = JSON.stringify(filter);
+
+  useEffect(() => {
+    if (filterKey === JSON.stringify(filterRef.current)) return;
+    filterRef.current = JSON.parse(filterKey) as ScanFilter;
+    generation.current += 1;
+    daysRequests.current.clear();
+    scanRequests.current.clear();
+    loadedScans.current.clear();
+    // A row ticked under the old filter doesn't select once it loads.
+    for (const key of wanted.current.keys()) wanted.current.set(key, false);
+    setDays({});
+    setDayScans({});
+  }, [filterKey]);
 
   const loadDays = useCallback((experimentId: string) => {
     let request = daysRequests.current.get(experimentId);
     if (!request) {
+      const asked = generation.current;
       setDays((prev) => ({ ...prev, [experimentId]: { status: 'loading' } }));
-      request = fetchDays(experimentId);
+      request = fetchDays(experimentId, filterRef.current);
       daysRequests.current.set(experimentId, request);
       request.then(
-        (data) =>
+        (data) => {
+          if (asked !== generation.current) return;
           setDays((prev) => ({
             ...prev,
             [experimentId]: { status: 'loaded', data },
-          })),
+          }));
+        },
         (error: unknown) => {
+          if (asked !== generation.current) return;
           daysRequests.current.delete(experimentId);
           setDays((prev) => ({
             ...prev,
@@ -107,11 +121,13 @@ export function useExportScanTree() {
     const key = dayKey(experimentId, day);
     let request = scanRequests.current.get(key);
     if (!request) {
+      const asked = generation.current;
       setDayScans((prev) => ({ ...prev, [key]: { status: 'loading' } }));
-      request = fetchDayScans(experimentId, day);
+      request = fetchDayScans(experimentId, day, filterRef.current);
       scanRequests.current.set(key, request);
       request.then(
         (data) => {
+          if (asked !== generation.current) return;
           loadedScans.current.set(key, data);
           setDayScans((prev) => ({
             ...prev,
@@ -119,6 +135,7 @@ export function useExportScanTree() {
           }));
         },
         (error: unknown) => {
+          if (asked !== generation.current) return;
           scanRequests.current.delete(key);
           setDayScans((prev) => ({
             ...prev,

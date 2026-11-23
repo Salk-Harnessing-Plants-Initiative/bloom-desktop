@@ -1,25 +1,53 @@
 /**
- * Export Scans' experiment and day lists (#436): scan counts per experiment, and the
- * days one experiment has scans on, so the page can open without loading every scan.
- * A day's scans then come from db:scans:list with a one-day range.
+ * Export Scans' experiment and day lists (#436): scan counts per experiment, the days
+ * one experiment has scans on, and one day's scans, so the page can open without
+ * loading every scan. All three take the same filter (#471), applied by one matcher,
+ * so a count always equals what opening the row lists.
  */
 
 import type { IpcMain } from 'electron';
-import type { DatabaseResponse } from '../types/database';
+import type { DatabaseResponse, ScanSummary } from '../types/database';
 import type {
   ExperimentScanCount,
   ExperimentScanDay,
+  ScanFilter,
 } from '../types/scan-groups';
-import { toIsoDate } from '../utils/wave-dates';
+import { isIsoDate, toIsoDate } from '../utils/wave-dates';
+import {
+  isEmptyFilter,
+  scanMatcher,
+  type FilterableScan,
+} from '../utils/scan-search';
+
+/** A scan as the filter and the day list need it. */
+const SCAN_ROW_SELECT = {
+  id: true,
+  experiment_id: true,
+  plant_id: true,
+  capture_date: true,
+  scanner_name: true,
+  experiment: { select: { name: true } },
+  phenotyper: { select: { name: true } },
+} as const;
+
+interface ScanRow {
+  id: string;
+  experiment_id: string;
+  plant_id: string;
+  capture_date: Date;
+  scanner_name: string;
+  experiment: { name: string };
+  phenotyper: { name: string };
+}
 
 /** The part of the Prisma client these handlers use, so tests can pass a fake. */
 export interface ScanGroupsDbLike {
   $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
   scan: {
     findMany(args: {
-      where: { experiment_id: string; deleted: false };
-      select: { capture_date: true };
-    }): Promise<Array<{ capture_date: Date }>>;
+      where: { deleted: false; experiment_id?: string };
+      select: typeof SCAN_ROW_SELECT;
+    }): Promise<ScanRow[]>;
   };
   experiment: {
     findMany(args: {
@@ -31,6 +59,53 @@ export interface ScanGroupsDbLike {
 
 export interface ScanGroupsDeps {
   db: ScanGroupsDbLike;
+}
+
+/**
+ * The filter from the renderer, checked: the search a string, dates "YYYY-MM-DD".
+ * Returns an error message for anything else.
+ */
+export function readFilter(value: unknown): ScanFilter | string {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object') return 'filter must be an object';
+  const raw = value as Record<string, unknown>;
+  const filter: ScanFilter = {};
+  if (raw.search !== undefined && raw.search !== '') {
+    if (typeof raw.search !== 'string') return 'search must be a string';
+    filter.search = raw.search;
+  }
+  for (const key of ['dateFrom', 'dateTo'] as const) {
+    const part = raw[key];
+    if (part === undefined || part === '') continue;
+    if (!isIsoDate(part)) return `${key} must be a date (YYYY-MM-DD)`;
+    filter[key] = part;
+  }
+  return filter;
+}
+
+/** Non-deleted scans matching the filter, optionally of one experiment only. */
+async function matchingScans(
+  deps: ScanGroupsDeps,
+  filter: ScanFilter,
+  experimentId?: string
+): Promise<ScanRow[]> {
+  const rows = await deps.db.scan.findMany({
+    where: {
+      deleted: false,
+      ...(experimentId ? { experiment_id: experimentId } : {}),
+    },
+    select: SCAN_ROW_SELECT,
+  });
+  const matches = scanMatcher(filter);
+  return rows.filter((row) => {
+    const scan: FilterableScan = {
+      ...row,
+      capture_date: new Date(row.capture_date),
+      experiment_name: row.experiment.name,
+      phenotyper_name: row.phenotyper.name,
+    };
+    return matches(scan);
+  });
 }
 
 function fail(error: unknown): DatabaseResponse<never> {
@@ -67,18 +142,43 @@ interface ExperimentCountRow {
   latest_ms: number | bigint | null;
 }
 
+/** The filtered scans counted per experiment, as the grouped query counts them. */
+function countRows(rows: ScanRow[]): ExperimentCountRow[] {
+  const groups = new Map<string, ExperimentCountRow>();
+  for (const row of rows) {
+    const captured = new Date(row.capture_date).getTime();
+    const group = groups.get(row.experiment_id);
+    if (!group) {
+      groups.set(row.experiment_id, {
+        experiment_id: row.experiment_id,
+        scan_count: 1,
+        latest_ms: captured,
+      });
+    } else {
+      group.scan_count = Number(group.scan_count) + 1;
+      group.latest_ms = Math.max(Number(group.latest_ms), captured);
+    }
+  }
+  return [...groups.values()];
+}
+
 /**
  * Experiments with non-deleted scans, with their counts, the one with the most recent
  * scan first (ties by name). Sorted by name, a station's many older experiments came
  * first and the ones being scanned now were at the bottom of a long list.
  */
 export async function listExperimentScanCounts(
-  deps: ScanGroupsDeps
+  deps: ScanGroupsDeps,
+  filterInput?: unknown
 ): Promise<DatabaseResponse<ExperimentScanCount[]>> {
+  const filter = readFilter(filterInput);
+  if (typeof filter === 'string') return { success: false, error: filter };
   try {
-    const counts = await deps.db.$queryRawUnsafe<ExperimentCountRow[]>(
-      EXPERIMENT_COUNTS_SQL
-    );
+    const counts = isEmptyFilter(filter)
+      ? await deps.db.$queryRawUnsafe<ExperimentCountRow[]>(
+          EXPERIMENT_COUNTS_SQL
+        )
+      : countRows(await matchingScans(deps, filter));
     const experiments = await deps.db.experiment.findMany({
       where: { id: { in: counts.map((c) => c.experiment_id) } },
       select: { id: true, name: true },
@@ -108,26 +208,28 @@ export async function listExperimentScanCounts(
   }
 }
 
+/** The experiment id from the renderer, trimmed; '' when missing. */
+const readExperimentId = (value: unknown) =>
+  typeof value === 'string' ? value.trim() : '';
+
 /**
- * The local days one experiment has non-deleted scans on, newest first. Grouped here,
- * not in SQL: databases from the pilot app can mix text and number dates, which SQL
- * date functions and Prisma's groupBy don't handle. Same local-day rule as the
- * day filter of db:scans:list, so a day's count matches what opening it loads.
+ * The local days one experiment has matching non-deleted scans on, newest first.
+ * Grouped here, not in SQL: databases from the pilot app can mix text and number
+ * dates, which SQL date functions and Prisma's groupBy don't handle.
  */
 export async function listExperimentScanDays(
   deps: ScanGroupsDeps,
-  experimentId: string
+  experimentIdInput: unknown,
+  filterInput?: unknown
 ): Promise<DatabaseResponse<ExperimentScanDay[]>> {
-  const experiment =
-    typeof experimentId === 'string' ? experimentId.trim() : '';
+  const experiment = readExperimentId(experimentIdInput);
   if (!experiment) {
     return { success: false, error: 'experimentId must be a non-empty string' };
   }
+  const filter = readFilter(filterInput);
+  if (typeof filter === 'string') return { success: false, error: filter };
   try {
-    const scans = await deps.db.scan.findMany({
-      where: { experiment_id: experiment, deleted: false },
-      select: { capture_date: true },
-    });
+    const scans = await matchingScans(deps, filter, experiment);
     const perDay = new Map<string, number>();
     for (const { capture_date } of scans) {
       const day = toIsoDate(new Date(capture_date));
@@ -142,14 +244,59 @@ export async function listExperimentScanDays(
   }
 }
 
+/** One experiment's matching scans on one local day, newest first. */
+export async function listDayScans(
+  deps: ScanGroupsDeps,
+  experimentIdInput: unknown,
+  dayInput: unknown,
+  filterInput?: unknown
+): Promise<DatabaseResponse<ScanSummary[]>> {
+  const experiment = readExperimentId(experimentIdInput);
+  if (!experiment) {
+    return { success: false, error: 'experimentId must be a non-empty string' };
+  }
+  if (!isIsoDate(dayInput)) {
+    return { success: false, error: 'day must be a date (YYYY-MM-DD)' };
+  }
+  const filter = readFilter(filterInput);
+  if (typeof filter === 'string') return { success: false, error: filter };
+  try {
+    const scans = await matchingScans(deps, filter, experiment);
+    const data = scans
+      .filter((s) => toIsoDate(new Date(s.capture_date)) === dayInput)
+      .sort(
+        (a, b) =>
+          new Date(b.capture_date).getTime() -
+          new Date(a.capture_date).getTime()
+      )
+      .map((s) => ({
+        id: s.id,
+        experiment_id: s.experiment_id,
+        plant_id: s.plant_id,
+        capture_date: s.capture_date,
+        scanner_name: s.scanner_name,
+        experiment: { name: s.experiment.name },
+      }));
+    return { success: true, data };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
 export function registerScanGroupsHandlers(
   deps: ScanGroupsDeps & { ipcMain: Pick<IpcMain, 'handle'> }
 ): void {
-  deps.ipcMain.handle('db:scans:experimentCounts', () =>
-    listExperimentScanCounts(deps)
+  deps.ipcMain.handle('db:scans:experimentCounts', (_event, filter: unknown) =>
+    listExperimentScanCounts(deps, filter)
   );
   deps.ipcMain.handle(
     'db:scans:experimentDays',
-    (_event, experimentId: string) => listExperimentScanDays(deps, experimentId)
+    (_event, experimentId: unknown, filter: unknown) =>
+      listExperimentScanDays(deps, experimentId, filter)
+  );
+  deps.ipcMain.handle(
+    'db:scans:dayScans',
+    (_event, experimentId: unknown, day: unknown, filter: unknown) =>
+      listDayScans(deps, experimentId, day, filter)
   );
 }

@@ -75,6 +75,7 @@ const mockDatabaseAPI = {
     }),
     experimentCounts: vi.fn().mockResolvedValue({ success: true, data: [] }),
     experimentDays: vi.fn().mockResolvedValue({ success: true, data: [] }),
+    dayScans: vi.fn().mockResolvedValue({ success: true, data: [] }),
     export: vi.fn().mockResolvedValue({
       success: true,
       data: {

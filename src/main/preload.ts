@@ -20,6 +20,7 @@ import {
 import type { MachineConfig } from './config-store';
 import type { SpeciesAPI } from '../types/species';
 import type { ConfirmCameraSettingsInput } from '../types/experiment-camera-settings';
+import type { ScanFilter } from '../types/scan-groups';
 // eslint-disable-next-line import/no-unresolved
 import { CameraSettings, CapturedImage } from '../types/camera';
 // eslint-disable-next-line import/no-unresolved
@@ -271,10 +272,14 @@ const databaseAPI: DatabaseAPI = {
     list: (filters?: ScanFilters | PaginatedScanFilters) =>
       ipcRenderer.invoke('db:scans:list', filters),
     /** Export Scans: scan counts per experiment, without the scans (#436). */
-    experimentCounts: () => ipcRenderer.invoke('db:scans:experimentCounts'),
+    experimentCounts: (filter?: ScanFilter) =>
+      ipcRenderer.invoke('db:scans:experimentCounts', filter),
     /** Export Scans: the days one experiment has scans on, with counts. */
-    experimentDays: (experimentId: string) =>
-      ipcRenderer.invoke('db:scans:experimentDays', experimentId),
+    experimentDays: (experimentId: string, filter?: ScanFilter) =>
+      ipcRenderer.invoke('db:scans:experimentDays', experimentId, filter),
+    /** Export Scans: one experiment's scans on one local day, newest first. */
+    dayScans: (experimentId: string, day: string, filter?: ScanFilter) =>
+      ipcRenderer.invoke('db:scans:dayScans', experimentId, day, filter),
     get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
     create: (data: ScanCreateData) =>
       ipcRenderer.invoke('db:scans:create', data),
