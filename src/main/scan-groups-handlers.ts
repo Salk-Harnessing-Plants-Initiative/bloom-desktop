@@ -244,7 +244,10 @@ export async function listExperimentScanDays(
   }
 }
 
-/** One experiment's matching scans on one local day, newest first. */
+/**
+ * One experiment's matching scans on one local day, newest first; with day null,
+ * of every day, so ticking an experiment reads it once rather than once per day.
+ */
 export async function listDayScans(
   deps: ScanGroupsDeps,
   experimentIdInput: unknown,
@@ -255,15 +258,18 @@ export async function listDayScans(
   if (!experiment) {
     return { success: false, error: 'experimentId must be a non-empty string' };
   }
-  if (!isIsoDate(dayInput)) {
-    return { success: false, error: 'day must be a date (YYYY-MM-DD)' };
+  if (dayInput !== null && !isIsoDate(dayInput)) {
+    return { success: false, error: 'day must be a date (YYYY-MM-DD) or null' };
   }
   const filter = readFilter(filterInput);
   if (typeof filter === 'string') return { success: false, error: filter };
   try {
     const scans = await matchingScans(deps, filter, experiment);
     const data = scans
-      .filter((s) => toIsoDate(new Date(s.capture_date)) === dayInput)
+      .filter(
+        (s) =>
+          dayInput === null || toIsoDate(new Date(s.capture_date)) === dayInput
+      )
       .sort(
         (a, b) =>
           new Date(b.capture_date).getTime() -

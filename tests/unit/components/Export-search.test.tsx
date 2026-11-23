@@ -4,7 +4,13 @@
  * The list, its counts and "select all" follow them; the selection is kept.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { Export } from '../../../src/renderer/Export';
@@ -187,5 +193,101 @@ describe('Export Scans search', () => {
       expect(experimentRows()).toEqual([NAMES.stl, NAMES.kcs])
     );
     expect(screen.queryByTestId('filter-summary')).not.toBeInTheDocument();
+  });
+
+  it('rows left open load again after Clear, not "Loading" forever', async () => {
+    const user = userEvent.setup();
+    render(<Export />);
+    await screen.findByText(NAMES.stl);
+
+    await search(user, 'emily');
+    await waitFor(() => expect(summary()).toHaveTextContent('3 of 5 scans'));
+    await user.click(screen.getByRole('button', { name: NAMES.stl }));
+    await screen.findByRole('button', { name: 'Nov 20, 2026' });
+    await user.click(screen.getByRole('button', { name: 'Clear' }));
+
+    await waitFor(() =>
+      expect(screen.queryByTestId('filter-summary')).not.toBeInTheDocument()
+    );
+    await waitFor(() =>
+      expect(screen.queryByText(/Loading its days/)).not.toBeInTheDocument()
+    );
+  });
+
+  it('ticking an experiment reads its scans once, not once per day', async () => {
+    const user = userEvent.setup();
+    render(<Export />);
+    await screen.findByText(NAMES.stl);
+
+    await user.click(
+      screen.getByRole('checkbox', { name: `Select all scans in ${NAMES.stl}` })
+    );
+    await waitFor(() =>
+      expect(screen.getByText('3 scans selected')).toBeInTheDocument()
+    );
+    expect(api.dayScans).toHaveBeenCalledTimes(1);
+    expect(api.dayScans).toHaveBeenCalledWith('stl', null, {});
+
+    // Its days are filed too, so unticking it unselects them.
+    await user.click(
+      screen.getByRole('checkbox', { name: `Select all scans in ${NAMES.stl}` })
+    );
+    expect(screen.getByText('0 scans selected')).toBeInTheDocument();
+  });
+
+  it('does not search a From date while its year is still being typed', async () => {
+    render(<Export />);
+    await screen.findByText(NAMES.stl);
+
+    fireEvent.change(screen.getByLabelText('From date'), {
+      target: { value: '0002-11-01' },
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(api.experimentCounts).not.toHaveBeenCalledWith({
+      dateFrom: '0002-11-01',
+    });
+    expect(screen.queryByText(/could not be loaded/)).not.toBeInTheDocument();
+  });
+
+  it('Clear selection empties the selection, whatever the search shows', async () => {
+    const user = userEvent.setup();
+    render(<Export />);
+    await screen.findByText(NAMES.stl);
+
+    await user.click(
+      screen.getByRole('checkbox', { name: `Select all scans in ${NAMES.stl}` })
+    );
+    await waitFor(() =>
+      expect(screen.getByText('3 scans selected')).toBeInTheDocument()
+    );
+    await search(user, 'ana');
+    await waitFor(() => expect(summary()).toHaveTextContent('2 of 5 scans'));
+    await user.click(screen.getByRole('button', { name: 'Clear selection' }));
+    expect(screen.getByText('0 scans selected')).toBeInTheDocument();
+  });
+
+  it('a tick still loading when the search changes selects nothing', async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    const answer = api.dayScans;
+    api.dayScans = vi.fn(
+      (...args: unknown[]) =>
+        new Promise((resolve) => {
+          release = () => resolve(answer(...args));
+        })
+    );
+    render(<Export />);
+    await screen.findByText(NAMES.stl);
+
+    await user.click(
+      screen.getByRole('checkbox', { name: `Select all scans in ${NAMES.stl}` })
+    );
+    await waitFor(() => expect(api.dayScans).toHaveBeenCalled());
+    await search(user, 'emily');
+    await waitFor(() => expect(summary()).toHaveTextContent('3 of 5 scans'));
+    release();
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText('0 scans selected')).toBeInTheDocument();
   });
 });

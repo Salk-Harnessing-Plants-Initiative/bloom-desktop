@@ -315,6 +315,18 @@ describe('filters (#471)', () => {
     });
   });
 
+  it("with no day, lists every day's matching scans in one read, newest first", async () => {
+    const { db, raw } = fakeDb(SCANS());
+    const result = await listDayScans({ db }, 'weep', null, {
+      search: 'emily',
+    });
+    expect(result.data?.map((s) => s.plant_id)).toEqual([
+      'ECQM33-005-1-10',
+      'WT-SEM-3',
+    ]);
+    expect(raw.scan.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it('never lists deleted scans', async () => {
     const { db } = fakeDb(SCANS());
     const result = await listDayScans({ db }, 'kcs', '2026-10-20', {
@@ -326,6 +338,7 @@ describe('filters (#471)', () => {
   it('rejects a bad day or filter without reading', async () => {
     const { db, raw } = fakeDb(SCANS());
     expect((await listDayScans({ db }, 'weep', 'Oct 20')).success).toBe(false);
+    expect((await listDayScans({ db }, 'weep', undefined)).success).toBe(false);
     expect((await listExperimentScanCounts({ db }, 'soy')).success).toBe(false);
     expect(
       (await listExperimentScanCounts({ db }, { dateFrom: '2026-13-01' }))

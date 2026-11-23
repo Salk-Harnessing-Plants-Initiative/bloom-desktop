@@ -7,6 +7,7 @@
 import { vi } from 'vitest';
 import type { ScanFilter } from '../../../src/types/scan-groups';
 import { scanMatcher } from '../../../src/utils/scan-search';
+import { readFilter } from '../../../src/main/scan-groups-handlers';
 
 export interface MockScan {
   id: string;
@@ -87,13 +88,27 @@ export function mockScans(win: Window, scans: MockScan[]) {
   );
 
   api.dayScans = vi.fn(
-    async (experimentId: string, day: string, filter?: ScanFilter) => ({
+    async (experimentId: string, day: string | null, filter?: ScanFilter) => ({
       success: true,
       data: matching(filter).filter(
         (s) =>
-          s.experiment_id === experimentId && localDay(s.capture_date) === day
+          s.experiment_id === experimentId &&
+          (day === null || localDay(s.capture_date) === day)
       ),
     })
   );
+
+  // The main process refuses a filter it can't read, so these do too.
+  const filterArg = { experimentCounts: 0, experimentDays: 1, dayScans: 2 };
+  for (const [name, at] of Object.entries(filterArg)) {
+    const answer = api[name];
+    api[name] = vi.fn(async (...args: unknown[]) => {
+      const checked = readFilter(args[at]);
+      if (typeof checked === 'string') {
+        return { success: false, error: checked };
+      }
+      return answer(...args);
+    });
+  }
   return api;
 }

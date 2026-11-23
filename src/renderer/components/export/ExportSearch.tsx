@@ -4,6 +4,7 @@
  * 2026"), and a From/To range of capture days. Both must match when both are set.
  */
 
+import type { ScanFilter } from '../../../types/scan-groups';
 import { SearchIcon } from '../../../components/SearchIcon';
 
 export interface ExportSearchValues {
@@ -18,6 +19,22 @@ export const NO_SEARCH: ExportSearchValues = {
   dateFrom: '',
   dateTo: '',
 };
+
+/** A date input's value once whole: '' while its year is still being typed ("0002-…"). */
+const wholeDate = (value: string) =>
+  /^[1-9]\d{3}-\d{2}-\d{2}$/.test(value) ? value : '';
+
+/** The filter the search line asks for: the search trimmed, dates once whole. */
+export function searchFilter(values: ExportSearchValues): ScanFilter {
+  const search = values.search.trim();
+  const dateFrom = wholeDate(values.dateFrom);
+  const dateTo = wholeDate(values.dateTo);
+  return {
+    ...(search ? { search } : {}),
+    ...(dateFrom ? { dateFrom } : {}),
+    ...(dateTo ? { dateTo } : {}),
+  };
+}
 
 const isSet = (values: ExportSearchValues) =>
   values.search.trim() !== '' || values.dateFrom !== '' || values.dateTo !== '';

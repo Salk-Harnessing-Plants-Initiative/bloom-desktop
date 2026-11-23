@@ -512,10 +512,11 @@ export interface DatabaseAPI {
       experimentId: string,
       filter?: ScanFilter
     ) => Promise<DatabaseResponse<ExperimentScanDay[]>>;
-    /** Export Scans: one experiment's scans on one local day, newest first (#471). */
+    /** Export Scans: one experiment's scans on one local day, newest first (#471);
+     * day null lists every day's. */
     dayScans: (
       experimentId: string,
-      day: string,
+      day: string | null,
       filter?: ScanFilter
     ) => Promise<DatabaseResponse<ScanSummary[]>>;
     get: (id: string) => Promise<DatabaseResponse<ScanWithRelations>>;

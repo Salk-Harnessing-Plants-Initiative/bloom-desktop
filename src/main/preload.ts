@@ -277,8 +277,8 @@ const databaseAPI: DatabaseAPI = {
     /** Export Scans: the days one experiment has scans on, with counts. */
     experimentDays: (experimentId: string, filter?: ScanFilter) =>
       ipcRenderer.invoke('db:scans:experimentDays', experimentId, filter),
-    /** Export Scans: one experiment's scans on one local day, newest first. */
-    dayScans: (experimentId: string, day: string, filter?: ScanFilter) =>
+    /** Export Scans: one experiment's scans on one local day (null: every day). */
+    dayScans: (experimentId: string, day: string | null, filter?: ScanFilter) =>
       ipcRenderer.invoke('db:scans:dayScans', experimentId, day, filter),
     get: (id: string) => ipcRenderer.invoke('db:scans:get', id),
     create: (data: ScanCreateData) =>

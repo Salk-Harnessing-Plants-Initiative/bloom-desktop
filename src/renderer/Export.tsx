@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { ScansExportProgress } from '../types/database';
 import type { ScanFilter } from '../types/scan-groups';
 import { ExportExperimentList } from './components/export/ExportExperimentList';
 import {
   ExportSearch,
   NO_SEARCH,
+  searchFilter,
   type ExportSearchValues,
 } from './components/export/ExportSearch';
 import { useExportExperiments } from './hooks/useExportExperiments';
@@ -25,23 +26,19 @@ export function Export() {
   // narrowed by the search and dates (#471); typing waits for a pause.
   const [searchValues, setSearchValues] =
     useState<ExportSearchValues>(NO_SEARCH);
-  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<ScanFilter>({});
+  const askedKey = JSON.stringify(searchFilter(searchValues));
+  const filterKey = JSON.stringify(filter);
   useEffect(() => {
-    const timer = setTimeout(
-      () => setSearch(searchValues.search.trim()),
-      SEARCH_WAIT_MS
-    );
+    const asked = JSON.parse(askedKey) as ScanFilter;
+    // Clearing applies at once; typing and dates wait for a pause.
+    if (askedKey === '{}') {
+      setFilter(asked);
+      return;
+    }
+    const timer = setTimeout(() => setFilter(asked), SEARCH_WAIT_MS);
     return () => clearTimeout(timer);
-  }, [searchValues.search]);
-  const { dateFrom, dateTo } = searchValues;
-  const filter = useMemo<ScanFilter>(
-    () => ({
-      ...(search ? { search } : {}),
-      ...(dateFrom ? { dateFrom } : {}),
-      ...(dateTo ? { dateTo } : {}),
-    }),
-    [search, dateFrom, dateTo]
-  );
+  }, [askedKey]);
   const list = useExportExperiments(filter);
   const experiments = list.experiments ?? [];
   const isLoading = list.experiments === null && !list.loadError;
@@ -212,6 +209,17 @@ export function Export() {
           )}
           {selectedScanIds.size} scan{selectedScanIds.size === 1 ? '' : 's'}{' '}
           selected
+          {/* The selection outlives a search, so it can hold scans not shown now. */}
+          {selectedScanIds.size > 0 && (
+            <button
+              type="button"
+              onClick={tree.clearSelection}
+              disabled={exporting}
+              className="ml-3 text-lime-800 underline hover:text-lime-900 disabled:opacity-50"
+            >
+              Clear selection
+            </button>
+          )}
         </p>
         <button
           type="button"
@@ -258,6 +266,8 @@ export function Export() {
           </div>
         ) : (
           <ExportExperimentList
+            // A new filter reloads every row, so rows open under the old one close.
+            key={filterKey}
             experiments={experiments}
             tree={tree}
             disabled={exporting}
