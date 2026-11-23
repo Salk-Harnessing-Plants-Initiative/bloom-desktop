@@ -53,6 +53,34 @@ describe('AccessionList baseline rendering', () => {
   });
 });
 
+describe('AccessionList opening a linked file', () => {
+  const two = [
+    ...accessions,
+    { id: 'acc-2', name: 'Soy lines', createdAt: new Date('2026-02-01') },
+  ];
+
+  it('opens the linked file with its plant mappings, and scrolls to it', async () => {
+    const scroll = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (Element.prototype as any).scrollIntoView = scroll;
+    render(
+      <AccessionList accessions={two} onUpdate={vi.fn()} openId="acc-2" />
+    );
+    await waitFor(() => expect(mockGetMappings).toHaveBeenCalledWith('acc-2'));
+    expect(await screen.findByTestId('mappings-table')).toBeInTheDocument();
+    expect(mockGetMappings).not.toHaveBeenCalledWith('acc-1');
+    expect(scroll).toHaveBeenCalled();
+  });
+
+  it('does nothing for an id that is not in the list', () => {
+    render(
+      <AccessionList accessions={two} onUpdate={vi.fn()} openId="missing" />
+    );
+    expect(mockGetMappings).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('mappings-table')).not.toBeInTheDocument();
+  });
+});
+
 describe('AccessionList color palette', () => {
   it('uses focus:ring-lime-500 on the collapsed row toggle button, not blue', () => {
     render(<AccessionList accessions={accessions} onUpdate={vi.fn()} />);

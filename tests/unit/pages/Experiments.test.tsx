@@ -1,14 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { Experiments } from '../../../src/renderer/Experiments';
 import { WaveMetadataLinksProvider } from '../../../src/renderer/contexts/WaveMetadataLinksContext';
 
+/** Where a link took the page, for the tests that follow one. */
+function Landed() {
+  const location = useLocation();
+  return <p data-testid="landed">{location.pathname + location.search}</p>;
+}
+
 function renderPage(mode: 'graviscan' | 'cylinderscan') {
   return render(
-    <WaveMetadataLinksProvider>
-      <Experiments mode={mode} />
-    </WaveMetadataLinksProvider>
+    <MemoryRouter initialEntries={['/experiments']}>
+      <Routes>
+        <Route
+          path="/experiments"
+          element={
+            <WaveMetadataLinksProvider>
+              <Experiments mode={mode} />
+            </WaveMetadataLinksProvider>
+          }
+        />
+        <Route path="*" element={<Landed />} />
+      </Routes>
+    </MemoryRouter>
   );
 }
 
@@ -31,6 +48,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
   let unlinkGraviMetadata: ReturnType<typeof vi.fn>;
   let listFiles: ReturnType<typeof vi.fn>;
   let attachAccession: ReturnType<typeof vi.fn>;
+  let latestScans: ReturnType<typeof vi.fn>;
   let confirmSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -43,12 +61,14 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       data: [{ id: 'gacc-1', name: 'batch3.xlsx' }],
     });
     attachAccession = vi.fn().mockResolvedValue({ success: true });
+    latestScans = vi.fn().mockResolvedValue({ success: true, data: [] });
     confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = global.window as any;
     win.electron.database.experiments = {
       list: listExperiments,
+      latestScans,
       attachAccession,
       listGraviMetadata,
       linkGraviMetadata,
@@ -66,6 +86,110 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     };
   });
 
+  it('lists unscanned experiments first, then the most recently scanned, in the list and the attach picker', async () => {
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [
+        makeExperiment({ id: 'old', name: '2025-06-02 Soy drought' }),
+        makeExperiment({ id: 'recent', name: '2026-11-10 STL Soy' }),
+        makeExperiment({ id: 'new', name: 'Zinnia-W1' }),
+      ],
+    });
+    latestScans.mockResolvedValue({
+      success: true,
+      data: [
+        { experiment_id: 'old', latest_ms: Date.UTC(2025, 5, 2) },
+        { experiment_id: 'recent', latest_ms: Date.UTC(2026, 10, 20) },
+      ],
+    });
+    const { container } = renderPage('cylinderscan');
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll('ul.experiments-list > li')
+      ).toHaveLength(3)
+    );
+    const names = [
+      ...container.querySelectorAll('ul.experiments-list > li'),
+    ].map((li) => li.textContent);
+    expect(names).toEqual([
+      expect.stringContaining('Zinnia-W1'),
+      expect.stringContaining('2026-11-10 STL Soy'),
+      expect.stringContaining('2025-06-02 Soy drought'),
+    ]);
+    const options = [
+      ...(screen.getByLabelText(/Select Experiment/) as HTMLSelectElement)
+        .options,
+    ].map((o) => o.textContent);
+    expect(options[0]).toContain('Zinnia-W1');
+    expect(options[1]).toContain('2026-11-10 STL Soy');
+  });
+
+  it('still lists experiments, by name, when the scan times cannot be loaded', async () => {
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [
+        makeExperiment({ id: 'b', name: 'Beta' }),
+        makeExperiment({ id: 'a', name: 'Alpha' }),
+      ],
+    });
+    latestScans.mockRejectedValue(new Error('database is locked'));
+    const { container } = renderPage('cylinderscan');
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll('ul.experiments-list > li')
+      ).toHaveLength(2)
+    );
+    expect(
+      [...container.querySelectorAll('ul.experiments-list > li')].map(
+        (li) => li.textContent
+      )
+    ).toEqual([
+      expect.stringContaining('Alpha'),
+      expect.stringContaining('Beta'),
+    ]);
+  });
+
+  it("shows each experiment's accession file, or none, and no wave dates", async () => {
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [
+        makeExperiment({ id: 'with', name: 'With file' }),
+        makeExperiment({ id: 'without', name: 'No file', accession: null }),
+      ],
+    });
+    renderPage('cylinderscan');
+    expect(await screen.findByTestId('accession-file-with')).toHaveTextContent(
+      'Accession file: Accession A'
+    );
+    expect(screen.getByTestId('accession-file-without')).toHaveTextContent(
+      'Accession file: none'
+    );
+    expect(screen.queryByText(/wave/i)).not.toBeInTheDocument();
+  });
+
+  it('links the accession file to that file on the Accessions page', async () => {
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [makeExperiment({ id: 'with', name: 'With file' })],
+    });
+    renderPage('cylinderscan');
+    await userEvent.click(
+      await screen.findByRole('link', { name: 'Accession A' })
+    );
+    expect(screen.getByTestId('landed')).toHaveTextContent(
+      '/accessions?open=acc-1'
+    );
+  });
+
+  it('explains when to attach an accession file to an existing experiment', async () => {
+    renderPage('cylinderscan');
+    expect(
+      await screen.findByText(
+        /add a corrected accession file to an experiment that\s+already exists, for example after its plants have been scanned/
+      )
+    ).toBeInTheDocument();
+  });
+
   it('expands the experiments box to show everything, and shrinks it back', async () => {
     listExperiments.mockResolvedValue({
       success: true,
@@ -76,15 +200,15 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       expect(container.querySelector('ul.experiments-list')).not.toBeNull()
     );
     const box = () => container.querySelector('ul.experiments-list')!;
-    // A fixed height that scrolls, and can be dragged taller or shorter.
-    expect(box()).toHaveClass('h-64', 'overflow-auto', 'resize-y');
+    // Fills the window's spare height, and scrolls.
+    expect(box()).toHaveClass('flex-1', 'overflow-auto');
     const toggle = screen.getByTestId('experiments-list-toggle');
     expect(toggle).toHaveTextContent('Expand');
     await userEvent.click(toggle);
-    expect(box()).not.toHaveClass('h-64');
+    expect(box()).not.toHaveClass('flex-1');
     expect(toggle).toHaveTextContent('Shrink');
     await userEvent.click(toggle);
-    expect(box()).toHaveClass('h-64');
+    expect(box()).toHaveClass('flex-1');
   });
 
   it('shows linked waves inline for a graviscan experiment, with Unlink gated by confirm()', async () => {

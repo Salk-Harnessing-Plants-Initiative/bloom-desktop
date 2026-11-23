@@ -1,8 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { ExperimentForm } from './components/ExperimentForm';
-import { CylinderWaveDates } from './components/CylinderWaveDates';
 import { ExperimentWaveLinks } from './components/ExperimentWaveLinks';
 import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
+import type { ExperimentLatestScan } from '../types/experiment-recency';
+import { orderByRecentScan } from './utils/experiment-order';
 
 interface Scientist {
   id: string;
@@ -76,8 +78,19 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
       }
 
       const data = result.data as ExperimentWithScientist[];
-      // Sort by name alphabetically
-      const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
+      // Unscanned (likely new) experiments first, then the most recently scanned.
+      // Without the scan times the list is still usable, by name.
+      let latestScans: ExperimentLatestScan[] = [];
+      try {
+        const latest = await window.electron.database.experiments.latestScans();
+        if (latest.success && latest.data) latestScans = latest.data;
+      } catch (err) {
+        console.error(
+          '[Experiments] Could not load scan times:',
+          err instanceof Error ? err.message : 'Unknown error'
+        );
+      }
+      const sorted = orderByRecentScan(data, latestScans);
       setExperiments(sorted);
 
       // Set default attach experiment if available (only if not already set)
@@ -176,12 +189,16 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
     return `${experiment.species} - ${experiment.name} (${scientistName})`;
   };
 
+  // The page fills the window: the forms keep their height at the bottom and the
+  // list takes the rest, growing with the window. Expand shows every experiment.
+  const fill = listExpanded ? '' : 'min-h-64 flex-1 basis-0';
+
   return (
-    <div className="p-6">
+    <div className="flex min-h-full flex-col p-6">
       <h1 className="text-2xl font-bold mb-6">Experiments</h1>
 
       {/* List Section */}
-      <div className="mb-8">
+      <div className={`mb-8 flex flex-col ${fill}`}>
         <div className="flex items-center gap-3 mb-2">
           <h2 className="text-xs font-bold">Experiments</h2>
           <button
@@ -195,22 +212,20 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
         </div>
 
         {isLoading ? (
-          <div className="h-64 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center">
+          <div className="min-h-64 flex-1 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center">
             <p className="text-sm text-gray-500">Loading experiments...</p>
           </div>
         ) : error ? (
-          <div className="h-64 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center border-red-300 bg-red-50">
+          <div className="min-h-64 flex-1 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center border-red-300 bg-red-50">
             <p className="text-sm text-red-600">{error}</p>
           </div>
         ) : experiments.length === 0 ? (
-          <div className="h-64 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center">
+          <div className="min-h-64 flex-1 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center">
             <p className="text-sm text-gray-500">No experiments yet</p>
           </div>
         ) : (
           <ul
-            // Remounted on toggle, so a height dragged by hand is reset.
-            key={listExpanded ? 'expanded' : 'shrunk'}
-            className={`experiments-list overflow-auto resize-y border rounded-md max-w-full mr-10 text-sm ${listExpanded ? 'min-h-64' : 'h-64 min-h-32'}`}
+            className={`experiments-list overflow-auto border rounded-md max-w-full mr-10 text-sm ${listExpanded ? 'min-h-64' : 'min-h-0 flex-1'}`}
           >
             {experiments.map((experiment) => (
               <li key={experiment.id} className="mb-2 p-2">
@@ -220,7 +235,22 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
                 {experiment.experiment_type === 'graviscan' ? (
                   <ExperimentWaveLinks experimentId={experiment.id} />
                 ) : (
-                  <CylinderWaveDates experimentId={experiment.id} />
+                  <p
+                    className="text-xs text-gray-600"
+                    data-testid={`accession-file-${experiment.id}`}
+                  >
+                    Accession file:{' '}
+                    {experiment.accession ? (
+                      <Link
+                        to={`/accessions?open=${encodeURIComponent(experiment.accession.id)}`}
+                        className="text-lime-700 underline hover:no-underline"
+                      >
+                        {experiment.accession.name}
+                      </Link>
+                    ) : (
+                      <span className="italic">none</span>
+                    )}
+                  </p>
                 )}
               </li>
             ))}
@@ -228,137 +258,146 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
         )}
       </div>
 
-      {/* Create Section */}
-      <div className="mb-8">
-        <h2 className="text-xs font-bold mb-3">Create New Experiment</h2>
-        <ExperimentForm
-          scientists={scientists}
-          accessions={accessions}
-          onSuccess={handleExperimentCreated}
-          mode={mode}
-        />
-      </div>
+      {/* Create and Attach in two equal columns; they stack when the window is narrow. */}
+      <div className="mr-10 grid grid-cols-1 gap-8 lg:grid-cols-2">
+        {/* Create Section */}
+        <div className="flex flex-col">
+          <h2 className="text-xs font-bold mb-3">Create New Experiment</h2>
+          <ExperimentForm
+            scientists={scientists}
+            accessions={accessions}
+            onSuccess={handleExperimentCreated}
+            mode={mode}
+          />
+        </div>
 
-      {/* Attach Accession Section */}
-      <div>
-        <h2 className="text-xs font-bold mb-3">
-          Attach Accession File to Existing Experiment
-        </h2>
-        <div className="border rounded text-lg p-4 w-96">
-          <div className="mb-4">
-            <label
-              htmlFor="attach-experiment-select"
-              className="text-xs font-bold block mb-1"
-            >
-              Select Experiment:
-            </label>
-            <select
-              id="attach-experiment-select"
-              className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
-              value={attachExperimentId}
-              onChange={(e) => setAttachExperimentId(e.target.value)}
-              disabled={experiments.length === 0}
-            >
-              {experiments.length === 0 ? (
-                <option value="">No experiments available</option>
-              ) : (
-                experiments.map((exp) => (
-                  <option key={exp.id} value={exp.id}>
-                    {getExperimentDisplay(exp)}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-
-          {isGraviscanAttach ? (
-            <div className="mb-4">
-              <label htmlFor="wave-number-attach-input">
-                Wave Number to Link
-              </label>
-              <input
-                id="wave-number-attach-input"
-                aria-label="Wave Number to Link"
-                type="number"
-                min={0}
-                value={waveNumber}
-                onChange={(e) => setWaveNumber(Number(e.target.value))}
-              />
-              <label htmlFor="attach-gravi-accession-select">
-                Metadata File
-              </label>
-              <select
-                id="attach-gravi-accession-select"
-                aria-label="Metadata File"
-                value={attachAccessionId}
-                onChange={(e) => setAttachAccessionId(e.target.value)}
-              >
-                <option value="">-- Select a metadata file --</option>
-                {graviAccessions.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </option>
-                ))}
-              </select>
-              {linkError && <p className="text-sm text-red-600">{linkError}</p>}
-            </div>
-          ) : (
+        {/* Attach Accession Section */}
+        <div className="flex flex-col">
+          <h2 className="text-xs font-bold mb-1">
+            Attach Accession File to Existing Experiment
+          </h2>
+          <p className="mb-3 text-xs text-gray-600">
+            Use this to add a corrected accession file to an experiment that
+            already exists, for example after its plants have been scanned.
+          </p>
+          <div className="border rounded text-lg p-4 flex-1">
             <div className="mb-4">
               <label
-                htmlFor="attach-accession-select"
+                htmlFor="attach-experiment-select"
                 className="text-xs font-bold block mb-1"
               >
-                Select Accession File:
+                Select Experiment:
               </label>
               <select
-                id="attach-accession-select"
+                id="attach-experiment-select"
                 className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
-                value={attachAccessionId}
-                onChange={(e) => setAttachAccessionId(e.target.value)}
-                disabled={accessions.length === 0}
+                value={attachExperimentId}
+                onChange={(e) => setAttachExperimentId(e.target.value)}
+                disabled={experiments.length === 0}
               >
-                {accessions.length === 0 ? (
-                  <option value="">No accessions available</option>
+                {experiments.length === 0 ? (
+                  <option value="">No experiments available</option>
                 ) : (
-                  accessions.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name} - {acc.id}
+                  experiments.map((exp) => (
+                    <option key={exp.id} value={exp.id}>
+                      {getExperimentDisplay(exp)}
                     </option>
                   ))
                 )}
               </select>
             </div>
-          )}
 
-          <div className="flex justify-center">
-            <button
-              type="button"
-              className="block p-2 rounded-md bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-              onClick={handleAttachAccession}
-              disabled={
-                isAttaching || !attachExperimentId || !attachAccessionId
-              }
-            >
-              {isAttaching
-                ? 'Attaching...'
-                : isGraviscanAttach
-                  ? 'Link'
-                  : 'Attach Accession'}
-            </button>
-          </div>
+            {isGraviscanAttach ? (
+              <div className="mb-4">
+                <label htmlFor="wave-number-attach-input">
+                  Wave Number to Link
+                </label>
+                <input
+                  id="wave-number-attach-input"
+                  aria-label="Wave Number to Link"
+                  type="number"
+                  min={0}
+                  value={waveNumber}
+                  onChange={(e) => setWaveNumber(Number(e.target.value))}
+                />
+                <label htmlFor="attach-gravi-accession-select">
+                  Metadata File
+                </label>
+                <select
+                  id="attach-gravi-accession-select"
+                  aria-label="Metadata File"
+                  value={attachAccessionId}
+                  onChange={(e) => setAttachAccessionId(e.target.value)}
+                >
+                  <option value="">-- Select a metadata file --</option>
+                  {graviAccessions.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </option>
+                  ))}
+                </select>
+                {linkError && (
+                  <p className="text-sm text-red-600">{linkError}</p>
+                )}
+              </div>
+            ) : (
+              <div className="mb-4">
+                <label
+                  htmlFor="attach-accession-select"
+                  className="text-xs font-bold block mb-1"
+                >
+                  Select Accession File:
+                </label>
+                <select
+                  id="attach-accession-select"
+                  className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
+                  value={attachAccessionId}
+                  onChange={(e) => setAttachAccessionId(e.target.value)}
+                  disabled={accessions.length === 0}
+                >
+                  {accessions.length === 0 ? (
+                    <option value="">No accessions available</option>
+                  ) : (
+                    accessions.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} - {acc.id}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            )}
 
-          <div className="mt-2 text-center">
-            {isAttaching && (
-              <p className="text-sm text-gray-500 animate-pulse">
-                Attaching accession...
-              </p>
-            )}
-            {attachError && (
-              <p className="text-sm text-red-600">{attachError}</p>
-            )}
-            {attachSuccess && (
-              <p className="text-sm text-green-600">{attachSuccess}</p>
-            )}
+            <div className="flex justify-center">
+              <button
+                type="button"
+                className="block p-2 rounded-md bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleAttachAccession}
+                disabled={
+                  isAttaching || !attachExperimentId || !attachAccessionId
+                }
+              >
+                {isAttaching
+                  ? 'Attaching...'
+                  : isGraviscanAttach
+                    ? 'Link'
+                    : 'Attach Accession'}
+              </button>
+            </div>
+
+            <div className="mt-2 text-center">
+              {isAttaching && (
+                <p className="text-sm text-gray-500 animate-pulse">
+                  Attaching accession...
+                </p>
+              )}
+              {attachError && (
+                <p className="text-sm text-red-600">{attachError}</p>
+              )}
+              {attachSuccess && (
+                <p className="text-sm text-green-600">{attachSuccess}</p>
+              )}
+            </div>
           </div>
         </div>
       </div>

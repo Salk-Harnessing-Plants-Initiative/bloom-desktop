@@ -23,6 +23,7 @@ import {
   DAQStatusResponse,
 } from './daq';
 import { ScannerAPI } from './scanner';
+import type { ExperimentLatestScan } from './experiment-recency';
 import type { SpeciesAPI } from './species';
 import type {
   ExperimentScanCount,
@@ -421,6 +422,8 @@ export interface DAQAPI {
 export interface DatabaseAPI {
   experiments: {
     list: () => Promise<DatabaseResponse<ExperimentWithRelations[]>>;
+    /** Each experiment's newest scan time, for the Experiments page's order. */
+    latestScans: () => Promise<DatabaseResponse<ExperimentLatestScan[]>>;
     get: (id: string) => Promise<DatabaseResponse<ExperimentWithRelations>>;
     create: (
       data: ExperimentCreateData

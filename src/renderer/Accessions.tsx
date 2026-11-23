@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AccessionForm } from './components/AccessionForm';
 import { AccessionList } from './components/AccessionList';
 import { AccessionFileUpload } from './components/AccessionFileUpload';
@@ -19,6 +20,9 @@ export function Accessions() {
   const [accessions, setAccessions] = useState<Accession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // "?open=<id>": the file to open, when linked from the Experiments page.
+  const [searchParams] = useSearchParams();
+  const openId = searchParams.get('open');
 
   const fetchAccessions = async () => {
     try {
@@ -76,6 +80,7 @@ export function Accessions() {
             <AccessionList
               accessions={accessions}
               onUpdate={handleAccessionCreated}
+              openId={openId}
             />
           </div>
         )}

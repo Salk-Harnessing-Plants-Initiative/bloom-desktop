@@ -28,7 +28,7 @@ export interface SpeciesSelectProps {
 }
 
 const FIELD_CLASS =
-  'p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-[200px] border border-gray-300';
+  'p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none min-w-0 flex-1 border border-gray-300';
 
 export function SpeciesSelect({
   registration,
