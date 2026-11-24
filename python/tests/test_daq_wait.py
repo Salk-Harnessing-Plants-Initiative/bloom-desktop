@@ -102,6 +102,8 @@ def test_gives_up_soon_after_the_move_should_have_ended_and_says_why(clock):
     daq.task.stop.assert_called_once()
 
 
+# Time only passes in the sleep here, so without it the wait would never end.
+@pytest.mark.timeout(5)
 def test_an_error_that_returns_at_once_does_not_spin(clock):
     daq = make_daq(clock)
     daq.task.wait_until_done.side_effect = NOT_DONE_YET
