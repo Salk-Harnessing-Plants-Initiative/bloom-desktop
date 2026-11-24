@@ -1,6 +1,7 @@
 /**
- * Export Scans' list (#436): experiments, collapsed, with a search; an opened
- * experiment shows its days, an opened day its scans. Rows load when opened.
+ * Export Scans' list (#436): experiments, collapsed; an opened experiment shows its
+ * days, an opened day its scans. Rows load when opened. The page's filters (#471)
+ * decide which experiments, days and scans are listed.
  */
 
 import { useState } from 'react';
@@ -11,7 +12,6 @@ import {
   type ExportScanTree,
   type Loaded,
 } from '../../hooks/useExportScanTree';
-import { SearchIcon } from '../../../components/SearchIcon';
 import { TriStateCheckbox } from './TriStateCheckbox';
 
 /** "Oct 28, 2026" for a local day "2026-10-28". */
@@ -32,12 +32,6 @@ function timeLabel(date: Date | string): string {
 
 const scansText = (n: number) =>
   `${n.toLocaleString()} scan${n === 1 ? '' : 's'}`;
-
-/** Case-insensitive, any part of the name. */
-export function matchesSearch(name: string, search: string): boolean {
-  const wanted = search.trim().toLowerCase();
-  return wanted === '' || name.toLowerCase().includes(wanted);
-}
 
 function countSelected(scans: ScanSummary[], selected: Set<string>): number {
   return scans.filter((s) => selected.has(s.id)).length;
@@ -120,7 +114,6 @@ export function ExportExperimentList({
   /** While exporting, the selection can't change. */
   disabled: boolean;
 }) {
-  const [search, setSearch] = useState('');
   const [open, setOpen] = useState<Set<string>>(new Set());
   const { days, dayScans, selected } = tree;
 
@@ -152,147 +145,124 @@ export function ExportExperimentList({
     };
   };
 
-  const shown = experiments.filter((e) =>
-    matchesSearch(e.experiment_name, search)
-  );
-
   return (
     <div>
-      <div className="border-b border-gray-200 p-3">
-        <div className="relative">
-          <SearchIcon />
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search experiments…"
-            aria-label="Search experiments"
-            className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm"
-          />
-        </div>
-      </div>
-      {shown.length === 0 ? (
-        <p className="p-6 text-center text-sm text-gray-500">
-          No experiments match &ldquo;{search.trim()}&rdquo;.
-        </p>
-      ) : (
-        <ul className="divide-y divide-gray-100">
-          {shown.map((exp) => {
-            const id = exp.experiment_id;
-            const isOpen = open.has(id);
-            const state = experimentState(id);
-            const daysState = days[id];
-            return (
-              <li key={id}>
-                <div className="flex items-center gap-3 bg-gray-50 px-4 py-3">
-                  <TriStateCheckbox
-                    allSelected={state.all}
-                    someSelected={state.some}
-                    disabled={disabled}
-                    label={`Select all scans in ${exp.experiment_name}`}
-                    onChange={(on) => tree.toggleExperiment(id, on)}
+      <ul className="divide-y divide-gray-100">
+        {experiments.map((exp) => {
+          const id = exp.experiment_id;
+          const isOpen = open.has(id);
+          const state = experimentState(id);
+          const daysState = days[id];
+          return (
+            <li key={id}>
+              <div className="flex items-center gap-3 bg-gray-50 px-4 py-3">
+                <TriStateCheckbox
+                  allSelected={state.all}
+                  someSelected={state.some}
+                  disabled={disabled}
+                  label={`Select all scans in ${exp.experiment_name}`}
+                  onChange={(on) => tree.toggleExperiment(id, on)}
+                />
+                <Toggle
+                  open={isOpen}
+                  label={exp.experiment_name}
+                  onClick={() => flip(id, () => tree.loadDays(id))}
+                />
+                <span className="text-sm text-gray-600">
+                  {scansText(exp.scan_count)}
+                </span>
+              </div>
+              {isOpen && (
+                <>
+                  <RowStatus
+                    state={daysState}
+                    what="its days"
+                    onRetry={() => tree.loadDays(id)}
                   />
-                  <Toggle
-                    open={isOpen}
-                    label={exp.experiment_name}
-                    onClick={() => flip(id, () => tree.loadDays(id))}
-                  />
-                  <span className="text-sm text-gray-600">
-                    {scansText(exp.scan_count)}
-                  </span>
-                </div>
-                {isOpen && (
-                  <>
-                    <RowStatus
-                      state={daysState}
-                      what="its days"
-                      onRetry={() => tree.loadDays(id)}
-                    />
-                    {daysState?.status === 'loaded' && (
-                      <ul className="divide-y divide-gray-50">
-                        {daysState.data.map(({ day, scan_count }) => {
-                          const key = dayKey(id, day);
-                          const dayOpen = open.has(key);
-                          const ds = dayState(id, day);
-                          const scansState = dayScans[key];
-                          return (
-                            <li key={key}>
-                              <div className="flex items-center gap-3 px-4 py-2 pl-10">
-                                <TriStateCheckbox
-                                  allSelected={ds.all}
-                                  someSelected={ds.some}
-                                  disabled={disabled}
-                                  label={`Select all scans on ${dayLabel(day)}`}
-                                  onChange={(on) => tree.toggleDay(id, day, on)}
+                  {daysState?.status === 'loaded' && (
+                    <ul className="divide-y divide-gray-50">
+                      {daysState.data.map(({ day, scan_count }) => {
+                        const key = dayKey(id, day);
+                        const dayOpen = open.has(key);
+                        const ds = dayState(id, day);
+                        const scansState = dayScans[key];
+                        return (
+                          <li key={key}>
+                            <div className="flex items-center gap-3 px-4 py-2 pl-10">
+                              <TriStateCheckbox
+                                allSelected={ds.all}
+                                someSelected={ds.some}
+                                disabled={disabled}
+                                label={`Select all scans on ${dayLabel(day)}`}
+                                onChange={(on) => tree.toggleDay(id, day, on)}
+                              />
+                              <Toggle
+                                open={dayOpen}
+                                label={dayLabel(day)}
+                                onClick={() =>
+                                  flip(key, () => tree.loadDayScans(id, day))
+                                }
+                              />
+                              <span className="text-sm text-gray-600">
+                                {scansText(scan_count)}
+                              </span>
+                            </div>
+                            {dayOpen && (
+                              <>
+                                <RowStatus
+                                  state={scansState}
+                                  what="its scans"
+                                  onRetry={() => tree.loadDayScans(id, day)}
                                 />
-                                <Toggle
-                                  open={dayOpen}
-                                  label={dayLabel(day)}
-                                  onClick={() =>
-                                    flip(key, () => tree.loadDayScans(id, day))
-                                  }
-                                />
-                                <span className="text-sm text-gray-600">
-                                  {scansText(scan_count)}
-                                </span>
-                              </div>
-                              {dayOpen && (
-                                <>
-                                  <RowStatus
-                                    state={scansState}
-                                    what="its scans"
-                                    onRetry={() => tree.loadDayScans(id, day)}
-                                  />
-                                  {scansState?.status === 'loaded' && (
-                                    <ul>
-                                      {scansState.data.map((scan) => (
-                                        <li
-                                          key={scan.id}
-                                          className="flex items-center gap-3 px-4 py-1.5 pl-16 text-sm"
+                                {scansState?.status === 'loaded' && (
+                                  <ul>
+                                    {scansState.data.map((scan) => (
+                                      <li
+                                        key={scan.id}
+                                        className="flex items-center gap-3 px-4 py-1.5 pl-16 text-sm"
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={selected.has(scan.id)}
+                                          disabled={disabled}
+                                          onChange={(e) =>
+                                            tree.toggleScan(
+                                              scan.id,
+                                              e.target.checked
+                                            )
+                                          }
+                                          aria-label={`Select ${scan.plant_id} at ${timeLabel(scan.capture_date)}`}
+                                          className="h-4 w-4 rounded border-gray-300"
+                                        />
+                                        <span className="text-gray-700">
+                                          {scan.plant_id}
+                                        </span>
+                                        <span className="text-gray-500">
+                                          {timeLabel(scan.capture_date)}
+                                        </span>
+                                        <span
+                                          className="text-xs text-gray-400"
+                                          title="Capturing scanner — shown because this list is not scoped to the current machine's scanner"
                                         >
-                                          <input
-                                            type="checkbox"
-                                            checked={selected.has(scan.id)}
-                                            disabled={disabled}
-                                            onChange={(e) =>
-                                              tree.toggleScan(
-                                                scan.id,
-                                                e.target.checked
-                                              )
-                                            }
-                                            aria-label={`Select ${scan.plant_id} at ${timeLabel(scan.capture_date)}`}
-                                            className="h-4 w-4 rounded border-gray-300"
-                                          />
-                                          <span className="text-gray-700">
-                                            {scan.plant_id}
-                                          </span>
-                                          <span className="text-gray-500">
-                                            {timeLabel(scan.capture_date)}
-                                          </span>
-                                          <span
-                                            className="text-xs text-gray-400"
-                                            title="Capturing scanner — shown because this list is not scoped to the current machine's scanner"
-                                          >
-                                            {scan.scanner_name}
-                                          </span>
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                </>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                  </>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                                          {scan.scanner_name}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

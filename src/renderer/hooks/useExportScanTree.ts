@@ -2,17 +2,14 @@
  * Export Scans' experiments → days → scans (#436). Only what is opened or ticked is
  * loaded: an experiment's days when it's opened, a day's scans when it's opened.
  * Ticking an experiment or day that isn't loaded loads it first, then selects its
- * scans; Export waits meanwhile (pending > 0). What has loaded stays loaded.
+ * scans; Export waits meanwhile (pending > 0). What has loaded stays loaded until
+ * the filter changes (#471): then rows load again, filtered, and the selection stays.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ScanSummary } from '../../types/database';
-import type { ExperimentScanDay } from '../../types/scan-groups';
-
-// Summaries carry no image rows, so a page can hold many (MAX_SUMMARY_PAGE_SIZE).
-const SCANS_PAGE_SIZE = 1000;
-// Guards against an endless loop if paging ever miscounts; a day is far smaller.
-const MAX_SCAN_PAGES = 1000;
+import type { ExperimentScanDay, ScanFilter } from '../../types/scan-groups';
+import { toIsoDate } from '../../utils/wave-dates';
 
 export type Loaded<T> =
   | { status: 'loading' }
@@ -26,42 +23,38 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
-async function fetchDays(experimentId: string): Promise<ExperimentScanDay[]> {
-  const result =
-    await window.electron.database.scans.experimentDays(experimentId);
+async function fetchDays(
+  experimentId: string,
+  filter: ScanFilter
+): Promise<ExperimentScanDay[]> {
+  const result = await window.electron.database.scans.experimentDays(
+    experimentId,
+    filter
+  );
   if (!result.success || !result.data) {
     throw new Error(result.error ?? 'Unknown error');
   }
   return result.data;
 }
 
-/** One experiment's scans on one local day, page by page. */
+/** One experiment's matching scans on one local day; null: on every day. */
 async function fetchDayScans(
   experimentId: string,
-  day: string
+  day: string | null,
+  filter: ScanFilter
 ): Promise<ScanSummary[]> {
-  const all: ScanSummary[] = [];
-  for (let page = 1; page <= MAX_SCAN_PAGES; page++) {
-    const result = await window.electron.database.scans.list({
-      page,
-      pageSize: SCANS_PAGE_SIZE,
-      experimentId,
-      dateFrom: day,
-      dateTo: day,
-      summary: true,
-    });
-    if (!result.success || !result.data) {
-      throw new Error(result.error ?? 'Unknown error');
-    }
-    all.push(...result.data.scans);
-    if (all.length >= result.data.total || result.data.scans.length === 0) {
-      return all;
-    }
+  const result = await window.electron.database.scans.dayScans(
+    experimentId,
+    day,
+    filter
+  );
+  if (!result.success || !result.data) {
+    throw new Error(result.error ?? 'Unknown error');
   }
-  throw new Error(`Scan pages did not end after ${MAX_SCAN_PAGES} pages`);
+  return result.data;
 }
 
-export function useExportScanTree() {
+export function useExportScanTree(filter: ScanFilter = {}) {
   const [days, setDays] = useState<Record<string, Loaded<ExperimentScanDay[]>>>(
     {}
   );
@@ -78,20 +71,42 @@ export function useExportScanTree() {
   const wanted = useRef(new Map<string, boolean>());
   // Each loaded day's scans, for unticking without waiting for state.
   const loadedScans = useRef(new Map<string, ScanSummary[]>());
+  // The filter rows load with, and a count of filter changes: a row that finishes
+  // loading after the filter changed is dropped, not shown under the new one.
+  const filterRef = useRef(filter);
+  const generation = useRef(0);
+  const filterKey = JSON.stringify(filter);
+
+  useEffect(() => {
+    if (filterKey === JSON.stringify(filterRef.current)) return;
+    filterRef.current = JSON.parse(filterKey) as ScanFilter;
+    generation.current += 1;
+    daysRequests.current.clear();
+    scanRequests.current.clear();
+    loadedScans.current.clear();
+    // A row ticked under the old filter doesn't select once it loads.
+    for (const key of wanted.current.keys()) wanted.current.set(key, false);
+    setDays({});
+    setDayScans({});
+  }, [filterKey]);
 
   const loadDays = useCallback((experimentId: string) => {
     let request = daysRequests.current.get(experimentId);
     if (!request) {
+      const asked = generation.current;
       setDays((prev) => ({ ...prev, [experimentId]: { status: 'loading' } }));
-      request = fetchDays(experimentId);
+      request = fetchDays(experimentId, filterRef.current);
       daysRequests.current.set(experimentId, request);
       request.then(
-        (data) =>
+        (data) => {
+          if (asked !== generation.current) return;
           setDays((prev) => ({
             ...prev,
             [experimentId]: { status: 'loaded', data },
-          })),
+          }));
+        },
         (error: unknown) => {
+          if (asked !== generation.current) return;
           daysRequests.current.delete(experimentId);
           setDays((prev) => ({
             ...prev,
@@ -107,11 +122,13 @@ export function useExportScanTree() {
     const key = dayKey(experimentId, day);
     let request = scanRequests.current.get(key);
     if (!request) {
+      const asked = generation.current;
       setDayScans((prev) => ({ ...prev, [key]: { status: 'loading' } }));
-      request = fetchDayScans(experimentId, day);
+      request = fetchDayScans(experimentId, day, filterRef.current);
       scanRequests.current.set(key, request);
       request.then(
         (data) => {
+          if (asked !== generation.current) return;
           loadedScans.current.set(key, data);
           setDayScans((prev) => ({
             ...prev,
@@ -119,6 +136,7 @@ export function useExportScanTree() {
           }));
         },
         (error: unknown) => {
+          if (asked !== generation.current) return;
           scanRequests.current.delete(key);
           setDayScans((prev) => ({
             ...prev,
@@ -128,6 +146,33 @@ export function useExportScanTree() {
       );
     }
     return request;
+  }, []);
+
+  /** All of an experiment's matching scans in one request, filed by day as if each
+   * day had been opened. */
+  const loadExperimentScans = useCallback(async (experimentId: string) => {
+    const asked = generation.current;
+    const scans = await fetchDayScans(experimentId, null, filterRef.current);
+    if (asked !== generation.current) return scans;
+    const byDay = new Map<string, ScanSummary[]>();
+    for (const scan of scans) {
+      const key = dayKey(experimentId, toIsoDate(new Date(scan.capture_date)));
+      byDay.set(key, [...(byDay.get(key) ?? []), scan]);
+    }
+    for (const [key, list] of byDay) {
+      loadedScans.current.set(key, list);
+      scanRequests.current.set(key, Promise.resolve(list));
+      // Its days follow the experiment, so unticking one later works.
+      wanted.current.set(key, wanted.current.get(experimentId) === true);
+    }
+    setDayScans((prev) => {
+      const next = { ...prev };
+      for (const [key, list] of byDay) {
+        next[key] = { status: 'loaded', data: list };
+      }
+      return next;
+    });
+    return scans;
   }, []);
 
   const setIds = (ids: string[], on: boolean) =>
@@ -142,11 +187,13 @@ export function useExportScanTree() {
 
   /** Loads a row's scans, then selects them, unless it was unticked meanwhile. */
   const select = async (key: string, load: () => Promise<ScanSummary[]>) => {
+    const asked = generation.current;
     wanted.current.set(key, true);
     setPending((n) => n + 1);
     try {
       const scans = await load();
-      if (wanted.current.get(key)) {
+      // Ticked again under a new filter while this load ran: that tick selects.
+      if (asked === generation.current && wanted.current.get(key)) {
         setIds(
           scans.map((s) => s.id),
           true
@@ -196,15 +243,11 @@ export function useExportScanTree() {
       return;
     }
     return select(experimentId, async () => {
-      const list = await loadDays(experimentId);
-      const perDay = await Promise.all(
-        list.map((d) => {
-          // Its days follow the experiment, so unticking one later works.
-          wanted.current.set(dayKey(experimentId, d.day), true);
-          return loadDayScans(experimentId, d.day);
-        })
-      );
-      return perDay.flat();
+      const [, scans] = await Promise.all([
+        loadDays(experimentId),
+        loadExperimentScans(experimentId),
+      ]);
+      return scans;
     });
   };
 

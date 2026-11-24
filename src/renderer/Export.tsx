@@ -1,50 +1,56 @@
 import { useEffect, useState, useCallback } from 'react';
 import type { ScansExportProgress } from '../types/database';
-import type { ExperimentScanCount } from '../types/scan-groups';
+import type { ScanFilter } from '../types/scan-groups';
 import { ExportExperimentList } from './components/export/ExportExperimentList';
+import {
+  ExportSearch,
+  NO_SEARCH,
+  searchFilter,
+  type ExportSearchValues,
+} from './components/export/ExportSearch';
+import { useExportExperiments } from './hooks/useExportExperiments';
 import { useExportScanTree } from './hooks/useExportScanTree';
 import {
   ExportResultBanner,
   type ResultBanner,
 } from './components/export/ExportResultBanner';
 
+/** How long typing pauses before the search runs. */
+export const SEARCH_WAIT_MS = 300;
+
+const plural = (n: number, word: string) =>
+  `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+
 export function Export() {
-  // Experiments with their scan counts: all the page loads when it opens (#436).
-  const [experiments, setExperiments] = useState<ExperimentScanCount[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const tree = useExportScanTree();
+  // Experiments with their scan counts: all the page loads when it opens (#436),
+  // narrowed by the search and dates (#471); typing waits for a pause.
+  const [searchValues, setSearchValues] =
+    useState<ExportSearchValues>(NO_SEARCH);
+  const [filter, setFilter] = useState<ScanFilter>({});
+  const askedKey = JSON.stringify(searchFilter(searchValues));
+  const filterKey = JSON.stringify(filter);
+  useEffect(() => {
+    const asked = JSON.parse(askedKey) as ScanFilter;
+    // Clearing applies at once; typing and dates wait for a pause.
+    if (askedKey === '{}') {
+      setFilter(asked);
+      return;
+    }
+    const timer = setTimeout(() => setFilter(asked), SEARCH_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [askedKey]);
+  const list = useExportExperiments(filter);
+  const rangeBackwards =
+    !!filter.dateFrom && !!filter.dateTo && filter.dateFrom > filter.dateTo;
+  const experiments = list.experiments ?? [];
+  const isLoading = list.experiments === null && !list.loadError;
+  const loadError = list.loadError;
+  const tree = useExportScanTree(filter);
   const selectedScanIds = tree.selected;
   const [destinationDir, setDestinationDir] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [progress, setProgress] = useState<ScansExportProgress | null>(null);
   const [resultBanner, setResultBanner] = useState<ResultBanner | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await window.electron.database.scans.experimentCounts();
-        if (cancelled) return;
-        if (!result.success || !result.data) {
-          setLoadError(result.error || 'Failed to load experiments');
-          return;
-        }
-        setExperiments(result.data);
-      } catch (err) {
-        if (!cancelled) {
-          setLoadError(
-            err instanceof Error ? err.message : 'Failed to load experiments'
-          );
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Only subscribed while an export is actually in progress, and cleaned up
   // both when it finishes and (critically) if the page unmounts mid-export —
@@ -188,10 +194,38 @@ export function Export() {
         />
       )}
 
+      <ExportSearch
+        values={searchValues}
+        onChange={setSearchValues}
+        disabled={exporting}
+      />
+
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-gray-600">
+          {list.filtered && list.experiments !== null && (
+            <span className="mr-3" data-testid="filter-summary">
+              Showing {plural(experiments.length, 'experiment')} ·{' '}
+              {list.totalScans === null
+                ? plural(list.matchingScans, 'scan')
+                : `${list.matchingScans.toLocaleString()} of ${plural(
+                    list.totalScans,
+                    'scan'
+                  )}`}
+            </span>
+          )}
           {selectedScanIds.size} scan{selectedScanIds.size === 1 ? '' : 's'}{' '}
           selected
+          {/* The selection outlives a search, so it can hold scans not shown now. */}
+          {selectedScanIds.size > 0 && (
+            <button
+              type="button"
+              onClick={tree.clearSelection}
+              disabled={exporting}
+              className="ml-3 text-lime-800 underline hover:text-lime-900 disabled:opacity-50"
+            >
+              Clear selection
+            </button>
+          )}
         </p>
         <button
           type="button"
@@ -214,19 +248,34 @@ export function Export() {
               className="h-8 w-8 animate-spin rounded-full border-4 border-lime-200 border-t-lime-700"
             />
             <p className="text-sm font-medium text-gray-700">
-              Loading experiments…
+              {list.filtered ? 'Searching scans…' : 'Loading experiments…'}
             </p>
           </div>
         ) : experiments.length === 0 ? (
-          <div className="h-96 flex items-center justify-center">
+          <div className="h-96 flex flex-col items-center justify-center gap-3">
             <p className="text-sm text-gray-500">
               {loadError
                 ? 'Experiments could not be loaded'
-                : 'No scans to export'}
+                : rangeBackwards
+                  ? 'No scans match: From is after To'
+                  : list.filtered
+                    ? 'No scans match this search'
+                    : 'No scans to export'}
             </p>
+            {list.filtered && (
+              <button
+                type="button"
+                onClick={() => setSearchValues(NO_SEARCH)}
+                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+              >
+                Clear search
+              </button>
+            )}
           </div>
         ) : (
           <ExportExperimentList
+            // A new filter reloads every row, so rows open under the old one close.
+            key={filterKey}
             experiments={experiments}
             tree={tree}
             disabled={exporting}
