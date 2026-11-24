@@ -24,6 +24,7 @@ import {
 } from './daq';
 import { ScannerAPI } from './scanner';
 import type { ExperimentLatestScan } from './experiment-recency';
+import type { AccessionFileMatch } from './accession-search';
 import type { SpeciesAPI } from './species';
 import type {
   ExperimentScanCount,
@@ -662,6 +663,8 @@ export interface DatabaseAPI {
       plantBarcode: string,
       experimentId: string
     ) => Promise<DatabaseResponse<string | null>>;
+    /** Files with plants whose barcode or accession name contains the text. */
+    search: (text: string) => Promise<DatabaseResponse<AccessionFileMatch[]>>;
   };
   images: {
     create: (data: ImageCreateData[]) => Promise<DatabaseResponse>;

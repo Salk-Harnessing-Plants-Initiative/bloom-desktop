@@ -603,6 +603,38 @@ test.describe('Renderer Database IPC - Accessions', () => {
     expect(result.success).toBe(true);
     expect(result.data).toBeNull();
   });
+
+  test('should find accession files by plant barcode or accession name', async () => {
+    const soy = await prisma.accessions.create({
+      data: { name: 'STL_soy_accessions.xlsx' },
+    });
+    await prisma.accessions.create({ data: { name: 'KCS_lines.xlsx' } });
+    await prisma.plantAccessionMappings.createMany({
+      data: [
+        {
+          plant_barcode: 'STL-001',
+          accession_name: 'Col-0',
+          accession_file_id: soy.id,
+        },
+        {
+          plant_barcode: 'STL-002',
+          accession_name: 'Col-0',
+          accession_file_id: soy.id,
+        },
+      ],
+    });
+
+    const result = await window.evaluate(() => {
+      return (window as WindowWithElectron).electron.database.accessions.search(
+        'col-0'
+      );
+    });
+
+    expect(result).toEqual({
+      success: true,
+      data: [{ accession_file_id: soy.id, matching_plants: 2 }],
+    });
+  });
 });
 
 test.describe('Renderer Database IPC - Experiments (with Relations)', () => {

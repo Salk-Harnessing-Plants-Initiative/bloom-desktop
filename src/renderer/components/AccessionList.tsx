@@ -23,12 +23,15 @@ interface AccessionListProps {
   onUpdate: () => void;
   /** A file to open and scroll to, e.g. when linked from the Experiments page. */
   openId?: string | null;
+  /** While searching: file id → how many of its plants match. */
+  matchingPlants?: ReadonlyMap<string, number>;
 }
 
 export function AccessionList({
   accessions,
   onUpdate,
   openId,
+  matchingPlants,
 }: AccessionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -194,6 +197,16 @@ export function AccessionList({
                 <div className="text-xs text-gray-500">
                   Created: {new Date(accession.createdAt).toLocaleDateString()}
                 </div>
+                {matchingPlants?.has(accession.id) && (
+                  <div
+                    className="text-xs text-lime-800"
+                    data-testid={`plant-matches-${accession.id}`}
+                  >
+                    {matchingPlants.get(accession.id) === 1
+                      ? '1 plant matches'
+                      : `${matchingPlants.get(accession.id)} plants match`}
+                  </div>
+                )}
               </div>
               <div className="text-gray-400">
                 {expandedId === accession.id ? '▼' : '▶'}
