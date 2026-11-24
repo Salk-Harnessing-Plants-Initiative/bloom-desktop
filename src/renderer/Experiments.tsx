@@ -6,6 +6,8 @@ import { CylinderWaveDates } from './components/CylinderWaveDates';
 import { AttachAccessionSection } from './components/AttachAccessionSection';
 import type { ExperimentLatestScan } from '../types/experiment-recency';
 import { orderByRecentScan } from './utils/experiment-order';
+import { matchesExperimentSearch } from './utils/experiment-search';
+import { SearchIcon } from '../components/SearchIcon';
 
 interface Scientist {
   id: string;
@@ -53,6 +55,8 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
   const [scientists, setScientists] = useState<Scientist[]>([]);
   const [accessions, setAccessions] = useState<Accession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Narrows the list only; the Attach picker still offers every experiment.
+  const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const fetchExperiments = useCallback(async () => {
@@ -122,6 +126,8 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
     return `${experiment.species} - ${experiment.name} (${scientistName})`;
   };
 
+  const shown = experiments.filter((e) => matchesExperimentSearch(e, search));
+
   return (
     <div className="flex min-h-full flex-col p-6">
       <h1 className="text-2xl font-bold mb-6">Experiments</h1>
@@ -129,7 +135,25 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
       {/* The page fills the window: the forms keep their height at the bottom and
           the list takes the rest, growing with the window and scrolling. */}
       <div className="mb-8 flex min-h-64 flex-1 basis-0 flex-col">
-        <h2 className="text-xs font-bold mb-2">Experiments</h2>
+        <div className="mb-2 mr-10 flex flex-wrap items-center gap-3">
+          <h2 className="text-xs font-bold">Experiments</h2>
+          <div className="relative w-full max-w-sm">
+            <SearchIcon />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Name, species, scientist or accession file"
+              aria-label="Search experiments"
+              className="w-full rounded-md border border-gray-300 py-1.5 pl-9 pr-3 text-sm"
+            />
+          </div>
+          {search.trim() && !isLoading && !error && (
+            <span className="text-xs text-gray-600" data-testid="search-count">
+              {shown.length} of {experiments.length}
+            </span>
+          )}
+        </div>
 
         {isLoading ? (
           <div className="min-h-64 flex-1 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center">
@@ -139,13 +163,17 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
           <div className="min-h-64 flex-1 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center border-red-300 bg-red-50">
             <p className="text-sm text-red-600">{error}</p>
           </div>
-        ) : experiments.length === 0 ? (
+        ) : shown.length === 0 ? (
           <div className="min-h-64 flex-1 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center">
-            <p className="text-sm text-gray-500">No experiments yet</p>
+            <p className="text-sm text-gray-500">
+              {experiments.length === 0
+                ? 'No experiments yet'
+                : 'No experiments match this search'}
+            </p>
           </div>
         ) : (
           <ul className="experiments-list min-h-0 flex-1 overflow-auto border rounded-md max-w-full mr-10 text-sm">
-            {experiments.map((experiment) => (
+            {shown.map((experiment) => (
               <li key={experiment.id} className="mb-2 p-2">
                 <div className="flex justify-between items-center">
                   <span>{getExperimentDisplay(experiment)}</span>
