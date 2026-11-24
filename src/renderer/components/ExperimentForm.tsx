@@ -160,7 +160,7 @@ export function ExperimentForm({
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="border rounded text-lg p-4 w-96"
+      className="border rounded text-lg p-4 flex-1"
       noValidate
     >
       {submitError && (
@@ -180,7 +180,7 @@ export function ExperimentForm({
           id="experiment-name"
           type="text"
           {...register('name')}
-          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500 w-[200px] border border-gray-300"
+          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500 w-full border border-gray-300"
           disabled={isSubmitting}
         />
         {errors.name && (
@@ -207,7 +207,7 @@ export function ExperimentForm({
         <select
           id="scientist-select"
           {...register('scientist_id')}
-          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-[200px] border border-gray-300"
+          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
           disabled={isSubmitting}
         >
           <option value="">-- Select a scientist --</option>
@@ -234,7 +234,7 @@ export function ExperimentForm({
         <select
           id="accession-select"
           {...register('accession_id')}
-          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-[200px] border border-gray-300"
+          className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
           disabled={isSubmitting}
         >
           <option value="">-- Select an accession --</option>
@@ -265,7 +265,7 @@ export function ExperimentForm({
             min={0}
             value={waveNumber}
             onChange={(e) => setWaveNumber(Number(e.target.value))}
-            className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500 w-[200px] border border-gray-300"
+            className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-lime-500 w-full border border-gray-300"
             disabled={isSubmitting}
           />
         </div>

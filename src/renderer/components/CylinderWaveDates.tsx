@@ -141,9 +141,19 @@ function PlantsWithOwnDates({
   );
 }
 
-export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
+interface CylinderWaveDatesProps {
+  experimentId: string;
+  /** Start with the waves shown, as when the user has just asked to see them. */
+  startOpen?: boolean;
+}
+
+export function CylinderWaveDates({
+  experimentId,
+  startOpen = false,
+}: CylinderWaveDatesProps) {
   const [waves, setWaves] = useState<CylinderWaveInfo[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -157,6 +167,8 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
       }
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setLoaded(true);
     }
   }, [experimentId]);
 
@@ -164,7 +176,12 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
     void load();
   }, [load]);
 
-  if (waves.length === 0 && !loadError) return null;
+  if (waves.length === 0 && !loadError) {
+    // Asked for, so say there's nothing yet rather than show nothing.
+    return startOpen && loaded ? (
+      <p className="ml-2 mt-1 text-xs italic text-gray-500">No waves yet.</p>
+    ) : null;
+  }
 
   // Shown outside the collapsed section, so it can't be missed.
   if (loadError) {
@@ -175,6 +192,7 @@ export function CylinderWaveDates({ experimentId }: { experimentId: string }) {
     <details
       className="ml-2 mt-1 text-sm text-gray-700"
       data-testid={`wave-dates-${experimentId}`}
+      open={startOpen}
     >
       <summary className="cursor-pointer font-semibold text-green-800">
         {waves.length === 1 ? '1 wave' : `${waves.length} waves`}

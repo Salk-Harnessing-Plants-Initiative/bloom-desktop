@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Experiment {
   id: string;
@@ -21,9 +21,15 @@ interface PlantMapping {
 interface AccessionListProps {
   accessions: Accession[];
   onUpdate: () => void;
+  /** A file to open and scroll to, e.g. when linked from the Experiments page. */
+  openId?: string | null;
 }
 
-export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
+export function AccessionList({
+  accessions,
+  onUpdate,
+  openId,
+}: AccessionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -36,34 +42,49 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [editingAccessionName, setEditingAccessionName] = useState('');
 
-  const handleExpand = async (accession: Accession) => {
-    const newExpandedId = expandedId === accession.id ? null : accession.id;
+  const handleExpand = async (accession: Accession, keepOpen = false) => {
+    const newExpandedId =
+      expandedId === accession.id && !keepOpen ? null : accession.id;
     setExpandedId(newExpandedId);
 
     // Fetch mappings when expanding
     if (newExpandedId && !mappings[accession.id]) {
       setMappingsLoading((prev) => ({ ...prev, [accession.id]: true }));
-
-      const result = await window.electron.database.accessions.getMappings(
-        accession.id
-      );
-
-      if (result.success && result.data) {
-        setMappings((prev) => ({
-          ...prev,
-          [accession.id]: result.data,
-        }));
-      } else {
-        console.error('Failed to fetch mappings:', result.error);
-        setMappings((prev) => ({
-          ...prev,
-          [accession.id]: [],
-        }));
+      let loaded: PlantMapping[] = [];
+      try {
+        const result = await window.electron.database.accessions.getMappings(
+          accession.id
+        );
+        if (result.success && result.data) {
+          loaded = result.data;
+        } else {
+          console.error('Failed to fetch mappings:', result.error);
+        }
+      } catch (error) {
+        // The row shows no mappings rather than loading forever.
+        console.error(
+          'Failed to fetch mappings:',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
       }
-
+      setMappings((prev) => ({ ...prev, [accession.id]: loaded }));
       setMappingsLoading((prev) => ({ ...prev, [accession.id]: false }));
     }
   };
+
+  // Opens the linked file once it's in the list, and scrolls it into view.
+  const opened = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openId || opened.current === openId) return;
+    const accession = accessions.find((a) => a.id === openId);
+    if (!accession) return;
+    opened.current = openId;
+    void handleExpand(accession, true);
+    document
+      .getElementById(`accession-${openId}`)
+      ?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    // Runs once per linked file: `opened` stops a reload from closing it again.
+  }, [openId, accessions]);
 
   const handleEditStart = (accession: Accession) => {
     setEditingId(accession.id);
@@ -158,6 +179,7 @@ export function AccessionList({ accessions, onUpdate }: AccessionListProps) {
       {accessions.map((accession) => (
         <div
           key={accession.id}
+          id={`accession-${accession.id}`}
           data-testid="accession-item"
           className="border border-gray-300 rounded-md"
         >

@@ -7,7 +7,7 @@
  * its lime equivalent.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { AccessionList } from '../../../src/renderer/components/AccessionList';
@@ -50,6 +50,51 @@ describe('AccessionList baseline rendering', () => {
   it('shows an empty state when there are no accessions', () => {
     render(<AccessionList accessions={[]} onUpdate={vi.fn()} />);
     expect(screen.getByText(/no accessions yet/i)).toBeInTheDocument();
+  });
+});
+
+describe('AccessionList opening a linked file', () => {
+  const two = [
+    ...accessions,
+    { id: 'acc-2', name: 'Soy lines', createdAt: new Date('2026-02-01') },
+  ];
+
+  // happy-dom has no scrollIntoView; each test sets one, and it's put back after.
+  const realScroll = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = realScroll;
+  });
+
+  it('opens the linked file with its plant mappings, and scrolls to it', async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    render(
+      <AccessionList accessions={two} onUpdate={vi.fn()} openId="acc-2" />
+    );
+    await waitFor(() => expect(mockGetMappings).toHaveBeenCalledWith('acc-2'));
+    expect(await screen.findByTestId('mappings-table')).toBeInTheDocument();
+    expect(mockGetMappings).not.toHaveBeenCalledWith('acc-1');
+    expect(scroll).toHaveBeenCalled();
+  });
+
+  it('shows the linked file with no mappings, not loading forever, when they fail to load', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    mockGetMappings.mockRejectedValue(new Error('database is locked'));
+    render(
+      <AccessionList accessions={two} onUpdate={vi.fn()} openId="acc-2" />
+    );
+    await waitFor(() => expect(mockGetMappings).toHaveBeenCalledWith('acc-2'));
+    await waitFor(() =>
+      expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
+    );
+  });
+
+  it('does nothing for an id that is not in the list', () => {
+    render(
+      <AccessionList accessions={two} onUpdate={vi.fn()} openId="missing" />
+    );
+    expect(mockGetMappings).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('mappings-table')).not.toBeInTheDocument();
   });
 });
 

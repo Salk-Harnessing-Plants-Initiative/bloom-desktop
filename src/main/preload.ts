@@ -202,6 +202,8 @@ const scannerAPI: ScannerAPI = {
 const databaseAPI: DatabaseAPI = {
   experiments: {
     list: () => ipcRenderer.invoke('db:experiments:list'),
+    /** Each experiment's newest scan time, for the Experiments page's order. */
+    latestScans: () => ipcRenderer.invoke('db:experiments:latestScans'),
     get: (id: string) => ipcRenderer.invoke('db:experiments:get', id),
     create: (data: ExperimentCreateData) =>
       ipcRenderer.invoke('db:experiments:create', data),
