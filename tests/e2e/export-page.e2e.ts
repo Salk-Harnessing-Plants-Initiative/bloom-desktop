@@ -168,6 +168,14 @@ test.afterEach(async () => {
   fs.rmSync(testScansDir, { recursive: true, force: true });
 });
 
+/** Opens the seeded experiment and its only day, showing its scans (#436). */
+async function openExperimentDay(page: Page) {
+  await page.getByRole('button', { name: 'Test Experiment' }).click();
+  await page
+    .getByRole('button', { name: /^[A-Z][a-z]{2} \d{1,2}, \d{4}$/ })
+    .click();
+}
+
 test.describe('Export Scans Page', () => {
   test('shows the empty-state message when there are no scans', async () => {
     await window.click('text=Export Scans');
@@ -182,15 +190,15 @@ test.describe('Export Scans Page', () => {
     });
 
     await window.click('text=Export Scans');
+    await openExperimentDay(window);
     await expect(window.locator('text=PLANT-001')).toBeVisible();
     await expect(window.locator('text=0 scans selected')).toBeVisible();
 
     const exportButton = window.locator('button:has-text("Export 0 scan")');
     await expect(exportButton).toBeDisabled();
 
-    // Select the scan via its own checkbox (group header is the first checkbox).
-    const checkboxes = window.locator('input[type="checkbox"]');
-    await checkboxes.nth(1).check();
+    // Select the scan via its own checkbox.
+    await window.getByRole('checkbox', { name: /PLANT-001/ }).check();
     await expect(window.locator('text=1 scan selected')).toBeVisible();
     await expect(
       window.locator('button:has-text("Export 1 scan")')
@@ -209,8 +217,9 @@ test.describe('Export Scans Page', () => {
     await mockDirectoryPicker(destDir);
 
     await window.click('text=Export Scans');
+    await openExperimentDay(window);
     await expect(window.locator('text=PLANT-002')).toBeVisible();
-    await window.locator('input[type="checkbox"]').nth(1).check();
+    await window.getByRole('checkbox', { name: /PLANT-00/ }).check();
     await window.click('button:has-text("Choose Destination")');
     // Not `locator('text=...')` — that selector engine's shorthand string
     // parses a leading `/` as the start of a `/pattern/flags` regex literal,
@@ -261,8 +270,9 @@ test.describe('Export Scans Page', () => {
     await mockDirectoryPicker(destDir);
 
     await window.click('text=Export Scans');
+    await openExperimentDay(window);
     await expect(window.locator('text=PLANT-003')).toBeVisible();
-    await window.locator('input[type="checkbox"]').nth(1).check();
+    await window.getByRole('checkbox', { name: /PLANT-00/ }).check();
     await window.click('button:has-text("Choose Destination")');
     // Not `locator('text=...')` — that selector engine's shorthand string
     // parses a leading `/` as the start of a `/pattern/flags` regex literal,
@@ -286,7 +296,7 @@ test.describe('Export Scans Page', () => {
     // Rendered as "already exported — all N files already present" rather
     // than "exported (already present)" or "exported (0 files)", both of
     // which read as self-contradictory next to "exported".
-    await window.locator('input[type="checkbox"]').nth(1).check();
+    await window.getByRole('checkbox', { name: /PLANT-00/ }).check();
     await window.click('button:has-text("Export 1 scan")');
     await expect(
       window.locator(

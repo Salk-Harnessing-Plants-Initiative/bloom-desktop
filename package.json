@@ -40,7 +40,7 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:coverage": "python3 scripts/check-ipc-coverage.py",
-    "test:db-upgrade": "vitest run --config vitest.integration.config.ts tests/integration/database-upgrade.test.ts tests/integration/experiment-camera-settings-migration.test.ts tests/integration/experiment-camera-settings-reference.test.ts",
+    "test:db-upgrade": "vitest run --config vitest.integration.config.ts tests/integration/database-upgrade.test.ts tests/integration/experiment-camera-settings-migration.test.ts tests/integration/experiment-camera-settings-reference.test.ts tests/integration/scan-groups.test.ts",
     "db:upgrade": "ts-node scripts/upgrade-database.ts",
     "lint": "eslint --ext .ts,.tsx .",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,css,md}\"",

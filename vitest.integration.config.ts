@@ -10,6 +10,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node', // Integration tests don't need DOM
+    // Stations are in California; CI runners are on UTC, where a local-day bug
+    // and a UTC-day bug look the same. Run every test on Pacific time.
+    env: { TZ: 'America/Los_Angeles' },
     testTimeout: 30000, // Longer timeout for database operations
     // Only include integration tests
     include: ['**/tests/integration/**/*.test.ts'],
