@@ -26,6 +26,7 @@ import type {
   SaveScannersToDBResult,
   ScannerConfig,
 } from '../../types/graviscan';
+import { compareByUsbPort } from '../../utils/scanner-order';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -895,7 +896,13 @@ export async function getScannerStatus(
     const config = await (db as any).graviConfig.findFirst();
     const gridMode: string = config?.grid_mode ?? '2grid';
 
-    const scanners = savedScanners.map((saved: any) => {
+    // USB-port order: the order Detect labels them "Scanner 1", "Scanner 2",
+    // so the page lists them that way and a file's Sc{K} is "Scanner K".
+    // Array.sort is stable, so createdAt breaks ties.
+    const ordered: typeof savedScanners = [...savedScanners].sort(
+      compareByUsbPort
+    );
+    const scanners = ordered.map((saved: any) => {
       const subprocess = statusMap.get(saved.id);
       return {
         scannerId: saved.id as string,

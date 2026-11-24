@@ -1556,6 +1556,71 @@ describe('runBoxBackup', () => {
     }
   });
 
+  it('backs up both scanners at the same plate index with rig file names — no collision (#370)', async () => {
+    // The bug #370 is about: with the earlier development names
+    // (`00_cy1_<ms>.tiff`, one shared timestamp), plate 00 from scanner 1
+    // and plate 00 from scanner 2 had the same basename and the second was
+    // skipped here as a collision. With the rig's names the scanner
+    // position (`Sc1`/`Sc2`) is in the name, so both are staged and
+    // uploaded. Real names from a rig scan backed up to Box.
+    const sessionDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'box-backup-test-rig-session-')
+    );
+    const sc1 = path.join(
+      sessionDir,
+      'Perceptome_Screen_wave20_st_20260809T190946_et_20260809T121108_cy1_graviscan-desktop_Sc1_00.tif'
+    );
+    const sc2 = path.join(
+      sessionDir,
+      'Perceptome_Screen_wave20_st_20260809T190946_et_20260809T121112_cy1_graviscan-desktop_Sc2_00.tif'
+    );
+    fs.writeFileSync(sc1, 'scanner 1 plate 00');
+    fs.writeFileSync(sc2, 'scanner 2 plate 00');
+
+    mockSpawn.mockImplementation((_cmd, args) => {
+      const proc = new FakeChildProcess();
+      const argv = args as string[];
+      if (argv[0] === 'version') {
+        queueMicrotask(() => proc.emit('exit', 0));
+      } else {
+        queueMicrotask(() => proc.emit('close', 0));
+      }
+      return proc as never;
+    });
+
+    const scanRow = (barcode: string, imageId: string, imagePath: string) => ({
+      experiment: { name: 'Perceptome Screen', accession: null },
+      wave_number: 20,
+      plate_barcode: barcode,
+      plate_index: '00',
+      grid_mode: '4grid',
+      capture_date: new Date('2026-08-09'),
+      transplant_date: null,
+      custom_note: null,
+      images: [{ id: imageId, path: imagePath }],
+    });
+    db.graviScan.findMany.mockResolvedValue([
+      scanRow('P1', 'img-sc1', sc1),
+      scanRow('P2', 'img-sc2', sc2),
+    ]);
+
+    try {
+      await runBoxBackup(db as unknown as Parameters<typeof runBoxBackup>[0]);
+
+      const uploaded = db.graviImage.updateMany.mock.calls
+        .filter((call) => call[0].data.box_status === 'uploaded')
+        .flatMap((call) => call[0].where.id.in);
+      expect(uploaded.sort()).toEqual(['img-sc1', 'img-sc2']);
+
+      const collisionCall = db.graviImage.updateMany.mock.calls.find(
+        (call) => call[0].data.box_status === 'collision'
+      );
+      expect(collisionCall).toBeUndefined();
+    } finally {
+      fs.rmSync(sessionDir, { recursive: true, force: true });
+    }
+  });
+
   it('does not resolve a basename collision on the next run even after the winning image is excluded from the retry query', async () => {
     // Regression guard for the cross-run corruption this round's design
     // specifically closes: box_status:'collision' must NOT be in the

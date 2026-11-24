@@ -79,6 +79,12 @@ describe('useTestScan', () => {
     // one-shot capture independent of useScanSession's own state.
     expect(startScan.mock.calls[0][0].metadata).toBeUndefined();
     expect(startScan.mock.calls[0][0].interval).toBeUndefined();
+    // Marked as a test scan; the main process builds every path.
+    expect(startScan.mock.calls[0][0].test).toBe(true);
+    for (const s of startScan.mock.calls[0][0].scanners) {
+      for (const p of s.plates) expect(p).not.toHaveProperty('output_path');
+    }
+    expect(getOutputDir).not.toHaveBeenCalled();
 
     fire('scan-complete', {
       scannerId: 'sc-1',
@@ -149,22 +155,6 @@ describe('useTestScan', () => {
       /Invalid argument/
     );
     expect(result.current.testResults['sc-2'].success).toBe(true);
-  });
-
-  it('getOutputDir() failure surfaces a blocking error and does not fall back to /tmp', async () => {
-    getOutputDir.mockResolvedValue({
-      success: true,
-      data: { success: false, error: 'cannot resolve output dir' },
-    });
-    const { result } = renderHook(() => useTestScan(baseParams()));
-
-    await act(async () => {
-      await result.current.testAllScanners();
-    });
-
-    expect(result.current.error).toMatch(/cannot resolve output dir/);
-    expect(startScan).not.toHaveBeenCalled();
-    expect(result.current.isTesting).toBe(false);
   });
 
   it('a startScan() failure marks every assigned scanner failed with the returned error', async () => {
@@ -295,8 +285,8 @@ describe('useTestScan', () => {
     expect(result.current.testResults['sc-2'].success).toBe(true);
   });
 
-  it('a getOutputDir() promise rejection surfaces an error and does not permanently lock out future test runs', async () => {
-    getOutputDir.mockRejectedValueOnce(new Error('IPC bridge closed'));
+  it('a startScan() promise rejection surfaces an error and does not permanently lock out future test runs', async () => {
+    startScan.mockRejectedValueOnce(new Error('IPC bridge closed'));
     const { result } = renderHook(() => useTestScan(baseParams()));
 
     await act(async () => {
@@ -306,15 +296,11 @@ describe('useTestScan', () => {
     expect(result.current.isTesting).toBe(false);
 
     // A later, working call must not be permanently blocked by the guard.
-    getOutputDir.mockResolvedValue({
-      success: true,
-      data: { success: true, path: '/out' },
-    });
     let secondPromise!: Promise<void>;
     act(() => {
       secondPromise = result.current.testAllScanners();
     });
-    await waitFor(() => expect(startScan).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(startScan).toHaveBeenCalledTimes(2));
 
     fire('scan-complete', {
       scannerId: 'sc-1',

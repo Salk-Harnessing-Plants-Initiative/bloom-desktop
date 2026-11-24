@@ -313,25 +313,6 @@ describe('useScanSession', () => {
     expect(result.current.error).toMatch(/no active session/);
   });
 
-  it('getOutputDir() failure surfaces a blocking error and does not fall back to /tmp', async () => {
-    getOutputDir.mockResolvedValue({
-      success: true,
-      data: { success: false, error: 'cannot resolve output dir' },
-    });
-    const { result } = renderHook(() => useScanSession(baseParams()), {
-      wrapper: wedgeWrapper,
-    });
-
-    await act(async () => {
-      await result.current.startScan();
-    });
-
-    expect(result.current.error).toMatch(/cannot resolve output dir/);
-    expect(startScan).not.toHaveBeenCalled();
-    // No plate's output path should ever be built against a hardcoded /tmp.
-    expect(result.current.isScanning).toBe(false);
-  });
-
   it('on-mount restore rehydrates pendingJobs/waveNumber/timing when the session is active', async () => {
     const onRestoreWaveNumber = vi.fn();
     getScanStatus.mockResolvedValue({
@@ -450,7 +431,68 @@ describe('useScanSession', () => {
     );
   });
 
-  it('startScan() builds output_path with a _cy1_ marker so the coordinator can rewrite it per cycle (regression: identical path was reused every cycle, silently overwriting prior scans)', async () => {
+  it('startScan() sends the choices and scanner order, no paths; the main process builds them', async () => {
+    const { result } = renderHook(
+      () =>
+        useScanSession(
+          baseParams({
+            scannerIds: ['sc-idle', 'sc-1'],
+            gridModes: { 'sc-idle': '2grid', 'sc-1': '2grid' },
+          })
+        ),
+      { wrapper: wedgeWrapper }
+    );
+
+    await act(async () => {
+      await result.current.startScan();
+    });
+
+    const req = startScan.mock.calls[0][0];
+    // Every enabled scanner in page order, including one with no plates,
+    // so file names get the same Sc{K} as on the rig.
+    expect(req.scannerOrder).toEqual(['sc-idle', 'sc-1']);
+    expect(req.scanners.map((s: { scannerId: string }) => s.scannerId)).toEqual(
+      ['sc-1']
+    );
+    expect(req.metadata).toEqual({
+      experimentId: 'exp-1',
+      phenotyperId: 'pheno-1',
+      resolution: 1200,
+      waveNumber: 0,
+    });
+    expect(req.scanners[0].plates).toEqual([
+      {
+        plate_index: '00',
+        grid_mode: '2grid',
+        resolution: 1200,
+        plate_barcode: expect.anything(),
+      },
+      {
+        plate_index: '01',
+        grid_mode: '2grid',
+        resolution: 1200,
+        plate_barcode: 'PLATE_002',
+      },
+    ]);
+    for (const p of req.scanners[0].plates) {
+      expect(p).not.toHaveProperty('output_path');
+    }
+    expect(getOutputDir).not.toHaveBeenCalled();
+  });
+
+  it('startScan() tracks each job by the path the main process returns', async () => {
+    startScan.mockResolvedValue({
+      success: true,
+      data: {
+        success: true,
+        outputPaths: {
+          'sc-1:00':
+            '/out/Exp_wave0_20260809T190946/Exp_wave0_st_20260809T190946_cy1_Sc1_00.tif',
+          'sc-1:01':
+            '/out/Exp_wave0_20260809T190946/Exp_wave0_st_20260809T190946_cy1_Sc1_01.tif',
+        },
+      },
+    });
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });
@@ -459,19 +501,11 @@ describe('useScanSession', () => {
       await result.current.startScan();
     });
 
-    expect(startScan).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scanners: expect.arrayContaining([
-          expect.objectContaining({
-            plates: expect.arrayContaining([
-              expect.objectContaining({
-                plate_index: '00',
-                output_path: expect.stringMatching(/_cy1_/),
-              }),
-            ]),
-          }),
-        ]),
-      })
+    expect(result.current.pendingJobs['sc-1:00'].outputPath).toBe(
+      '/out/Exp_wave0_20260809T190946/Exp_wave0_st_20260809T190946_cy1_Sc1_00.tif'
+    );
+    expect(result.current.pendingJobs['sc-1:01'].outputPath).toBe(
+      '/out/Exp_wave0_20260809T190946/Exp_wave0_st_20260809T190946_cy1_Sc1_01.tif'
     );
   });
 
@@ -1269,8 +1303,8 @@ describe('useScanSession', () => {
     expect(result.current.error).toBe('A scan is already in progress.');
   });
 
-  it('a getOutputDir() promise rejection (not just a resolved failure) surfaces an error instead of throwing unhandled', async () => {
-    getOutputDir.mockRejectedValue(new Error('IPC bridge closed'));
+  it('a startScan() promise rejection (not just a resolved failure) surfaces an error instead of throwing unhandled', async () => {
+    startScan.mockRejectedValue(new Error('IPC bridge closed'));
     const { result } = renderHook(() => useScanSession(baseParams()), {
       wrapper: wedgeWrapper,
     });

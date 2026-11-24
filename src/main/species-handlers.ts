@@ -97,4 +97,10 @@ export function registerSpeciesHandlers(deps: SpeciesHandlerDeps): void {
       };
     }
   });
+  deps.ipcMain.handle('species:add', (_event, name: string) =>
+    deps.store.add(String(name ?? ''))
+  );
+  deps.ipcMain.handle('species:remove', (_event, name: string) =>
+    deps.store.remove(String(name ?? ''))
+  );
 }

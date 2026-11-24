@@ -14,10 +14,12 @@ import { UploadAllBar } from './components/UploadAllBar';
 import { countUploadStatuses } from '../utils/upload-status';
 import { pathToFileUrl } from '../utils/file-url';
 import { isAbsolutePath } from '../utils/scan-path';
+import { useBloomConnected } from './hooks/useBloomConnected';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export function BrowseScans() {
+  const bloomOn = useBloomConnected();
   const navigate = useNavigate();
 
   // Data state
@@ -442,28 +444,32 @@ export function BrowseScans() {
         </div>
       )}
 
-      <UploadAllBar
-        filters={{ experimentId, dateFrom, dateTo }}
-        refreshKey={scans}
-        onFinished={() => fetchScans()}
-        onProgress={() => fetchScans({ quiet: true })}
-        onRunningChange={setUploadAllRunning}
-        disabled={batchUploadInProgress || uploadInProgress !== null}
-      />
+      {bloomOn && (
+        <UploadAllBar
+          filters={{ experimentId, dateFrom, dateTo }}
+          refreshKey={scans}
+          onFinished={() => fetchScans()}
+          onProgress={() => fetchScans({ quiet: true })}
+          onRunningChange={setUploadAllRunning}
+          disabled={batchUploadInProgress || uploadInProgress !== null}
+        />
+      )}
 
       {/* Batch Actions */}
       {selectedScanIds.size > 0 && (
         <div className="mb-4 flex items-center gap-4">
-          <button
-            type="button"
-            onClick={handleBatchUpload}
-            disabled={batchUploadInProgress || uploadAllRunning}
-            className="px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {batchUploadInProgress
-              ? 'Uploading...'
-              : `Upload Selected (${selectedScanIds.size})`}
-          </button>
+          {bloomOn && (
+            <button
+              type="button"
+              onClick={handleBatchUpload}
+              disabled={batchUploadInProgress || uploadAllRunning}
+              className="px-4 py-2 bg-lime-700 text-white rounded-md hover:bg-lime-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {batchUploadInProgress
+                ? 'Uploading...'
+                : `Upload Selected (${selectedScanIds.size})`}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setSelectedScanIds(new Set())}
@@ -652,39 +658,41 @@ export function BrowseScans() {
                           </svg>
                         </button>
                       </HoverLabel>
-                      <HoverLabel label="Upload to Bloom">
-                        <button
-                          type="button"
-                          onClick={() => handleUpload(scan.id)}
-                          disabled={
-                            uploadInProgress === scan.id ||
-                            uploadAllRunning ||
-                            uploadStatus.text === 'All uploaded' ||
-                            uploadStatus.text === 'No images'
-                          }
-                          className="text-green-600 hover:text-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                          aria-label="Upload to Bloom"
-                        >
-                          {uploadInProgress === scan.id ? (
-                            'Uploading...'
-                          ) : (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              strokeWidth={1.5}
-                              stroke="currentColor"
-                              className="w-5 h-5"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                      </HoverLabel>
+                      {bloomOn && (
+                        <HoverLabel label="Upload to Bloom">
+                          <button
+                            type="button"
+                            onClick={() => handleUpload(scan.id)}
+                            disabled={
+                              uploadInProgress === scan.id ||
+                              uploadAllRunning ||
+                              uploadStatus.text === 'All uploaded' ||
+                              uploadStatus.text === 'No images'
+                            }
+                            className="text-green-600 hover:text-green-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                            aria-label="Upload to Bloom"
+                          >
+                            {uploadInProgress === scan.id ? (
+                              'Uploading...'
+                            ) : (
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={1.5}
+                                stroke="currentColor"
+                                className="w-5 h-5"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+                                />
+                              </svg>
+                            )}
+                          </button>
+                        </HoverLabel>
+                      )}
                       <HoverLabel label="Delete scan">
                         <button
                           type="button"

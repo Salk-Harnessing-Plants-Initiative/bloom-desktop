@@ -741,6 +741,24 @@ describe('BrowseGraviScans', () => {
   });
 
   describe('Box backup UI', () => {
+    it('hides Backup to Box when Bloom is off', async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const win = global.window as any;
+      const get = vi
+        .fn()
+        .mockResolvedValue({ config: { bloom_not_connected: true } });
+      win.electron.config = { ...win.electron.config, get };
+      renderPage();
+
+      await waitFor(() => expect(get).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('button', { name: /^backup to box$/i })
+        ).not.toBeInTheDocument()
+      );
+      delete win.electron.config.get;
+    });
+
     it('shows the idle state by default', async () => {
       renderPage();
       await waitFor(() => expect(getScanStatus).toHaveBeenCalled());

@@ -13,6 +13,7 @@ import {
   type ScannerStatusRow,
   type DetectedScanner,
 } from '../types/graviscan';
+import { compareByUsbPort } from '../utils/scanner-order';
 
 const STATUS_POLL_INTERVAL_MS = 3000;
 const DEFAULT_RESOLUTION_DPI = 1200;
@@ -217,9 +218,9 @@ export function ConfigureScanner() {
         return;
       }
 
-      const sorted = [...detected].sort((a, b) =>
-        (a.usb_port || '').localeCompare(b.usb_port || '')
-      );
+      // Labels follow USB-port order, the same order the scanner lists use,
+      // so a scan file's Sc{K} is the scanner labelled "Scanner K".
+      const sorted = [...detected].sort(compareByUsbPort);
       const payload = sorted.map((s, i) => ({
         name: s.name,
         display_name: `Scanner ${i + 1}`,

@@ -11,7 +11,9 @@ Usage:
 
 Protocol:
     Commands (stdin, line-delimited JSON):
-        {"action":"scan","plates":[{"plate_index":"00","grid_mode":"2grid","resolution":300,"output_path":"/tmp/scan.jpg"}, ...]}
+        {"action":"scan","plates":[{"plate_index":"00","grid_mode":"2grid","resolution":300,
+            "output_dir":"/scans/Exp_wave1_20260301T120000","exp_name":"Exp","wave_number":1,
+            "st_timestamp":"20260301T120000","cycle":1,"system_prefix":"","scanner_tag":"Sc1"}, ...]}
         {"action":"cancel"}
         {"action":"quit"}
 
@@ -27,7 +29,6 @@ Protocol:
 import argparse
 import json
 import os
-import re
 import sys
 import time
 import uuid
@@ -65,6 +66,7 @@ def _build_tiff_metadata(
     wave_number: int = 0,
     st_timestamp: str = "",
     phenotyper_name: str = "",
+    scanner_name: str = "",
 ) -> ImageFileDirectory_v2:
     """Build TIFF metadata tags for a scan image.
 
@@ -90,6 +92,7 @@ def _build_tiff_metadata(
             "wave_number": wave_number,
             "st_timestamp": st_timestamp,
             "phenotyper_name": phenotyper_name,
+            "scanner_name": scanner_name,
             "capture_timestamp": datetime.now(timezone.utc).isoformat(),
             "bloom_version": _BLOOM_VERSION,
         }
@@ -107,17 +110,39 @@ def emit_event(event: dict) -> None:
     print(f"EVENT:{json.dumps(event)}", flush=True)
 
 
-def compose_output_path(output_path: str, et: str) -> str:
-    """Insert _et_YYYYMMDDTHHMMSS into output_path's filename, right after
-    the existing _st_YYYYMMDDTHHMMSS segment.
+def compose_name_from_parts(parts: dict, et: str) -> str:
+    """Build a session scan's file name from its parts, exactly as the
+    GraviScan rig does (rig `compose_output_path(plate, et)`):
 
-    The coordinator sends a path like "..._st_20260413T120530_cy1_S1_00.tif".
-    Returns "..._st_20260413T120530_et_20260413T120545_cy1_S1_00.tif".
-    If no _st_ pattern is found, returns output_path unchanged.
+        {exp_name}_wave{wave_number}_st_{st_timestamp}_et_{et}
+            _cy{cycle}_{system_prefix}{scanner_tag}_{plate_index}.tif
+
+    The parts come from Start Scan (main process) and the coordinator, which
+    adds each grid's `st_timestamp` and `cycle`; the worker adds `et`, the
+    save time, because only it knows it.
     """
-    return re.sub(
-        r"(_st_\d{8}T\d{6})", lambda m: f"{m.group(1)}_et_{et}", output_path, count=1
+    return (
+        f"{parts['exp_name']}_wave{parts['wave_number']}"
+        f"_st_{parts['st_timestamp']}_et_{et}"
+        f"_cy{parts['cycle']}"
+        f"_{parts['system_prefix']}{parts['scanner_tag']}"
+        f"_{parts['plate_index']}.tif"
     )
+
+
+def compose_output_path(plate: dict, et: str) -> str:
+    """Final path a plate is saved to, as on the rig: the session folder
+    (`output_dir`) and the name built from the plate's parts."""
+    return os.path.join(plate["output_dir"], compose_name_from_parts(plate, et))
+
+
+def utc_save_time() -> str:
+    """`_et_` save time, `YYYYMMDDTHHMMSS` in UTC like `_st_`.
+
+    The rig wrote station local time here, so `_et_` read about 7 hours
+    before `_st_`; both are UTC now.
+    """
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
 
 
 def log(scanner_id: str, msg: str) -> None:
@@ -442,8 +467,10 @@ class ScanWorker:
         plate_index = plate.get("plate_index", "00")
         grid_mode = plate.get("grid_mode", "2grid")
         resolution = plate.get("resolution", 300)
-        output_path = plate.get("output_path", "/tmp/scan.jpg")
-        exp_name = plate.get("exp_name", "")
+        # TIFF gets the full experiment name; the cleaned `exp_name` is the
+        # file name part.
+        exp_name = plate.get("experiment_name") or plate.get("exp_name", "")
+        scanner_name = plate.get("scanner_name", "")
         wave_number = plate.get("wave_number", 0)
         st_timestamp = plate.get("st_timestamp", "")
         phenotyper_name = plate.get("phenotyper_name", "")
@@ -468,22 +495,24 @@ class ScanWorker:
                     grid_mode,
                     plate_index,
                     resolution,
-                    output_path,
+                    plate,
                     exp_name,
                     wave_number,
                     st_timestamp,
                     phenotyper_name,
+                    scanner_name=scanner_name,
                 )
             else:
                 final_path = self._sane_scan(
                     grid_mode,
                     plate_index,
                     resolution,
-                    output_path,
+                    plate,
                     exp_name,
                     wave_number,
                     st_timestamp,
                     phenotyper_name,
+                    scanner_name=scanner_name,
                 )
 
             duration_ms = int((time.monotonic() - start_time) * 1000)
@@ -526,11 +555,12 @@ class ScanWorker:
         grid_mode: str,
         plate_index: str,
         resolution: int,
-        output_path: str,
+        plate: dict,
         exp_name: str = "",
         wave_number: int = 0,
         st_timestamp: str = "",
         phenotyper_name: str = "",
+        scanner_name: str = "",
     ) -> str:
         """Perform a scan using python-sane directly.
 
@@ -627,8 +657,8 @@ class ScanWorker:
                 self._last_scan_bytes_received = image.width * image.height * 3
 
                 # Save as TIFF with LZW compression and metadata
-                et = datetime.now().strftime("%Y%m%dT%H%M%S")
-                final_path = compose_output_path(output_path, et)
+                et = utc_save_time()
+                final_path = compose_output_path(plate, et)
                 os.makedirs(os.path.dirname(final_path), exist_ok=True)
                 tiff_meta = _build_tiff_metadata(
                     self.scanner_id,
@@ -640,6 +670,7 @@ class ScanWorker:
                     wave_number,
                     st_timestamp,
                     phenotyper_name,
+                    scanner_name,
                 )
                 _atomic_image_save(
                     image,
@@ -810,11 +841,12 @@ class ScanWorker:
         grid_mode: str,
         plate_index: str,
         resolution: int,
-        output_path: str,
+        plate: dict,
         exp_name: str = "",
         wave_number: int = 0,
         st_timestamp: str = "",
         phenotyper_name: str = "",
+        scanner_name: str = "",
     ) -> str:
         """Generate a mock scan image (checkerboard pattern).
 
@@ -853,8 +885,8 @@ class ScanWorker:
         # — the achieved value always equals the requested value.
         self._last_achieved_resolution = resolution
 
-        et = datetime.now().strftime("%Y%m%dT%H%M%S")
-        final_path = compose_output_path(output_path, et)
+        et = utc_save_time()
+        final_path = compose_output_path(plate, et)
         os.makedirs(os.path.dirname(final_path), exist_ok=True)
         tiff_meta = _build_tiff_metadata(
             self.scanner_id,
@@ -866,6 +898,7 @@ class ScanWorker:
             wave_number,
             st_timestamp,
             phenotyper_name,
+            scanner_name,
         )
         _atomic_image_save(
             image,

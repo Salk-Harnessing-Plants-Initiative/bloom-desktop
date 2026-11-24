@@ -664,6 +664,8 @@ const speciesAPI: SpeciesAPI = {
   list: () => ipcRenderer.invoke('species:list'),
   refresh: () => ipcRenderer.invoke('species:refresh'),
   openAddPage: () => ipcRenderer.invoke('species:openAddPage'),
+  add: (name: string) => ipcRenderer.invoke('species:add', name),
+  remove: (name: string) => ipcRenderer.invoke('species:remove', name),
 };
 
 /**

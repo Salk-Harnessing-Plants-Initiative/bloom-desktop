@@ -196,16 +196,32 @@ export const PLATE_INDICES: Record<GridMode, string[]> = {
 /**
  * Plate configuration for a single scan operation.
  * Used by scan-coordinator, scanner-subprocess, and session-handlers.
+ *
+ * Carries the parts of the plate's file name; the worker builds the name
+ * from them when it saves, as on the rig. No ready-made path is ever sent.
  */
 export interface PlateConfig {
   plate_index: string;
   grid_mode: GridMode;
   resolution: number;
-  output_path: string;
+  /** Session folder (or the test folder) the worker saves into. */
+  output_dir?: string;
+  /** Cleaned experiment name as used in the file name (rig field). */
   exp_name?: string;
+  /** Full experiment name, for the TIFF metadata. */
+  experiment_name?: string;
   wave_number?: number;
-  phenotyper_name?: string;
+  /** Grid start `YYYYMMDDTHHMMSS` UTC; set by the coordinator per grid. */
   st_timestamp?: string;
+  /** Set by the coordinator per cycle. */
+  cycle?: number;
+  /** `{GRAVISCAN_SYSTEM_NAME}_`, or empty. */
+  system_prefix?: string;
+  /** `Sc{K}`, the scanner's position in the session. */
+  scanner_tag?: string;
+  phenotyper_name?: string;
+  /** Scanner's saved name (`display_name`, else `name`), for the TIFF. */
+  scanner_name?: string;
 }
 
 /**

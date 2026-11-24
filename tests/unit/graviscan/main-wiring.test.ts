@@ -829,6 +829,31 @@ describe('GraviScan wiring module', () => {
       expect(ScanCoordinator).toHaveBeenCalledTimes(1);
     });
 
+    it("keeps a finished plate's real saved path on its session job (QR check after returning to the page)", async () => {
+      const coordinator = await getOrCreateCoordinator();
+      const dir = '/scans/Exp_wave1_20260809T190946';
+      graviSessionFns.setScanSession({
+        isActive: true,
+        jobs: {
+          'sc-1:00': {
+            status: 'pending',
+            outputPath: `${dir}/Exp_wave1_st_20260809T190946_cy1_Sc1_00.tif`,
+          },
+        },
+      } as any);
+
+      const saved = `${dir}/Exp_wave1_st_20260809T191010_et_20260809T191055_cy1_Sc1_00.tif`;
+      (coordinator as unknown as EventEmitter).emit('scan-complete', {
+        scanner_id: 'sc-1',
+        plate_index: '00',
+        path: saved,
+      });
+
+      expect(
+        (graviSessionFns.getScanSession() as any).jobs['sc-1:00'].imagePath
+      ).toBe(saved);
+    });
+
     it('second call returns cached instance', async () => {
       const c1 = await getOrCreateCoordinator();
       const c2 = await getOrCreateCoordinator();

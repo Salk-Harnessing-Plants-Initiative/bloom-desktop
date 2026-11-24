@@ -8,6 +8,7 @@ from PIL import Image
 
 from python.graviscan.scan_worker import ScanWorker, _build_tiff_metadata
 from python.graviscan.scan_regions import get_scan_region
+from python.tests.scan_plate_parts import plate_parts
 
 
 class TestBuildTiffMetadata:
@@ -73,16 +74,17 @@ class TestMockScanTiffMetadata:
 
     def test_mock_scan_embeds_metadata(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, "scan_st_20260301T120000_cy1_S1_00.tif")
+            plate = plate_parts(tmpdir)
 
             worker = ScanWorker(
                 scanner_id="test-scanner", device_name="mock", mock=True
             )
-            final_path = worker._mock_scan("2grid", "00", 300, output_path)
+            final_path = worker._mock_scan("2grid", "00", 300, plate)
 
             # Read TIFF and check tags — read from the path _mock_scan
-            # actually returned (the final, _et_-stamped path), not the
-            # pre-_et_ output_path that was passed in.
+            # actually returned (output_dir + the _et_-stamped rig name).
+            assert os.path.dirname(final_path) == tmpdir
+            assert "_et_" in os.path.basename(final_path)
             img = Image.open(final_path)
             tag_data = img.tag_v2
 
@@ -110,7 +112,7 @@ class TestMockScanTiffMetadata:
         confirm exp_name/wave_number/st_timestamp/phenotyper_name are
         embedded correctly when supplied."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, "scan_st_20260301T120000_cy1_S1_00.tif")
+            plate = plate_parts(tmpdir)
 
             worker = ScanWorker(
                 scanner_id="test-scanner", device_name="mock", mock=True
@@ -119,7 +121,7 @@ class TestMockScanTiffMetadata:
                 "2grid",
                 "00",
                 300,
-                output_path,
+                plate,
                 "myexp",
                 4,
                 "20260301T120000",
@@ -137,12 +139,12 @@ class TestMockScanTiffMetadata:
         """Round-trip: when the caller omits the new fields, they default
         to empty/zero in the decoded ImageDescription JSON."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, "scan_st_20260301T120000_cy1_S1_00.tif")
+            plate = plate_parts(tmpdir)
 
             worker = ScanWorker(
                 scanner_id="test-scanner", device_name="mock", mock=True
             )
-            final_path = worker._mock_scan("2grid", "00", 300, output_path)
+            final_path = worker._mock_scan("2grid", "00", 300, plate)
 
             img = Image.open(final_path)
             desc = json.loads(img.tag_v2[270])
@@ -155,15 +157,18 @@ class TestMockScanTiffMetadata:
         """Verify metadata reflects the actual grid mode and plate index."""
         with tempfile.TemporaryDirectory() as tmpdir:
             for grid_mode, plate_index in [("2grid", "01"), ("4grid", "10")]:
-                output_path = os.path.join(
+                plate = plate_parts(
                     tmpdir,
-                    f"scan_{grid_mode}_{plate_index}_st_20260301T120000_cy1_S1_00.tif",
+                    plate_index=plate_index,
+                    grid_mode=grid_mode,
+                    resolution=600,
+                    exp_name=f"scan_{grid_mode}",
                 )
 
                 worker = ScanWorker(
                     scanner_id="test-scanner", device_name="mock", mock=True
                 )
-                final_path = worker._mock_scan(grid_mode, plate_index, 600, output_path)
+                final_path = worker._mock_scan(grid_mode, plate_index, 600, plate)
 
                 img = Image.open(final_path)
                 desc = json.loads(img.tag_v2[270])

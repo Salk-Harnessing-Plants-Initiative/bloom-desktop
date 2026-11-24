@@ -254,6 +254,31 @@ describe('ExperimentForm', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
+  it('allows a CylinderScan name that would be refused for GraviScan', async () => {
+    const user = userEvent.setup();
+    mockCreate.mockResolvedValue({ success: true, data: { id: 'exp-1' } });
+    render(
+      <ExperimentForm
+        scientists={mockScientists}
+        accessions={mockAccessions}
+        onSuccess={vi.fn()}
+      />
+    );
+
+    const { nameInput, scientistSelect, accessionSelect, submitButton } =
+      getFormElements();
+    await user.type(nameInput, 'Plot st 2');
+    await user.selectOptions(scientistSelect, 'sci-1');
+    await user.selectOptions(accessionSelect, 'acc-1');
+    await user.click(submitButton);
+
+    await waitFor(() => {
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Plot st 2' })
+      );
+    });
+  });
+
   it('should show validation error for empty name', async () => {
     const user = userEvent.setup();
     const mockOnSuccess = vi.fn();
@@ -410,6 +435,62 @@ describe('ExperimentForm', () => {
       );
       expect(optionValues).toContain('grav-acc-1');
       expect(optionValues).not.toContain('acc-1');
+    });
+
+    it('refuses a name with a file-name marker word and does not create it', async () => {
+      const user = userEvent.setup();
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={vi.fn()}
+          mode="graviscan"
+        />
+      );
+      await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+      const { nameInput, scientistSelect } = getFormElements();
+      const accessionSelect = document.getElementById(
+        'accession-select'
+      ) as HTMLSelectElement;
+
+      await user.type(nameInput, 'Plot st 2');
+      await user.selectOptions(scientistSelect, 'sci-1');
+      await user.selectOptions(accessionSelect, 'grav-acc-1');
+      await user.click(screen.getByRole('button', { name: /create/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/"st" can't be a word/)).toBeInTheDocument();
+      });
+      expect(mockCreate).not.toHaveBeenCalled();
+    });
+
+    it('refuses a name longer than 20 characters and does not create it', async () => {
+      const user = userEvent.setup();
+      render(
+        <ExperimentForm
+          scientists={mockScientists}
+          accessions={mockAccessions}
+          onSuccess={vi.fn()}
+          mode="graviscan"
+        />
+      );
+      await waitFor(() => expect(mockListFiles).toHaveBeenCalled());
+
+      const { nameInput, scientistSelect } = getFormElements();
+      const accessionSelect = document.getElementById(
+        'accession-select'
+      ) as HTMLSelectElement;
+
+      await user.type(nameInput, 'GA-Root-Growth-Kinetics-EXP');
+      await user.selectOptions(scientistSelect, 'sci-1');
+      await user.selectOptions(accessionSelect, 'grav-acc-1');
+      await user.click(screen.getByRole('button', { name: /create/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/at most 20 characters/)).toBeInTheDocument();
+      });
+      expect(mockCreate).not.toHaveBeenCalled();
     });
 
     it('sets experiment_type: graviscan and links the selected accession to the wave on submit', async () => {

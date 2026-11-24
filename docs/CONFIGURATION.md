@@ -92,6 +92,12 @@ This document describes all configurable constants and default values in the Blo
 GRAVISCAN_LOG_RETENTION_DAYS=365 npm start
 ```
 
+## Bloom Connection
+
+| Variable              | Default           | Description                                                                                                                                                                                                                                                                                      |
+| --------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `BLOOM_NOT_CONNECTED` | absent (Bloom on) | `true` (any case) turns Bloom off for this computer: typed scanner name, no Bloom URL or login checks, no uploads or Box backup, local species list. Any other value leaves Bloom on. Set by the Connect to Bloom switch in Machine Configuration, which writes the line only when Bloom is off. |
+
 ## File Locations
 
 All default settings are defined in TypeScript type definition files:

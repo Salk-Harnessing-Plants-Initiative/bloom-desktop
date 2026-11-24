@@ -15,6 +15,7 @@ import { resolveScanPath } from './scan-protocol';
 import { getScansDir } from './config-store';
 import * as fs from 'fs';
 import * as path from 'path';
+import { experimentCreateNameError } from './graviscan-experiment-name-guard';
 
 /** Largest page of full scans (with image rows) db:scans:list returns. */
 const MAX_PAGE_SIZE = 100;
@@ -1686,6 +1687,8 @@ export function registerDatabaseHandlers(deps: {
       data: Prisma.ExperimentCreateInput
     ): Promise<DatabaseResponse> => {
       try {
+        const nameError = experimentCreateNameError(data);
+        if (nameError) return { success: false, error: nameError };
         const experiment = await db.experiment.create({ data });
         logDatabaseOperation(
           'CREATE',

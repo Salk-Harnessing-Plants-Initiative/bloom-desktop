@@ -126,39 +126,52 @@ import type {
 
 /**
  * Hand-duplicated mirrors of shapes declared in
- * `src/main/graviscan/session-handlers.ts` (`StartScanParams`, `startScan`/
- * `markJobRecorded`/`cancelScan`'s return shapes) and
+ * `src/main/graviscan/start-scan-paths.ts` (`StartScanPathRequest`, the
+ * Start Scan request), `src/main/graviscan/session-handlers.ts`
+ * (`startScan`/`markJobRecorded`/`cancelScan`'s return shapes) and
  * `src/main/graviscan/image-handlers.ts` (`getOutputDir`'s return shape).
  * Not imported directly — this file is shared code, and shared code may
  * not import from `main/graviscan/` (mode-specific; the
  * `no-restricted-imports` ESLint rule reserves that for `main.ts`, the
  * orchestrator). Keep these in sync by hand if those signatures change.
  */
-interface GraviStartScanParams {
-  scanners: Array<{
-    scannerId: string;
-    saneName: string;
-    plates: Array<{
-      plate_index: string;
-      grid_mode: string;
-      resolution: number;
-      output_path: string;
-      wave_number?: number;
-      plate_barcode?: string | null;
-    }>;
+interface GraviStartScanScanner {
+  scannerId: string;
+  saneName: string;
+  plates: Array<{
+    plate_index: string;
+    grid_mode: string;
+    resolution: number;
+    plate_barcode?: string | null;
   }>;
+}
+/** A session scan. The main process builds every path. */
+interface GraviSessionScanParams {
+  test?: false;
+  /** Every enabled scanner in page order; sets each file's `Sc{K}`. */
+  scannerOrder: string[];
+  /** Scanners with plates to scan. */
+  scanners: GraviStartScanScanner[];
   interval?: { intervalSeconds: number; durationSeconds: number };
-  metadata?: {
+  metadata: {
     experimentId: string;
     phenotyperId: string;
     resolution: number;
     sessionId?: string;
-    waveNumber?: number;
+    waveNumber: number;
   };
 }
+/** A one-shot test scan of every plate, saved under `test/`. */
+interface GraviTestScanParams {
+  test: true;
+  scanners: GraviStartScanScanner[];
+}
+type GraviStartScanParams = GraviSessionScanParams | GraviTestScanParams;
 interface GraviStartOrCancelScanResult {
   success: boolean;
   error?: string;
+  /** Start Scan only: output path per job key `${scannerId}:${plateIndex}`. */
+  outputPaths?: Record<string, string>;
 }
 interface GraviGetOutputDirResult {
   success: boolean;

@@ -67,6 +67,8 @@ import {
   validateConfig,
   fetchScannersFromBloom,
   getGraviScanEnvStatus,
+  bloomConnectedHere,
+  BLOOM_OFF_MESSAGE,
   MachineConfig,
 } from './config-store';
 import {
@@ -1021,6 +1023,9 @@ ipcMain.handle(
     }
   ) => {
     try {
+      if (!bloomConnectedHere(ENV_PATH)) {
+        return { success: false, error: BLOOM_OFF_MESSAGE };
+      }
       if (!submitted) {
         return {
           success: false,
@@ -1168,6 +1173,7 @@ app.on('ready', async () => {
       ipcMain,
       db: getDatabase(),
       createUploader: () => new ImageUploader(getDatabase()),
+      bloomConnected: () => bloomConnectedHere(ENV_PATH),
       getMainWindow: () => mainWindow,
     });
     console.log('[Main] Database initialized and handlers registered');
@@ -1177,6 +1183,7 @@ app.on('ready', async () => {
     // E2E runs use the built-in list and never call Bloom.
     const speciesStore = createSpeciesStore({
       file: path.join(path.dirname(getDatabasePath()), SAVED_SPECIES_FILE),
+      bloomConnected: () => bloomConnectedHere(ENV_PATH),
       fetchFromBloom: () => fetchBloomSpecies(loadEnvConfig(ENV_PATH)),
     });
     registerSpeciesHandlers({

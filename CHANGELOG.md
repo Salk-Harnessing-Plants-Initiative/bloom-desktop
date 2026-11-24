@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- GraviScan: images are saved under the same file names and session folders as on the GraviScan rig, so files from the rig and from this app read the same and existing analysis keeps working ([#370](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/370)). Each session has its own folder, `{experiment}_wave{N}_{start time}/`, and each image is named `{experiment}_wave{N}_st_{row start}_et_{save time}_cy{N}_{system name}_Sc{K}_{plate}.tif`. Waves scanned before this release keep their earlier names, and Browse, Download Wave, Box backup and Bloom upload handle both.
+- GraviScan: both times in a file name are UTC. The rig wrote the save time (`_et_`) in station local time, about 7 hours before the start time (`_st_`).
+- GraviScan: each image's embedded metadata also records the scanner's name (`scanner_name`), and the experiment's full name rather than the shortened one used in the file name.
+- GraviScan: test scans are named as on the rig and saved in a `test/` folder in the output folder.
+- GraviScan: a new GraviScan experiment name can be at most 20 characters, so the whole name goes into its scans' file names, and can't have `st`, `et`, `wave` with a number, `cy` with a number or `Sc` with a number as a word in it, because those words mark the parts of a file name. Existing experiments aren't affected.
+
+### Fixed
+
+- GraviScan: Box backup no longer skips images when two scanners scan the same plate position ([#370](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/370)).
+- GraviScan: a single scan or test scan is saved as cycle 1. It used to continue the previous session's cycle count until the app was restarted ([#498](https://github.com/Salk-Harnessing-Plants-Initiative/bloom-desktop/issues/498)).
+
 ## [0.2.5] - 2026-10-30
 
 ### Fixed

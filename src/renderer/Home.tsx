@@ -4,6 +4,7 @@ import { PythonStatus } from './components/PythonStatus';
 import { CylinderScanWorkflowGuide } from './components/CylinderScanWorkflowGuide';
 import { GraviScanWorkflowGuide } from './components/GraviScanWorkflowGuide';
 import { countUploadStatuses } from '../utils/upload-status';
+import { useBloomConnected } from './hooks/useBloomConnected';
 
 interface HomeProps {
   mode?: string | null;
@@ -18,6 +19,7 @@ interface TodaysActivityScan {
 }
 
 export function Home({ mode = null }: HomeProps) {
+  const bloomOn = useBloomConnected();
   const navigate = useNavigate();
   const [isCheckingConfig, setIsCheckingConfig] = useState(true);
   const [recentScans, setRecentScans] = useState<TodaysActivityScan[] | null>(
@@ -136,13 +138,13 @@ export function Home({ mode = null }: HomeProps) {
             Today&apos;s Activity
           </h2>
 
-          {failedUploadCountError && (
+          {bloomOn && failedUploadCountError && (
             <p className="mb-4 text-sm text-red-600">
               Couldn&apos;t check for failed uploads. Try reloading the app.
             </p>
           )}
 
-          {failedUploadCount > 0 && (
+          {bloomOn && failedUploadCount > 0 && (
             <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
               <span className="text-red-700 font-medium">
                 {failedUploadCount} failed upload
@@ -167,17 +169,19 @@ export function Home({ mode = null }: HomeProps) {
             <p className="text-sm text-gray-500">No scans captured today.</p>
           ) : (
             <div className="space-y-3">
-              <div className="flex gap-4 text-sm">
-                <span className="text-green-600">
-                  {uploadCounts!.uploaded} uploaded
-                </span>
-                <span className="text-yellow-600">
-                  {uploadCounts!.pending} pending
-                </span>
-                <span className="text-red-600">
-                  {uploadCounts!.failed} failed
-                </span>
-              </div>
+              {bloomOn && (
+                <div className="flex gap-4 text-sm">
+                  <span className="text-green-600">
+                    {uploadCounts!.uploaded} uploaded
+                  </span>
+                  <span className="text-yellow-600">
+                    {uploadCounts!.pending} pending
+                  </span>
+                  <span className="text-red-600">
+                    {uploadCounts!.failed} failed
+                  </span>
+                </div>
+              )}
               {recentScans.length === 10 && (
                 <p className="text-xs text-gray-400">
                   Showing the 10 most recent scans — counts above may not
