@@ -1,7 +1,7 @@
 /**
  * Unit Tests: Export Scans' experiment → day → scan list (#436). The page opens with
  * experiments only, newest first, and loads a row when it's opened or ticked. The
- * filters are tested in Export-filters.test.tsx.
+ * search and dates are tested in Export-search.test.tsx.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';

@@ -45,7 +45,11 @@ export interface ScanGroupsDbLike {
   $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T>;
   scan: {
     findMany(args: {
-      where: { deleted: false; experiment_id?: string };
+      where: {
+        deleted: false;
+        experiment_id?: string;
+        id?: { in: string[] };
+      };
       select: typeof SCAN_ROW_SELECT;
     }): Promise<ScanRow[]>;
   };
@@ -83,16 +87,21 @@ export function readFilter(value: unknown): ScanFilter | string {
   return filter;
 }
 
-/** Non-deleted scans matching the filter, optionally of one experiment only. */
+/**
+ * Non-deleted scans matching the filter, optionally of one experiment only, and
+ * optionally only among the given scan ids.
+ */
 async function matchingScans(
   deps: ScanGroupsDeps,
   filter: ScanFilter,
-  experimentId?: string
+  experimentId?: string,
+  ids?: string[]
 ): Promise<ScanRow[]> {
   const rows = await deps.db.scan.findMany({
     where: {
       deleted: false,
       ...(experimentId ? { experiment_id: experimentId } : {}),
+      ...(ids ? { id: { in: ids } } : {}),
     },
     select: SCAN_ROW_SELECT,
   });
@@ -135,6 +144,33 @@ SELECT "experiment_id", COUNT(*) AS "scan_count", MAX(${CAPTURED_MS}) AS "latest
 FROM "Scan"
 WHERE "deleted" = 0
 GROUP BY "experiment_id"`;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The ids of an experiment's non-deleted scans captured within a day either side of
+ * a local day. The margin covers any time zone and pilot text dates read as UTC; the
+ * exact local day is then checked in JS, the same way the day list counts it.
+ */
+const SCAN_IDS_NEAR_DAY_SQL = `
+SELECT "id" FROM "Scan"
+WHERE "deleted" = 0 AND "experiment_id" = ?
+  AND ${CAPTURED_MS} >= ? AND ${CAPTURED_MS} < ?`;
+
+async function scanIdsNearDay(
+  deps: ScanGroupsDeps,
+  experimentId: string,
+  day: string
+): Promise<string[]> {
+  const dayStartMs = new Date(`${day}T00:00:00`).getTime();
+  const rows = await deps.db.$queryRawUnsafe<Array<{ id: string }>>(
+    SCAN_IDS_NEAR_DAY_SQL,
+    experimentId,
+    dayStartMs - DAY_MS,
+    dayStartMs + 2 * DAY_MS
+  );
+  return rows.map((row) => row.id);
+}
 
 interface ExperimentCountRow {
   experiment_id: string;
@@ -258,17 +294,21 @@ export async function listDayScans(
   if (!experiment) {
     return { success: false, error: 'experimentId must be a non-empty string' };
   }
+  // null: every day of the experiment.
   if (dayInput !== null && !isIsoDate(dayInput)) {
     return { success: false, error: 'day must be a date (YYYY-MM-DD) or null' };
   }
+  const day = dayInput as string | null;
   const filter = readFilter(filterInput);
   if (typeof filter === 'string') return { success: false, error: filter };
   try {
-    const scans = await matchingScans(deps, filter, experiment);
+    // One day reads only the scans near it, not the whole experiment.
+    const ids =
+      day === null ? undefined : await scanIdsNearDay(deps, experiment, day);
+    const scans = await matchingScans(deps, filter, experiment, ids);
     const data = scans
       .filter(
-        (s) =>
-          dayInput === null || toIsoDate(new Date(s.capture_date)) === dayInput
+        (s) => day === null || toIsoDate(new Date(s.capture_date)) === day
       )
       .sort(
         (a, b) =>

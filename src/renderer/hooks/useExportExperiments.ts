@@ -78,6 +78,7 @@ export function useExportExperiments(filter: ScanFilter) {
     loadError: filtered ? matchError : allError,
     filtered,
     matchingScans: scanTotal(experiments),
-    totalScans: scanTotal(all),
+    /** Every scan's count; null until the unfiltered list has loaded. */
+    totalScans: all === null ? null : scanTotal(all),
   };
 }

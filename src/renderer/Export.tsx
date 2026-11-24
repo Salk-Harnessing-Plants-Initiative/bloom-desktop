@@ -40,6 +40,8 @@ export function Export() {
     return () => clearTimeout(timer);
   }, [askedKey]);
   const list = useExportExperiments(filter);
+  const rangeBackwards =
+    !!filter.dateFrom && !!filter.dateTo && filter.dateFrom > filter.dateTo;
   const experiments = list.experiments ?? [];
   const isLoading = list.experiments === null && !list.loadError;
   const loadError = list.loadError;
@@ -203,8 +205,12 @@ export function Export() {
           {list.filtered && list.experiments !== null && (
             <span className="mr-3" data-testid="filter-summary">
               Showing {plural(experiments.length, 'experiment')} ·{' '}
-              {list.matchingScans.toLocaleString()} of{' '}
-              {plural(list.totalScans, 'scan')}
+              {list.totalScans === null
+                ? plural(list.matchingScans, 'scan')
+                : `${list.matchingScans.toLocaleString()} of ${plural(
+                    list.totalScans,
+                    'scan'
+                  )}`}
             </span>
           )}
           {selectedScanIds.size} scan{selectedScanIds.size === 1 ? '' : 's'}{' '}
@@ -250,9 +256,11 @@ export function Export() {
             <p className="text-sm text-gray-500">
               {loadError
                 ? 'Experiments could not be loaded'
-                : list.filtered
-                  ? 'No scans match this search'
-                  : 'No scans to export'}
+                : rangeBackwards
+                  ? 'No scans match: From is after To'
+                  : list.filtered
+                    ? 'No scans match this search'
+                    : 'No scans to export'}
             </p>
             {list.filtered && (
               <button

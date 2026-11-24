@@ -290,4 +290,70 @@ describe('Export Scans search', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(screen.getByText('0 scans selected')).toBeInTheDocument();
   });
+
+  it("a tick made again under the new search selects only that search's scans", async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    const answer = api.dayScans;
+    let held = false;
+    api.dayScans = vi.fn((...args: unknown[]) => {
+      if (held) return answer(...args);
+      held = true;
+      return new Promise((resolve) => {
+        release = () => resolve(answer(...args));
+      });
+    });
+    render(<Export />);
+    await screen.findByText(NAMES.stl);
+    const tickStl = () =>
+      user.click(
+        screen.getByRole('checkbox', {
+          name: `Select all scans in ${NAMES.stl}`,
+        })
+      );
+
+    await tickStl();
+    await waitFor(() => expect(api.dayScans).toHaveBeenCalled());
+    await search(user, 'emily');
+    await waitFor(() => expect(summary()).toHaveTextContent('3 of 5 scans'));
+    await tickStl();
+    await waitFor(() =>
+      expect(screen.getByText('2 scans selected')).toBeInTheDocument()
+    );
+    release();
+
+    // The first tick's load ran under no search: its 3 scans must not be added.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByText('2 scans selected')).toBeInTheDocument();
+  });
+
+  it('says when From is after To', async () => {
+    const user = userEvent.setup();
+    render(<Export />);
+    await screen.findByText(NAMES.stl);
+
+    await user.type(screen.getByLabelText('From date'), '2026-11-30');
+    await user.type(screen.getByLabelText('To date'), '2026-11-01');
+    expect(
+      await screen.findByText('No scans match: From is after To')
+    ).toBeInTheDocument();
+  });
+
+  it('leaves out "of N scans" while the total is unknown', async () => {
+    const user = userEvent.setup();
+    const answer = api.experimentCounts;
+    api.experimentCounts = vi.fn((filter?: object) =>
+      filter && Object.keys(filter).length > 0
+        ? answer(filter)
+        : Promise.resolve({ success: false, error: 'database is locked' })
+    );
+    render(<Export />);
+    await screen.findByText('Experiments could not be loaded');
+
+    await search(user, 'emily');
+    await waitFor(() =>
+      expect(summary()).toHaveTextContent('Showing 2 experiments · 3 scans')
+    );
+    expect(summary()).not.toHaveTextContent(' of ');
+  });
 });

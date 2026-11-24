@@ -40,7 +40,20 @@ function fakeDb(scans: FakeScan[]) {
   const db = {
     // The grouped count: one row per experiment with non-deleted scans, its count
     // (SQLite's COUNT comes back as a BigInt) and its most recent capture in ms.
-    $queryRawUnsafe: vi.fn(async () => {
+    // The ids near one day: an experiment's non-deleted scans in [fromMs, toMs).
+    $queryRawUnsafe: vi.fn(async (sql: string, ...values: unknown[]) => {
+      if (sql.includes('SELECT "id"')) {
+        const [experimentId, fromMs, toMs] = values as [string, number, number];
+        return scans
+          .filter(
+            (s) =>
+              !s.deleted &&
+              s.experiment_id === experimentId &&
+              s.capture_date.getTime() >= fromMs &&
+              s.capture_date.getTime() < toMs
+          )
+          .map((s) => ({ id: s.id }));
+      }
       const groups = new Map<string, { n: number; latest: number }>();
       for (const s of scans.filter((s) => !s.deleted)) {
         const g = groups.get(s.experiment_id) ?? { n: 0, latest: 0 };
@@ -55,25 +68,29 @@ function fakeDb(scans: FakeScan[]) {
       }));
     }),
     scan: {
-      findMany: vi.fn(async (args: { where: { experiment_id?: string } }) =>
-        scans
-          .filter(
-            (s) =>
-              !s.deleted &&
-              (!args.where.experiment_id ||
-                s.experiment_id === args.where.experiment_id)
-          )
-          .map((s) => ({
-            id: s.id,
-            experiment_id: s.experiment_id,
-            plant_id: s.plant_id,
-            capture_date: s.capture_date,
-            scanner_name: 'SlowScanner',
-            experiment: {
-              name: EXPERIMENTS.find((e) => e.id === s.experiment_id)!.name,
-            },
-            phenotyper: { name: PHENOTYPERS[s.phenotyper_id] },
-          }))
+      findMany: vi.fn(
+        async (args: {
+          where: { experiment_id?: string; id?: { in: string[] } };
+        }) =>
+          scans
+            .filter(
+              (s) =>
+                !s.deleted &&
+                (!args.where.experiment_id ||
+                  s.experiment_id === args.where.experiment_id) &&
+                (!args.where.id || args.where.id.in.includes(s.id))
+            )
+            .map((s) => ({
+              id: s.id,
+              experiment_id: s.experiment_id,
+              plant_id: s.plant_id,
+              capture_date: s.capture_date,
+              scanner_name: 'SlowScanner',
+              experiment: {
+                name: EXPERIMENTS.find((e) => e.id === s.experiment_id)!.name,
+              },
+              phenotyper: { name: PHENOTYPERS[s.phenotyper_id] },
+            }))
       ),
     },
     experiment: {
@@ -313,6 +330,24 @@ describe('filters (#471)', () => {
       scanner_name: 'SlowScanner',
       experiment: { name: 'weep6-MBZ-Interaction-EXP1' },
     });
+  });
+
+  it('reads only the scans near a day, not the whole experiment', async () => {
+    const { db, raw } = fakeDb([
+      scan('weep', local(1, 9)),
+      scan('weep', local(19, 23, 59)),
+      scan('weep', local(20, 0, 0)),
+      scan('weep', local(20, 23, 59)),
+      scan('weep', local(21, 0, 0)),
+      scan('weep', local(28, 9)),
+    ]);
+    const result = await listDayScans({ db }, 'weep', '2026-10-20', {});
+    expect(result.data?.map((s) => s.capture_date)).toEqual([
+      local(20, 23, 59),
+      local(20, 0, 0),
+    ]);
+    const asked = raw.scan.findMany.mock.calls[0][0].where.id?.in ?? [];
+    expect(asked).toHaveLength(4); // the day itself, and the two neighbours
   });
 
   it("with no day, lists every day's matching scans in one read, newest first", async () => {

@@ -9,6 +9,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'happy-dom',
+    // Stations are in California; CI runners are on UTC, where a local-day bug
+    // and a UTC-day bug look the same. Run every test on Pacific time.
+    env: { TZ: 'America/Los_Angeles' },
     globalSetup: ['./tests/unit/global-setup.ts'],
     setupFiles: ['./tests/unit/setup.ts'],
     passWithNoTests: true, // Don't fail when no tests found

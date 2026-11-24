@@ -79,11 +79,11 @@ describe('scan groups on a real database', () => {
     db.close();
   }
 
-  /** "YYYY-MM-DD HH:MM:SS" as the pilot app wrote it, in local time. */
-  const pilotText = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-      d.getDate()
-    ).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:00:00`;
+  /**
+   * "YYYY-MM-DD HH:MM:SS" as the pilot app's database wrote it: SQLite's
+   * DEFAULT CURRENT_TIMESTAMP, which is UTC.
+   */
+  const pilotText = (d: Date) => d.toISOString().slice(0, 19).replace('T', ' ');
 
   it('counts scans per experiment, most recent first, with text and number dates and without deleted ones', async () => {
     addScan('a', 'weep', new Date(2026, 9, 28, 10).getTime());
@@ -135,6 +135,27 @@ describe('scan groups on a real database', () => {
         { day: '2026-05-18', scan_count: 1 },
       ],
     });
+  });
+
+  it('files scans by the local day near midnight, for number and pilot text dates', async () => {
+    // On Pacific time these are all on a different UTC day; a UTC day would move them.
+    addScan('a', 'weep', new Date(2026, 10, 20, 0, 30).getTime());
+    addScan('b', 'weep', new Date(2026, 10, 20, 23, 30).getTime());
+    addScan('c', 'weep', pilotText(new Date(2025, 10, 20, 23, 30)));
+    addScan('d', 'weep', pilotText(new Date(2025, 10, 21, 0, 30)));
+
+    const days = await listExperimentScanDays({ db: prisma }, 'weep');
+    expect(days.data).toEqual([
+      { day: '2026-11-20', scan_count: 2 },
+      { day: '2025-11-21', scan_count: 1 },
+      { day: '2025-11-20', scan_count: 1 },
+    ]);
+    const byDay = async (day: string) =>
+      (await listDayScans({ db: prisma }, 'weep', day)).data!.map((s) => s.id);
+    expect(await byDay('2026-11-20')).toEqual(['b', 'a']);
+    expect(await byDay('2025-11-20')).toEqual(['c']);
+    expect(await byDay('2025-11-21')).toEqual(['d']);
+    expect(await byDay('2026-11-21')).toEqual([]);
   });
 
   it('searches by phenotyper, name and dates, with pilot text dates, consistently at every level', async () => {

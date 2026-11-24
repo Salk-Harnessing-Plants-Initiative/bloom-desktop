@@ -187,11 +187,13 @@ export function useExportScanTree(filter: ScanFilter = {}) {
 
   /** Loads a row's scans, then selects them, unless it was unticked meanwhile. */
   const select = async (key: string, load: () => Promise<ScanSummary[]>) => {
+    const asked = generation.current;
     wanted.current.set(key, true);
     setPending((n) => n + 1);
     try {
       const scans = await load();
-      if (wanted.current.get(key)) {
+      // Ticked again under a new filter while this load ran: that tick selects.
+      if (asked === generation.current && wanted.current.get(key)) {
         setIds(
           scans.map((s) => s.id),
           true
