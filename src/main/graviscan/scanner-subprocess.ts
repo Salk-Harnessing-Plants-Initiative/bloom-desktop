@@ -65,6 +65,30 @@ export interface BuildSubprocessEnvArgs {
  * On macOS/Windows or in mock mode: none of these are set (the shim
  * isn't loaded; recovery is irrelevant).
  */
+/**
+ * Whether `name` is a well-formed SANE device name for a USB scanner.
+ *
+ * The same two rules `buildSubprocessEnv()` enforces — at least 4
+ * colon-separated tokens, with the 3rd and 4th being 3-digit zero-padded
+ * decimals — but as a **predicate** and **platform-unconditional**.
+ *
+ * Both properties matter. `buildSubprocessEnv`'s copy throws rather than
+ * returning a boolean, and sits inside a `platform === 'linux' && !mock`
+ * branch, so a caller that wants to *validate* a candidate name cannot reuse
+ * it, and any test of such a caller would be vacuous on the macOS and
+ * Windows CI shards.
+ *
+ * Note this deliberately does **not** imply the device exists — a
+ * stale-but-well-formed name like `epkowa:interpreter:001:007` passes every
+ * rule here and is exactly the failure mode #182 is about.
+ */
+export function isValidSaneName(name: string): boolean {
+  if (typeof name !== 'string' || name.length === 0) return false;
+  const parts = name.split(':');
+  if (parts.length < 4) return false;
+  return /^\d{3}$/.test(parts[2]) && /^\d{3}$/.test(parts[3]);
+}
+
 export function buildSubprocessEnv(
   args: BuildSubprocessEnvArgs
 ): Record<string, string | undefined> {
@@ -88,6 +112,10 @@ export function buildSubprocessEnv(
     // misconfigure the libusb shim (it does substring match on the
     // filter), so we reject early rather than silently passing
     // garbage through.
+    //
+    // `isValidSaneName()` below applies exactly these two rules as a
+    // platform-unconditional predicate, for callers that need to *check* a
+    // name rather than throw on it. Keep the two in step.
     const parts = args.saneName.split(':');
     if (parts.length < 4) {
       throw new Error(
