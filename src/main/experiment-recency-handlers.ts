@@ -1,6 +1,7 @@
 /**
  * When each experiment was last scanned, so the Experiments page can list the ones in
- * use first. One grouped query over non-deleted scans, with no scan rows sent.
+ * use first: CylinderScan scans and GraviScan scans alike. One grouped query over
+ * non-deleted scans, with no scan rows sent.
  */
 
 import type { IpcMain } from 'electron';
@@ -9,9 +10,14 @@ import type { ExperimentLatestScan } from '../types/experiment-recency';
 import { capturedMsSql } from './capture-date-sql';
 
 const LATEST_SCANS_SQL = `
-SELECT "experiment_id", MAX(${capturedMsSql()}) AS "latest_ms"
-FROM "Scan"
-WHERE "deleted" = 0
+SELECT "experiment_id", MAX("captured_ms") AS "latest_ms"
+FROM (
+  SELECT "experiment_id", ${capturedMsSql()} AS "captured_ms"
+  FROM "Scan" WHERE "deleted" = 0
+  UNION ALL
+  SELECT "experiment_id", ${capturedMsSql()} AS "captured_ms"
+  FROM "GraviScan" WHERE "deleted" = 0
+)
 GROUP BY "experiment_id"`;
 
 /** The part of the Prisma client used here, so tests can pass a fake. */

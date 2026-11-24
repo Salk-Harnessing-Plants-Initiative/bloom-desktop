@@ -884,6 +884,57 @@ test.describe('Renderer Database IPC - Experiments (with Relations)', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
   });
+
+  test('should give each experiment its newest scan time, without deleted scans', async () => {
+    const scanned = await prisma.experiment.create({
+      data: { name: 'Scanned Experiment', species: 'Soybean' },
+    });
+    await prisma.experiment.create({
+      data: { name: 'Unscanned Experiment', species: 'Soybean' },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Recency Phenotyper', email: 'recency@test.com' },
+    });
+    const scanAt = (plant: string, when: Date, deleted: boolean) =>
+      prisma.scan.create({
+        data: {
+          experiment_id: scanned.id,
+          phenotyper_id: phenotyper.id,
+          scanner_name: 'Scanner1',
+          plant_id: plant,
+          path: `/test/scans/${plant}`,
+          capture_date: when,
+          num_frames: 72,
+          exposure_time: 100,
+          gain: 1.0,
+          brightness: 0.5,
+          contrast: 1.0,
+          gamma: 1.0,
+          seconds_per_rot: 7.0,
+          wave_number: 1,
+          plant_age_days: 14,
+          deleted,
+        },
+      });
+    await scanAt('PLANT-1', new Date('2026-11-20T18:00:00Z'), false);
+    await scanAt('PLANT-2', new Date('2026-11-22T18:00:00Z'), true);
+
+    const result = await window.evaluate(() => {
+      return (
+        window as WindowWithElectron
+      ).electron.database.experiments.latestScans();
+    });
+
+    expect(result).toEqual({
+      success: true,
+      data: [
+        {
+          experiment_id: scanned.id,
+          latest_ms: new Date('2026-11-20T18:00:00Z').getTime(),
+        },
+      ],
+    });
+  });
 });
 
 test.describe('Renderer Database IPC - Scans (with Filters)', () => {

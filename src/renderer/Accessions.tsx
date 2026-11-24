@@ -63,6 +63,16 @@ export function Accessions() {
       <div className="mb-8">
         <h2 className="text-xs font-bold mb-2">Current Accessions</h2>
 
+        {/* Linked from the Experiments page to a file that has since been deleted. */}
+        {!isLoading &&
+          !error &&
+          openId &&
+          !accessions.some((a) => a.id === openId) && (
+            <p className="mb-2 text-sm text-amber-700" role="status">
+              That accession file was not found. It may have been deleted.
+            </p>
+          )}
+
         {isLoading ? (
           <div className="border rounded-md p-4 w-full max-w-2xl flex items-center justify-center min-h-32">
             <p className="text-sm text-gray-500">Loading accessions...</p>

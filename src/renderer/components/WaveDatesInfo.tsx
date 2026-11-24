@@ -2,7 +2,8 @@
  * Under the wave number on Capture Scan, once the wave is set up (#407, #428): its
  * germination, sowing and transfer dates (or that they're set for each plant), who set
  * them and when, and Edit, which changes the dates or how they're set. Every change is
- * logged (Experiments page), and scans already saved keep the age they were saved with.
+ * logged (Experiments page, under an experiment's Wave dates), and scans already saved
+ * keep the age they were saved with.
  */
 
 import { useEffect, useState } from 'react';

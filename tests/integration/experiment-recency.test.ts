@@ -39,7 +39,9 @@ describe('experiment latest scans on a real database', () => {
         ('pilot', 'Pennycress pilot', 'Pennycress'),
         ('stl', 'STL Soy', 'Soybean'),
         ('gone', 'Deleted only', 'Soybean'),
-        ('none', 'No scans', 'Soybean');
+        ('none', 'No scans', 'Soybean'),
+        ('mixed', 'Scanned in both apps', 'Canola'),
+        ('gravi', 'Gravi plates', 'Arabidopsis');
     `);
     const add = db.prepare(
       `INSERT INTO "Scan" ("id", "experiment_id", "phenotyper_id", "scanner_name", "plant_id",
@@ -52,6 +54,19 @@ describe('experiment latest scans on a real database', () => {
     add.run('s1', 'stl', 's1', Date.UTC(2026, 10, 20, 18), 0);
     add.run('s2', 'stl', 's2', Date.UTC(2026, 10, 21, 18), 1);
     add.run('g1', 'gone', 'g1', Date.UTC(2026, 10, 22, 18), 1);
+    // One experiment scanned in the pilot app (text) and then the new one (a
+    // number): SQLite ranks any text above any number, so a raw MAX picks the 2025 one.
+    add.run('m1', 'mixed', 'm1', '2025-03-01 10:00:00', 0);
+    add.run('m2', 'mixed', 'm2', Date.UTC(2026, 1, 3, 9), 0);
+    // GraviScan scans count too; a deleted one doesn't.
+    db.pragma('foreign_keys = OFF');
+    const addGravi = db.prepare(
+      `INSERT INTO "GraviScan" ("id", "experiment_id", "phenotyper_id", "scanner_id", "path",
+        "capture_date", "grid_mode", "plate_index", "resolution", "deleted")
+       VALUES (?, 'gravi', 'ph', 'scanner-1', ?, ?, '2grid', '00', 1200, ?)`
+    );
+    addGravi.run('gs1', 'gs1', Date.UTC(2026, 10, 23, 8), 0);
+    addGravi.run('gs2', 'gs2', Date.UTC(2026, 10, 24, 8), 1);
     db.close();
     prisma = new PrismaClient({
       datasources: { db: { url: `file:${dbPath}` } },
@@ -73,5 +88,7 @@ describe('experiment latest scans on a real database', () => {
     expect(byId.get('pilot')).toBe(Date.UTC(2025, 0, 12, 10));
     expect(byId.has('gone')).toBe(false);
     expect(byId.has('none')).toBe(false);
+    expect(byId.get('mixed')).toBe(Date.UTC(2026, 1, 3, 9));
+    expect(byId.get('gravi')).toBe(Date.UTC(2026, 10, 23, 8));
   });
 });

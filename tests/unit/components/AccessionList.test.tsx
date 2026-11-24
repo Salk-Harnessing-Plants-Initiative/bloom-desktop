@@ -7,7 +7,7 @@
  * its lime equivalent.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { AccessionList } from '../../../src/renderer/components/AccessionList';
@@ -59,10 +59,15 @@ describe('AccessionList opening a linked file', () => {
     { id: 'acc-2', name: 'Soy lines', createdAt: new Date('2026-02-01') },
   ];
 
+  // happy-dom has no scrollIntoView; each test sets one, and it's put back after.
+  const realScroll = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = realScroll;
+  });
+
   it('opens the linked file with its plant mappings, and scrolls to it', async () => {
     const scroll = vi.fn();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (Element.prototype as any).scrollIntoView = scroll;
+    Element.prototype.scrollIntoView = scroll;
     render(
       <AccessionList accessions={two} onUpdate={vi.fn()} openId="acc-2" />
     );
@@ -70,6 +75,18 @@ describe('AccessionList opening a linked file', () => {
     expect(await screen.findByTestId('mappings-table')).toBeInTheDocument();
     expect(mockGetMappings).not.toHaveBeenCalledWith('acc-1');
     expect(scroll).toHaveBeenCalled();
+  });
+
+  it('shows the linked file with no mappings, not loading forever, when they fail to load', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    mockGetMappings.mockRejectedValue(new Error('database is locked'));
+    render(
+      <AccessionList accessions={two} onUpdate={vi.fn()} openId="acc-2" />
+    );
+    await waitFor(() => expect(mockGetMappings).toHaveBeenCalledWith('acc-2'));
+    await waitFor(() =>
+      expect(screen.queryByText(/loading/i)).not.toBeInTheDocument()
+    );
   });
 
   it('does nothing for an id that is not in the list', () => {

@@ -195,32 +195,52 @@ test.describe('Experiments Management', () => {
     ).toBeVisible();
   });
 
-  test('should display experiments sorted alphabetically by name', async () => {
-    // Create experiments in non-alphabetical order
+  test('should list unscanned experiments first, then the most recently scanned', async () => {
     await prisma.experiment.createMany({
       data: [
-        { name: 'Zinc Study', species: 'Wheat' },
-        { name: 'Alpha Test', species: 'Arabidopsis' },
-        { name: 'Maize Research', species: 'Maize' },
+        { id: 'exp-zinc', name: 'Zinc Study', species: 'Wheat' },
+        { id: 'exp-alpha', name: 'Alpha Test', species: 'Arabidopsis' },
+        { id: 'exp-maize', name: 'Maize Research', species: 'Maize' },
       ],
     });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Order Phenotyper', email: 'order@example.com' },
+    });
+    const scan = (experimentId: string, when: string) =>
+      prisma.scan.create({
+        data: {
+          experiment_id: experimentId,
+          phenotyper_id: phenotyper.id,
+          scanner_name: 'Scanner1',
+          plant_id: `PLANT-${experimentId}`,
+          path: `/test/scans/${experimentId}`,
+          capture_date: new Date(when),
+          num_frames: 72,
+          exposure_time: 100,
+          gain: 1.0,
+          brightness: 0.5,
+          contrast: 1.0,
+          gamma: 1.0,
+          seconds_per_rot: 7.0,
+          wave_number: 1,
+          plant_age_days: 14,
+        },
+      });
+    // Maize was scanned long ago, Zinc recently; Alpha not yet.
+    await scan('exp-maize', '2025-06-01T10:00:00Z');
+    await scan('exp-zinc', '2026-11-20T10:00:00Z');
 
-    // Navigate to Experiments page
     await window.click('text=Experiments');
-
-    // Wait for experiments to load (use list-specific locator)
     await expect(
       window.locator('ul.experiments-list').locator('text=Alpha Test')
     ).toBeVisible();
 
-    // Get list items and verify alphabetical order
     const listItems = await window
-      .locator('ul.experiments-list li')
+      .locator('ul.experiments-list > li')
       .allTextContents();
-
     expect(listItems[0]).toContain('Alpha Test');
-    expect(listItems[1]).toContain('Maize Research');
-    expect(listItems[2]).toContain('Zinc Study');
+    expect(listItems[1]).toContain('Zinc Study');
+    expect(listItems[2]).toContain('Maize Research');
   });
 
   test('should create experiment with all required fields', async () => {
@@ -406,8 +426,11 @@ test.describe('Experiments Management', () => {
     await submitButton.click();
 
     // Verify experiment was created in the list
+    // Exact: the row also shows its accession file, "Loading Test Accession".
     await expect(
-      window.locator('ul.experiments-list').locator('text=Loading Test')
+      window
+        .locator('ul.experiments-list')
+        .getByText('Alfalfa - Loading Test (Dr. Loading Test)', { exact: true })
     ).toBeVisible();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { Experiments } from '../../../src/renderer/Experiments';
@@ -49,6 +49,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
   let listFiles: ReturnType<typeof vi.fn>;
   let attachAccession: ReturnType<typeof vi.fn>;
   let latestScans: ReturnType<typeof vi.fn>;
+  let listWaves: ReturnType<typeof vi.fn>;
   let confirmSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -62,6 +63,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     });
     attachAccession = vi.fn().mockResolvedValue({ success: true });
     latestScans = vi.fn().mockResolvedValue({ success: true, data: [] });
+    listWaves = vi.fn().mockResolvedValue({ success: true, data: [] });
     confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,6 +77,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       unlinkGraviMetadata,
     };
     win.electron.database.graviPlateAccessions = { listFiles };
+    win.electron.database.cylinderWaves = { list: listWaves };
     win.electron.database.scientists = {
       list: vi.fn().mockResolvedValue({ success: true, data: [] }),
     };
@@ -120,8 +123,10 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
       ...(screen.getByLabelText(/Select Experiment/) as HTMLSelectElement)
         .options,
     ].map((o) => o.textContent);
-    expect(options[0]).toContain('Zinnia-W1');
-    expect(options[1]).toContain('2026-11-10 STL Soy');
+    // Nothing is chosen until the user picks an experiment.
+    expect(options[0]).toBe('-- Select an experiment --');
+    expect(options[1]).toContain('Zinnia-W1');
+    expect(options[2]).toContain('2026-11-10 STL Soy');
   });
 
   it('still lists experiments, by name, when the scan times cannot be loaded', async () => {
@@ -149,7 +154,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     ]);
   });
 
-  it("shows each experiment's accession file, or none, and no wave dates", async () => {
+  it("shows each experiment's accession file, or none, with wave dates only when asked", async () => {
     listExperiments.mockResolvedValue({
       success: true,
       data: [
@@ -164,7 +169,75 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     expect(screen.getByTestId('accession-file-without')).toHaveTextContent(
       'Accession file: none'
     );
-    expect(screen.queryByText(/wave/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('wave-dates-with')).not.toBeInTheDocument();
+    expect(listWaves).not.toHaveBeenCalled();
+  });
+
+  it("opens and hides an experiment's wave dates and their history", async () => {
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [
+        makeExperiment({ id: 'with', name: 'With waves' }),
+        makeExperiment({ id: 'empty', name: 'No waves', accession: null }),
+      ],
+    });
+    listWaves.mockImplementation((id: string) =>
+      Promise.resolve({
+        success: true,
+        data:
+          id === 'with'
+            ? [
+                {
+                  id: 'w1',
+                  wave_number: 1,
+                  dates_per_plant: false,
+                  germination_date: '2026-11-01',
+                  sowing_date: null,
+                  transfer_date: null,
+                  note: null,
+                  set_by_name: 'Emily',
+                  set_at: '2026-11-02T10:00:00.000Z',
+                  scanCount: 3,
+                  datedScanCount: 3,
+                  changes: [],
+                  plantsWithOwnDates: [],
+                },
+              ]
+            : [],
+      })
+    );
+    const user = userEvent.setup();
+    renderPage('cylinderscan');
+    // Each row's own toggle (unscanned rows are listed by name).
+    const toggleOf = async (id: string) =>
+      within(await screen.findByTestId(`accession-file-${id}`)).getByRole(
+        'button'
+      );
+
+    await user.click(await toggleOf('with'));
+    const panel = await screen.findByTestId('wave-dates-with');
+    expect(panel).toHaveAttribute('open');
+    expect(await toggleOf('with')).toHaveTextContent('Hide wave dates');
+    expect(await toggleOf('with')).toHaveAttribute('aria-expanded', 'true');
+    await user.click(await toggleOf('empty'));
+    expect(await screen.findByText('No waves yet.')).toBeInTheDocument();
+
+    await user.click(await toggleOf('with'));
+    expect(screen.queryByTestId('wave-dates-with')).not.toBeInTheDocument();
+  });
+
+  it('shows the accession file as plain text where there is no Accessions page', async () => {
+    listExperiments.mockResolvedValue({
+      success: true,
+      data: [makeExperiment({ id: 'with', name: 'Pilot experiment' })],
+    });
+    renderPage('graviscan');
+    expect(await screen.findByTestId('accession-file-with')).toHaveTextContent(
+      'Accession file: Accession A'
+    );
+    expect(
+      screen.queryByRole('link', { name: 'Accession A' })
+    ).not.toBeInTheDocument();
   });
 
   it('links the accession file to that file on the Accessions page', async () => {
@@ -334,13 +407,31 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     renderPage('cylinderscan');
     await waitFor(() => expect(listExperiments).toHaveBeenCalled());
 
-    expect(
-      screen.getByRole('button', { name: /attach accession/i })
-    ).toBeInTheDocument();
+    const attach = screen.getByRole('button', { name: /attach accession/i });
     expect(screen.queryByLabelText(/^wave number$/i)).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /attach accession/i }));
-    await waitFor(() => expect(attachAccession).toHaveBeenCalled());
+    // Nothing is pre-chosen, so Attach waits for both picks.
+    expect(attach).toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Select Experiment/)).not.toBeDisabled()
+    );
+    await user.selectOptions(
+      screen.getByLabelText(/Select Experiment/),
+      'exp-1'
+    );
+    expect(attach).toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Select Accession File/)).not.toBeDisabled()
+    );
+    await user.selectOptions(
+      screen.getByLabelText(/Select Accession File/),
+      'acc-1'
+    );
+
+    await user.click(attach);
+    await waitFor(() =>
+      expect(attachAccession).toHaveBeenCalledWith('exp-1', 'acc-1')
+    );
     expect(linkGraviMetadata).not.toHaveBeenCalled();
   });
 
@@ -362,6 +453,14 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     const user = userEvent.setup();
     renderPage('graviscan');
     await waitFor(() => expect(listFiles).toHaveBeenCalled());
+    await screen.findByRole('option', { name: /drought study/i });
+    await user.selectOptions(
+      screen.getByLabelText(/Select Experiment/),
+      'exp-1'
+    );
+    expect(screen.getByTestId('attach-note')).toHaveTextContent(
+      'link a metadata file to a wave of this GraviScan experiment'
+    );
 
     const waveInput = screen.getByLabelText(
       /^wave number to link$/i
@@ -401,6 +500,10 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     renderPage('graviscan');
     await waitFor(() => screen.getByText(/wave 1: batch3\.xlsx/i));
     await waitFor(() => expect(listFiles).toHaveBeenCalled());
+    await user.selectOptions(
+      screen.getByLabelText(/Select Experiment/),
+      'exp-1'
+    );
 
     await user.selectOptions(screen.getByLabelText(/metadata file/i), 'gacc-1');
     await user.click(
@@ -431,14 +534,9 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     // showed nothing at all on that row — not even the recourse message
     // this exact failure mode was given across several review rounds.
     //
-    // Two experiments are used deliberately: the page's attach panel
-    // defaults attachExperimentId to the FIRST experiment and renders
-    // its own (unrelated) linkError — a single-experiment version of
-    // this test would pass vacuously via that panel showing the same
-    // error for the same shared experimentId, without ever exercising
-    // ExperimentWaveLinks's own early-return bug. Failing the SECOND
-    // experiment's fetch (not the attach panel's default) isolates the
-    // row-level component specifically.
+    // Two experiments are used deliberately: failing the SECOND experiment's
+    // fetch isolates the row-level component from the attach panel, which
+    // renders its own linkError for whichever experiment it has chosen.
     listExperiments.mockResolvedValue({
       success: true,
       data: [

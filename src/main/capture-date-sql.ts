@@ -5,11 +5,11 @@
  * date. Text is read as UTC, which it is: the pilot's database wrote it with SQLite's
  * CURRENT_TIMESTAMP.
  */
-export function capturedMsSql(column = '"capture_date"'): string {
-  return `CASE typeof(${column})
-    WHEN 'integer' THEN ${column}
-    WHEN 'real' THEN CAST(${column} AS INTEGER)
-    WHEN 'text' THEN CAST(ROUND((julianday(${column}) - 2440587.5) * 86400000) AS INTEGER)
+export function capturedMsSql(): string {
+  return `CASE typeof("capture_date")
+    WHEN 'integer' THEN "capture_date"
+    WHEN 'real' THEN CAST("capture_date" AS INTEGER)
+    WHEN 'text' THEN CAST(ROUND((julianday("capture_date") - 2440587.5) * 86400000) AS INTEGER)
     ELSE NULL
   END`;
 }

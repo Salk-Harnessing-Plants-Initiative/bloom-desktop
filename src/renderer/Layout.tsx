@@ -539,18 +539,23 @@ export function Layout({ mode = null }: LayoutProps) {
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 overflow-auto">
+      {/* Main content: banners first, then the page in the height they leave, so a
+          page that fills the window doesn't overflow it while a banner shows. */}
+      <div className="flex flex-1 flex-col overflow-auto">
         {showGraviscanLinks ? (
           <WedgeProvider>
             <WedgeBanner />
             <UploadStatusBanner />
-            <Outlet />
+            <div className="flex-1">
+              <Outlet />
+            </div>
           </WedgeProvider>
         ) : (
           <>
             <UploadStatusBanner />
-            <Outlet />
+            <div className="flex-1">
+              <Outlet />
+            </div>
           </>
         )}
       </div>

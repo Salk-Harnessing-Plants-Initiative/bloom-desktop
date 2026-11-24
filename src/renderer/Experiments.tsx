@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ExperimentForm } from './components/ExperimentForm';
 import { ExperimentWaveLinks } from './components/ExperimentWaveLinks';
-import { useWaveMetadataLinks } from './hooks/useWaveMetadataLinks';
+import { CylinderWaveDates } from './components/CylinderWaveDates';
+import { AttachAccessionSection } from './components/AttachAccessionSection';
 import type { ExperimentLatestScan } from '../types/experiment-recency';
 import { orderByRecentScan } from './utils/experiment-order';
 
@@ -30,47 +31,41 @@ interface ExperimentsProps {
   mode?: string;
 }
 
+/** When each experiment was last scanned; none if that can't be loaded. */
+async function loadLatestScans(): Promise<ExperimentLatestScan[]> {
+  try {
+    const latest = await window.electron.database.experiments.latestScans();
+    if (latest.success && latest.data) return latest.data;
+    console.error('[Experiments] Could not load scan times:', latest.error);
+  } catch (err) {
+    console.error(
+      '[Experiments] Could not load scan times:',
+      err instanceof Error ? err.message : 'Unknown error'
+    );
+  }
+  return [];
+}
+
 export function Experiments({ mode }: ExperimentsProps = {}) {
   const [experiments, setExperiments] = useState<ExperimentWithScientist[]>([]);
   // The list box: a fixed height that scrolls, or expanded to show everything.
   const [listExpanded, setListExpanded] = useState(false);
+  // CylinderScan experiments whose wave dates (and their change history) are shown.
+  const [datesShown, setDatesShown] = useState<ReadonlySet<string>>(new Set());
   const [scientists, setScientists] = useState<Scientist[]>([]);
   const [accessions, setAccessions] = useState<Accession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Attach accession state
-  const [attachExperimentId, setAttachExperimentId] = useState<string>('');
-  const [attachAccessionId, setAttachAccessionId] = useState<string>('');
-  const [isAttaching, setIsAttaching] = useState(false);
-  const [attachSuccess, setAttachSuccess] = useState<string | null>(null);
-  const [attachError, setAttachError] = useState<string | null>(null);
-
-  // Wave-scoped metadata-link state (graviscan branch of the attach panel)
-  const [graviAccessions, setGraviAccessions] = useState<Accession[]>([]);
-  const [waveNumber, setWaveNumber] = useState<number>(0);
-  const attachExperiment = experiments.find((e) => e.id === attachExperimentId);
-  const isGraviscanAttach = attachExperiment?.experiment_type === 'graviscan';
-  const { link, linkError, suggestedNextWave } = useWaveMetadataLinks(
-    attachExperimentId || 'none'
-  );
-
-  useEffect(() => {
-    setWaveNumber(suggestedNextWave);
-  }, [suggestedNextWave]);
-
-  useEffect(() => {
-    window.electron.database.graviPlateAccessions.listFiles().then((result) => {
-      if (result.success) {
-        setGraviAccessions((result.data as Accession[]) ?? []);
-      }
-    });
-  }, []);
-
   const fetchExperiments = useCallback(async () => {
     try {
       setError(null);
-      const result = await window.electron.database.experiments.list();
+      // Unscanned (likely new) experiments first, then the most recently scanned.
+      // Without the scan times the list is still usable, by name.
+      const [result, latestScans] = await Promise.all([
+        window.electron.database.experiments.list(),
+        loadLatestScans(),
+      ]);
 
       if (!result.success) {
         setError(result.error || 'Failed to load experiments');
@@ -78,25 +73,7 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
       }
 
       const data = result.data as ExperimentWithScientist[];
-      // Unscanned (likely new) experiments first, then the most recently scanned.
-      // Without the scan times the list is still usable, by name.
-      let latestScans: ExperimentLatestScan[] = [];
-      try {
-        const latest = await window.electron.database.experiments.latestScans();
-        if (latest.success && latest.data) latestScans = latest.data;
-      } catch (err) {
-        console.error(
-          '[Experiments] Could not load scan times:',
-          err instanceof Error ? err.message : 'Unknown error'
-        );
-      }
-      const sorted = orderByRecentScan(data, latestScans);
-      setExperiments(sorted);
-
-      // Set default attach experiment if available (only if not already set)
-      if (sorted.length > 0) {
-        setAttachExperimentId((prev) => (prev === '' ? sorted[0].id : prev));
-      }
+      setExperiments(orderByRecentScan(data, latestScans));
     } catch (err) {
       console.error('Error fetching experiments:', err);
       setError('An unexpected error occurred while loading experiments');
@@ -120,12 +97,7 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
     try {
       const result = await window.electron.database.accessions.list();
       if (result.success) {
-        const data = result.data as Accession[];
-        setAccessions(data);
-        // Set default attach accession if available (only if not already set)
-        if (data.length > 0) {
-          setAttachAccessionId((prev) => (prev === '' ? data[0].id : prev));
-        }
+        setAccessions(result.data as Accession[]);
       }
     } catch (err) {
       console.error('Error fetching accessions:', err);
@@ -138,49 +110,12 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
     fetchAccessions();
   }, [fetchExperiments, fetchScientists, fetchAccessions]);
 
-  const handleExperimentCreated = () => {
-    // Refresh the list after successful creation
-    fetchExperiments();
-  };
-
-  const handleAttachAccession = async () => {
-    if (!attachExperimentId) {
-      return;
-    }
-
-    setIsAttaching(true);
-    setAttachSuccess(null);
-    setAttachError(null);
-
-    try {
-      if (isGraviscanAttach) {
-        if (!attachAccessionId) return;
-        const linked = await link(waveNumber, attachAccessionId);
-        if (linked) {
-          setAttachSuccess('Metadata file successfully linked.');
-        }
-        return;
-      }
-
-      if (!attachAccessionId) return;
-      const result = await window.electron.database.experiments.attachAccession(
-        attachExperimentId,
-        attachAccessionId
-      );
-
-      if (result.success) {
-        setAttachSuccess('Accession successfully attached.');
-        fetchExperiments();
-      } else {
-        setAttachError(result.error || 'Failed to attach accession');
-      }
-    } catch (err) {
-      console.error('Error attaching accession:', err);
-      setAttachError('An unexpected error occurred');
-    } finally {
-      setIsAttaching(false);
-    }
-  };
+  const toggleDates = (experimentId: string) =>
+    setDatesShown((shown) => {
+      const next = new Set(shown);
+      if (!next.delete(experimentId)) next.add(experimentId);
+      return next;
+    });
 
   const getExperimentDisplay = (
     experiment: ExperimentWithScientist
@@ -235,22 +170,45 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
                 {experiment.experiment_type === 'graviscan' ? (
                   <ExperimentWaveLinks experimentId={experiment.id} />
                 ) : (
-                  <p
-                    className="text-xs text-gray-600"
-                    data-testid={`accession-file-${experiment.id}`}
-                  >
-                    Accession file:{' '}
-                    {experiment.accession ? (
-                      <Link
-                        to={`/accessions?open=${encodeURIComponent(experiment.accession.id)}`}
+                  <>
+                    <p
+                      className="flex flex-wrap items-baseline gap-x-3 text-xs text-gray-600"
+                      data-testid={`accession-file-${experiment.id}`}
+                    >
+                      <span>
+                        Accession file:{' '}
+                        {!experiment.accession ? (
+                          <span className="italic">none</span>
+                        ) : mode === 'cylinderscan' ? (
+                          // The Accessions page exists only in CylinderScan mode.
+                          <Link
+                            to={`/accessions?open=${encodeURIComponent(experiment.accession.id)}`}
+                            className="text-lime-700 underline hover:no-underline"
+                          >
+                            {experiment.accession.name}
+                          </Link>
+                        ) : (
+                          experiment.accession.name
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleDates(experiment.id)}
+                        aria-expanded={datesShown.has(experiment.id)}
                         className="text-lime-700 underline hover:no-underline"
                       >
-                        {experiment.accession.name}
-                      </Link>
-                    ) : (
-                      <span className="italic">none</span>
+                        {datesShown.has(experiment.id)
+                          ? 'Hide wave dates'
+                          : 'Wave dates'}
+                      </button>
+                    </p>
+                    {datesShown.has(experiment.id) && (
+                      <CylinderWaveDates
+                        experimentId={experiment.id}
+                        startOpen
+                      />
                     )}
-                  </p>
+                  </>
                 )}
               </li>
             ))}
@@ -266,140 +224,17 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
           <ExperimentForm
             scientists={scientists}
             accessions={accessions}
-            onSuccess={handleExperimentCreated}
+            onSuccess={fetchExperiments}
             mode={mode}
           />
         </div>
 
-        {/* Attach Accession Section */}
-        <div className="flex flex-col">
-          <h2 className="text-xs font-bold mb-1">
-            Attach Accession File to Existing Experiment
-          </h2>
-          <p className="mb-3 text-xs text-gray-600">
-            Use this to add a corrected accession file to an experiment that
-            already exists, for example after its plants have been scanned.
-          </p>
-          <div className="border rounded text-lg p-4 flex-1">
-            <div className="mb-4">
-              <label
-                htmlFor="attach-experiment-select"
-                className="text-xs font-bold block mb-1"
-              >
-                Select Experiment:
-              </label>
-              <select
-                id="attach-experiment-select"
-                className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
-                value={attachExperimentId}
-                onChange={(e) => setAttachExperimentId(e.target.value)}
-                disabled={experiments.length === 0}
-              >
-                {experiments.length === 0 ? (
-                  <option value="">No experiments available</option>
-                ) : (
-                  experiments.map((exp) => (
-                    <option key={exp.id} value={exp.id}>
-                      {getExperimentDisplay(exp)}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            {isGraviscanAttach ? (
-              <div className="mb-4">
-                <label htmlFor="wave-number-attach-input">
-                  Wave Number to Link
-                </label>
-                <input
-                  id="wave-number-attach-input"
-                  aria-label="Wave Number to Link"
-                  type="number"
-                  min={0}
-                  value={waveNumber}
-                  onChange={(e) => setWaveNumber(Number(e.target.value))}
-                />
-                <label htmlFor="attach-gravi-accession-select">
-                  Metadata File
-                </label>
-                <select
-                  id="attach-gravi-accession-select"
-                  aria-label="Metadata File"
-                  value={attachAccessionId}
-                  onChange={(e) => setAttachAccessionId(e.target.value)}
-                >
-                  <option value="">-- Select a metadata file --</option>
-                  {graviAccessions.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name}
-                    </option>
-                  ))}
-                </select>
-                {linkError && (
-                  <p className="text-sm text-red-600">{linkError}</p>
-                )}
-              </div>
-            ) : (
-              <div className="mb-4">
-                <label
-                  htmlFor="attach-accession-select"
-                  className="text-xs font-bold block mb-1"
-                >
-                  Select Accession File:
-                </label>
-                <select
-                  id="attach-accession-select"
-                  className="p-2 rounded-md bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none w-full border border-gray-300"
-                  value={attachAccessionId}
-                  onChange={(e) => setAttachAccessionId(e.target.value)}
-                  disabled={accessions.length === 0}
-                >
-                  {accessions.length === 0 ? (
-                    <option value="">No accessions available</option>
-                  ) : (
-                    accessions.map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name} - {acc.id}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            )}
-
-            <div className="flex justify-center">
-              <button
-                type="button"
-                className="block p-2 rounded-md bg-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={handleAttachAccession}
-                disabled={
-                  isAttaching || !attachExperimentId || !attachAccessionId
-                }
-              >
-                {isAttaching
-                  ? 'Attaching...'
-                  : isGraviscanAttach
-                    ? 'Link'
-                    : 'Attach Accession'}
-              </button>
-            </div>
-
-            <div className="mt-2 text-center">
-              {isAttaching && (
-                <p className="text-sm text-gray-500 animate-pulse">
-                  Attaching accession...
-                </p>
-              )}
-              {attachError && (
-                <p className="text-sm text-red-600">{attachError}</p>
-              )}
-              {attachSuccess && (
-                <p className="text-sm text-green-600">{attachSuccess}</p>
-              )}
-            </div>
-          </div>
-        </div>
+        <AttachAccessionSection
+          experiments={experiments}
+          accessions={accessions}
+          describe={getExperimentDisplay}
+          onAttached={fetchExperiments}
+        />
       </div>
     </div>
   );

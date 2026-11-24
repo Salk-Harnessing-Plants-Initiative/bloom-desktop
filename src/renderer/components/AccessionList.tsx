@@ -50,24 +50,24 @@ export function AccessionList({
     // Fetch mappings when expanding
     if (newExpandedId && !mappings[accession.id]) {
       setMappingsLoading((prev) => ({ ...prev, [accession.id]: true }));
-
-      const result = await window.electron.database.accessions.getMappings(
-        accession.id
-      );
-
-      if (result.success && result.data) {
-        setMappings((prev) => ({
-          ...prev,
-          [accession.id]: result.data,
-        }));
-      } else {
-        console.error('Failed to fetch mappings:', result.error);
-        setMappings((prev) => ({
-          ...prev,
-          [accession.id]: [],
-        }));
+      let loaded: PlantMapping[] = [];
+      try {
+        const result = await window.electron.database.accessions.getMappings(
+          accession.id
+        );
+        if (result.success && result.data) {
+          loaded = result.data;
+        } else {
+          console.error('Failed to fetch mappings:', result.error);
+        }
+      } catch (error) {
+        // The row shows no mappings rather than loading forever.
+        console.error(
+          'Failed to fetch mappings:',
+          error instanceof Error ? error.message : 'Unknown error'
+        );
       }
-
+      setMappings((prev) => ({ ...prev, [accession.id]: loaded }));
       setMappingsLoading((prev) => ({ ...prev, [accession.id]: false }));
     }
   };
