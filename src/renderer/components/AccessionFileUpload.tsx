@@ -303,7 +303,7 @@ export function AccessionFileUpload({
   };
 
   return (
-    <div className="mt-8 space-y-4">
+    <div className="space-y-4">
       {/* Upload Zone */}
       <div
         data-testid="excel-upload-zone"

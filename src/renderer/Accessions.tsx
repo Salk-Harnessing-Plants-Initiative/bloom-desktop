@@ -18,7 +18,10 @@ interface Accession {
 }
 
 const BOX =
-  'min-h-64 flex-1 border rounded-md p-4 flex items-center justify-center';
+  'min-h-64 flex-1 border rounded-md bg-white p-4 flex items-center justify-center';
+
+/** Each section sits in its own gray box. */
+const SECTION = 'mr-10 rounded-lg border border-gray-300 bg-gray-100 p-4';
 
 /** Newest uploaded first; files created at the same moment by name. */
 function newestFirst(a: Accession, b: Accession): number {
@@ -78,7 +81,10 @@ export function Accessions() {
     <div className="flex min-h-full flex-col p-6">
       <h1 className="text-2xl font-bold mb-6">Accessions</h1>
 
-      <section className="mb-8 mr-10 flex min-h-64 flex-1 basis-0 flex-col">
+      <section
+        className={`${SECTION} mb-6 flex min-h-64 flex-1 basis-0 flex-col`}
+        data-testid="browse-section"
+      >
         <div className="mb-1 flex flex-wrap items-center gap-3">
           <h2 className="text-xs font-bold">Browse Accession Files</h2>
           <div className="relative w-full max-w-md">
@@ -154,7 +160,7 @@ export function Accessions() {
         )}
       </section>
 
-      <section className="mr-10">
+      <section className={SECTION} data-testid="upload-section">
         <h2 className="text-xs font-bold mb-3">Upload Accession File</h2>
         <AccessionFileUpload onUploadComplete={fetchAccessions} />
       </section>
