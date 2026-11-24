@@ -137,13 +137,13 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
       <div className="mb-8 flex min-h-64 flex-1 basis-0 flex-col">
         <div className="mb-2 mr-10 flex flex-wrap items-center gap-3">
           <h2 className="text-xs font-bold">Experiments</h2>
-          <div className="relative w-full max-w-sm">
+          <div className="relative w-full max-w-md">
             <SearchIcon />
             <input
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Name, species, scientist or accession file"
+              placeholder="Search by name, species, scientist or accession file"
               aria-label="Search experiments"
               className="w-full rounded-md border border-gray-300 py-1.5 pl-9 pr-3 text-sm"
             />
