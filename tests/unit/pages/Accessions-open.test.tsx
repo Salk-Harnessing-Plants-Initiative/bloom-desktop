@@ -22,6 +22,9 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const win = global.window as any;
+  win.electron.database.experiments = {
+    latestScans: vi.fn().mockResolvedValue({ success: true, data: [] }),
+  };
   win.electron.database.accessions = {
     list: vi.fn().mockResolvedValue({ success: true, data: FILES }),
     getMappings,

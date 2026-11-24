@@ -36,6 +36,10 @@ export function Accessions() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  // Linked experiments with scans open Browse Scans; the rest open Experiments.
+  const [scannedExperimentIds, setScannedExperimentIds] = useState<
+    ReadonlySet<string>
+  >(new Set());
   const { text, plantMatches, searchingPlants, ...plants } =
     useAccessionSearch(search);
   // "?open=<id>": the file to open, when linked from the Experiments page.
@@ -61,8 +65,26 @@ export function Accessions() {
     }
   };
 
+  /** Without this, every linked experiment opens the Experiments page instead. */
+  const loadScannedExperiments = async () => {
+    try {
+      const result = await window.electron.database.experiments.latestScans();
+      if (result.success && result.data) {
+        setScannedExperimentIds(
+          new Set(result.data.map((s) => s.experiment_id))
+        );
+      }
+    } catch (err) {
+      console.error(
+        '[Accessions] Could not load which experiments have scans:',
+        err instanceof Error ? err.message : 'Unknown error'
+      );
+    }
+  };
+
   useEffect(() => {
     fetchAccessions();
+    void loadScannedExperiments();
   }, []);
 
   // A file matches by its name here, or by its plants in the main process.
@@ -155,6 +177,7 @@ export function Accessions() {
               onUpdate={fetchAccessions}
               openId={openId}
               matchingPlants={text === '' ? undefined : plantMatches}
+              scannedExperimentIds={scannedExperimentIds}
             />
           </div>
         )}

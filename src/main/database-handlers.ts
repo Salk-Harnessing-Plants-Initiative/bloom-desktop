@@ -1896,6 +1896,7 @@ export function registerDatabaseHandlers(deps: {
         include: {
           experiments: {
             select: {
+              id: true,
               name: true,
             },
           },

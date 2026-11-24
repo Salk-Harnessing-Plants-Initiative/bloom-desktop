@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { AccessionList } from '../../../src/renderer/components/AccessionList';
 
 const mockGetMappings = vi.fn();
@@ -157,5 +158,69 @@ describe('AccessionList color palette', () => {
     const saveButton = screen.getByText('Save');
     expect(saveButton.className).toContain('bg-lime-700');
     expect(saveButton.className).not.toContain('bg-blue-500');
+  });
+});
+
+describe('AccessionList linked experiments', () => {
+  const realScroll = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = realScroll;
+  });
+  function Landed() {
+    const location = useLocation();
+    return <p data-testid="landed">{location.pathname + location.search}</p>;
+  }
+  const withExperiments = [
+    {
+      id: 'acc-1',
+      name: 'STL_soy_accessions.xlsx',
+      createdAt: new Date('2026-11-09'),
+      experiments: [
+        { id: 'exp-scanned', name: '2026-11-10 STL Soy' },
+        { id: 'exp-new', name: '2026-12-01 STL Soy W2' },
+      ],
+    },
+  ];
+  const renderAt = () =>
+    render(
+      <MemoryRouter initialEntries={['/accessions']}>
+        <Routes>
+          <Route
+            path="/accessions"
+            element={
+              <AccessionList
+                accessions={withExperiments}
+                onUpdate={vi.fn()}
+                openId="acc-1"
+                scannedExperimentIds={new Set(['exp-scanned'])}
+              />
+            }
+          />
+          <Route path="*" element={<Landed />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+  it('opens Browse Scans for an experiment with scans', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    renderAt();
+    fireEvent.click(
+      await screen.findByRole('link', { name: '2026-11-10 STL Soy' })
+    );
+    expect(screen.getByTestId('landed')).toHaveTextContent(
+      '/browse-scans?experiment=exp-scanned'
+    );
+  });
+
+  it('opens Experiments, searched for it, for an experiment not scanned yet', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    renderAt();
+    expect(await screen.findByText('(not scanned yet)')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('link', { name: '2026-12-01 STL Soy W2' })
+    );
+    expect(screen.getByTestId('landed')).toHaveTextContent(
+      '/experiments?search=2026-12-01%20STL%20Soy%20W2'
+    );
   });
 });

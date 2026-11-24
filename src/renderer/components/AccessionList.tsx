@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 interface Experiment {
   id: string;
@@ -25,6 +26,8 @@ interface AccessionListProps {
   openId?: string | null;
   /** While searching: file id → how many of its plants match. */
   matchingPlants?: ReadonlyMap<string, number>;
+  /** Experiments with scans: their links open Browse Scans, others Experiments. */
+  scannedExperimentIds?: ReadonlySet<string>;
 }
 
 export function AccessionList({
@@ -32,6 +35,7 @@ export function AccessionList({
   onUpdate,
   openId,
   matchingPlants,
+  scannedExperimentIds,
 }: AccessionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -263,9 +267,33 @@ export function AccessionList({
                     {accession.experiments &&
                     accession.experiments.length > 0 ? (
                       <ul className="list-disc list-inside">
-                        {accession.experiments.map((exp) => (
-                          <li key={exp.id}>{exp.name}</li>
-                        ))}
+                        {accession.experiments.map((exp) =>
+                          scannedExperimentIds?.has(exp.id) ? (
+                            <li key={exp.id}>
+                              <Link
+                                to={`/browse-scans?experiment=${encodeURIComponent(exp.id)}`}
+                                className="text-lime-700 underline hover:no-underline"
+                              >
+                                {exp.name}
+                              </Link>{' '}
+                              <span className="text-xs text-gray-500">
+                                (view scans)
+                              </span>
+                            </li>
+                          ) : (
+                            <li key={exp.id}>
+                              <Link
+                                to={`/experiments?search=${encodeURIComponent(exp.name)}`}
+                                className="text-lime-700 underline hover:no-underline"
+                              >
+                                {exp.name}
+                              </Link>{' '}
+                              <span className="text-xs text-gray-500">
+                                (not scanned yet)
+                              </span>
+                            </li>
+                          )
+                        )}
                       </ul>
                     ) : (
                       <div className="italic text-gray-400">

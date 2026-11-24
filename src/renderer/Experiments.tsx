@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ExperimentForm } from './components/ExperimentForm';
 import { ExperimentWaveLinks } from './components/ExperimentWaveLinks';
 import { CylinderWaveDates } from './components/CylinderWaveDates';
@@ -56,7 +56,9 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
   const [accessions, setAccessions] = useState<Accession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   // Narrows the list only; the Attach picker still offers every experiment.
-  const [search, setSearch] = useState('');
+  // "?search=<text>" starts it filled in (linked from the Accessions page).
+  const [searchParams] = useSearchParams();
+  const [search, setSearch] = useState(() => searchParams.get('search') ?? '');
   const [error, setError] = useState<string | null>(null);
 
   const fetchExperiments = useCallback(async () => {
