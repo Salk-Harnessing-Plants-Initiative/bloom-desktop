@@ -263,7 +263,7 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     ).toBeInTheDocument();
   });
 
-  it('expands the experiments box to show everything, and shrinks it back', async () => {
+  it('fills the spare height with the experiments box, which scrolls', async () => {
     listExperiments.mockResolvedValue({
       success: true,
       data: [makeExperiment()],
@@ -272,16 +272,13 @@ describe('Experiments — wave-scoped metadata-link UI', () => {
     await waitFor(() =>
       expect(container.querySelector('ul.experiments-list')).not.toBeNull()
     );
-    const box = () => container.querySelector('ul.experiments-list')!;
-    // Fills the window's spare height, and scrolls.
-    expect(box()).toHaveClass('flex-1', 'overflow-auto');
-    const toggle = screen.getByTestId('experiments-list-toggle');
-    expect(toggle).toHaveTextContent('Expand');
-    await userEvent.click(toggle);
-    expect(box()).not.toHaveClass('flex-1');
-    expect(toggle).toHaveTextContent('Shrink');
-    await userEvent.click(toggle);
-    expect(box()).toHaveClass('flex-1');
+    expect(container.querySelector('ul.experiments-list')).toHaveClass(
+      'flex-1',
+      'overflow-auto'
+    );
+    expect(
+      screen.queryByRole('button', { name: /^(expand|shrink)$/i })
+    ).not.toBeInTheDocument();
   });
 
   it('shows linked waves inline for a graviscan experiment, with Unlink gated by confirm()', async () => {

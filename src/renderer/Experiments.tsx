@@ -48,8 +48,6 @@ async function loadLatestScans(): Promise<ExperimentLatestScan[]> {
 
 export function Experiments({ mode }: ExperimentsProps = {}) {
   const [experiments, setExperiments] = useState<ExperimentWithScientist[]>([]);
-  // The list box: a fixed height that scrolls, or expanded to show everything.
-  const [listExpanded, setListExpanded] = useState(false);
   // CylinderScan experiments whose wave dates (and their change history) are shown.
   const [datesShown, setDatesShown] = useState<ReadonlySet<string>>(new Set());
   const [scientists, setScientists] = useState<Scientist[]>([]);
@@ -124,27 +122,14 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
     return `${experiment.species} - ${experiment.name} (${scientistName})`;
   };
 
-  // The page fills the window: the forms keep their height at the bottom and the
-  // list takes the rest, growing with the window. Expand shows every experiment.
-  const fill = listExpanded ? '' : 'min-h-64 flex-1 basis-0';
-
   return (
     <div className="flex min-h-full flex-col p-6">
       <h1 className="text-2xl font-bold mb-6">Experiments</h1>
 
-      {/* List Section */}
-      <div className={`mb-8 flex flex-col ${fill}`}>
-        <div className="flex items-center gap-3 mb-2">
-          <h2 className="text-xs font-bold">Experiments</h2>
-          <button
-            type="button"
-            onClick={() => setListExpanded((v) => !v)}
-            className="text-xs font-semibold text-green-800 underline"
-            data-testid="experiments-list-toggle"
-          >
-            {listExpanded ? 'Shrink' : 'Expand'}
-          </button>
-        </div>
+      {/* The page fills the window: the forms keep their height at the bottom and
+          the list takes the rest, growing with the window and scrolling. */}
+      <div className="mb-8 flex min-h-64 flex-1 basis-0 flex-col">
+        <h2 className="text-xs font-bold mb-2">Experiments</h2>
 
         {isLoading ? (
           <div className="min-h-64 flex-1 border rounded-md p-4 max-w-full mr-10 flex items-center justify-center">
@@ -159,9 +144,7 @@ export function Experiments({ mode }: ExperimentsProps = {}) {
             <p className="text-sm text-gray-500">No experiments yet</p>
           </div>
         ) : (
-          <ul
-            className={`experiments-list overflow-auto border rounded-md max-w-full mr-10 text-sm ${listExpanded ? 'min-h-64' : 'min-h-0 flex-1'}`}
-          >
+          <ul className="experiments-list min-h-0 flex-1 overflow-auto border rounded-md max-w-full mr-10 text-sm">
             {experiments.map((experiment) => (
               <li key={experiment.id} className="mb-2 p-2">
                 <div className="flex justify-between items-center">
