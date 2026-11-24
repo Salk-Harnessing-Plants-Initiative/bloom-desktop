@@ -13,6 +13,7 @@ import type {
   ScanFilter,
 } from '../types/scan-groups';
 import { isIsoDate, toIsoDate } from '../utils/wave-dates';
+import { capturedMsSql } from './capture-date-sql';
 import {
   isEmptyFilter,
   scanMatcher,
@@ -125,18 +126,8 @@ function fail(error: unknown): DatabaseResponse<never> {
   };
 }
 
-/**
- * A scan's capture time in ms. The pilot app stored capture_date as text, newer scans
- * store a number, and SQLite ranks any text above any number, so MAX over the raw
- * column would put every pilot experiment first. Text is read as UTC: hours off at
- * most, which is enough to order experiments.
- */
-const CAPTURED_MS = `CASE typeof("capture_date")
-    WHEN 'integer' THEN "capture_date"
-    WHEN 'real' THEN CAST("capture_date" AS INTEGER)
-    WHEN 'text' THEN CAST(ROUND((julianday("capture_date") - 2440587.5) * 86400000) AS INTEGER)
-    ELSE NULL
-  END`;
+/** A scan's capture time in ms, for pilot text dates and newer number dates alike. */
+const CAPTURED_MS = capturedMsSql();
 
 /** Non-deleted scans counted per experiment, with each one's most recent capture. */
 const EXPERIMENT_COUNTS_SQL = `
