@@ -6,6 +6,7 @@
  */
 
 import { ipcMain, BrowserWindow } from 'electron';
+import { accessionDeleteRefusal } from './accession-delete-guard';
 import { getDatabase } from './database';
 import { scanListWhere } from './scan-filters';
 import type { Prisma, PrismaClient } from '@prisma/client';
@@ -2052,7 +2053,13 @@ export function registerDatabaseHandlers(deps: {
   ipcMain.handle(
     'db:accessions:delete',
     async (_event, id: string): Promise<DatabaseResponse> => {
+      if (typeof id !== 'string' || id === '') {
+        return { success: false, error: 'id must be a non-empty string' };
+      }
       try {
+        // A file whose experiments have scans stays, so they keep their plant list.
+        const refusal = await accessionDeleteRefusal(db, id);
+        if (refusal) return { success: false, error: refusal };
         // Delete in transaction (cascade will handle plant mappings)
         const result = await db.$transaction(async (tx) => {
           // First delete all plant mappings

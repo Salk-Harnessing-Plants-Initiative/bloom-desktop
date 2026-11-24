@@ -715,6 +715,59 @@ test.describe('Inline Accession Name Editing', () => {
 // ============================================
 
 test.describe('Delete Accession', () => {
+  test('should refuse to delete a file whose experiment has scans', async () => {
+    const accession = await prisma.accessions.create({
+      data: { name: 'Scanned_file.xlsx' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Scanned Experiment',
+        species: 'Soybean',
+        accession_id: accession.id,
+      },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Delete Guard', email: 'delete-guard@example.com' },
+    });
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-001',
+        path: '/test/scans/PLANT-001',
+        num_frames: 72,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 7.0,
+        wave_number: 1,
+        plant_age_days: 14,
+      },
+    });
+
+    await window.click('text=Accessions');
+    await window.click(`text=${accession.name}`);
+    await expect(window.locator('text=(view scans)')).toBeVisible();
+
+    const dialogs: string[] = [];
+    window.once('dialog', async (dialog) => {
+      dialogs.push(`${dialog.type()}: ${dialog.message()}`);
+      await dialog.accept();
+    });
+    await window.click('button:has-text("Delete")');
+
+    await expect.poll(() => dialogs.length).toBe(1);
+    expect(dialogs[0]).toContain(
+      'alert: "Scanned_file.xlsx" can\'t be deleted'
+    );
+    expect(
+      await prisma.accessions.findUnique({ where: { id: accession.id } })
+    ).not.toBeNull();
+  });
+
   test('should delete accession with confirmation', async () => {
     const accession = await prisma.accessions.create({
       data: createAccessionData(),

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { AccessionLinkedExperiments } from './AccessionLinkedExperiments';
 
 interface Experiment {
   id: string;
@@ -120,8 +120,26 @@ export function AccessionList({
   };
 
   const handleDelete = async (id: string, name: string) => {
+    const linked = accessions.find((a) => a.id === id)?.experiments ?? [];
+    // A file whose experiments have scans stays; the main process refuses it too.
+    const scanned = linked.filter((e) => scannedExperimentIds?.has(e.id));
+    if (scanned.length > 0) {
+      // eslint-disable-next-line no-alert
+      alert(
+        `"${name}" can't be deleted: ${scanned
+          .map((e) => e.name)
+          .join(
+            ', '
+          )} ${scanned.length === 1 ? 'has' : 'have'} scans that used it.`
+      );
+      return;
+    }
+    const unlinked =
+      linked.length > 0
+        ? `\n\n${linked.map((e) => e.name).join(', ')} will be left without an accession file.`
+        : '';
     // eslint-disable-next-line no-restricted-globals
-    const confirmed = confirm(`Delete accession "${name}"?`);
+    const confirmed = confirm(`Delete accession "${name}"?${unlinked}`);
     if (!confirmed) return;
 
     const result = await window.electron.database.accessions.delete(id);
@@ -255,52 +273,10 @@ export function AccessionList({
                 </div>
               ) : (
                 <>
-                  {/* Linked Experiments */}
-                  <div
-                    className="mt-2 text-sm bg-white border rounded p-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="font-semibold mb-1">
-                      Linked Experiments:
-                    </div>
-
-                    {accession.experiments &&
-                    accession.experiments.length > 0 ? (
-                      <ul className="list-disc list-inside">
-                        {accession.experiments.map((exp) =>
-                          scannedExperimentIds?.has(exp.id) ? (
-                            <li key={exp.id}>
-                              <Link
-                                to={`/browse-scans?experiment=${encodeURIComponent(exp.id)}`}
-                                className="text-lime-700 underline hover:no-underline"
-                              >
-                                {exp.name}
-                              </Link>{' '}
-                              <span className="text-xs text-gray-500">
-                                (view scans)
-                              </span>
-                            </li>
-                          ) : (
-                            <li key={exp.id}>
-                              <Link
-                                to={`/experiments?search=${encodeURIComponent(exp.name)}`}
-                                className="text-lime-700 underline hover:no-underline"
-                              >
-                                {exp.name}
-                              </Link>{' '}
-                              <span className="text-xs text-gray-500">
-                                (not scanned yet)
-                              </span>
-                            </li>
-                          )
-                        )}
-                      </ul>
-                    ) : (
-                      <div className="italic text-gray-400">
-                        No experiments linked
-                      </div>
-                    )}
-                  </div>
+                  <AccessionLinkedExperiments
+                    experiments={accession.experiments}
+                    scannedExperimentIds={scannedExperimentIds}
+                  />
 
                   {/* Mapping count */}
                   <div className="text-sm text-gray-600">
