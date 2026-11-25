@@ -375,6 +375,8 @@ const databaseAPI: DatabaseAPI = {
         plantBarcode,
         experimentId
       ),
+    /** Accessions page: files with plants whose barcode or accession name matches. */
+    search: (text: string) => ipcRenderer.invoke('db:accessions:search', text),
   },
   images: {
     create: (data: ImageCreateData[]) =>

@@ -47,6 +47,22 @@ beforeEach(() => {
 });
 
 describe('Experiments search', () => {
+  it('starts with the search in ?search=, as linked from Accessions', async () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/experiments?search=STL%20Soy']}>
+        <WaveMetadataLinksProvider>
+          <Experiments mode="cylinderscan" />
+        </WaveMetadataLinksProvider>
+      </MemoryRouter>
+    );
+    expect(screen.getByLabelText('Search experiments')).toHaveValue('STL Soy');
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll('ul.experiments-list > li')
+      ).toHaveLength(1)
+    );
+  });
+
   it('narrows the list as you search, but not the Attach picker', async () => {
     const user = userEvent.setup();
     const { container } = render(

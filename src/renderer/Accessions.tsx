@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AccessionForm } from './components/AccessionForm';
 import { AccessionList } from './components/AccessionList';
 import { AccessionFileUpload } from './components/AccessionFileUpload';
+import { useAccessionSearch } from './hooks/useAccessionSearch';
+import { SearchIcon } from '../components/SearchIcon';
 
 interface Experiment {
   id: string;
@@ -16,10 +17,37 @@ interface Accession {
   experiments?: Experiment[];
 }
 
+const BOX =
+  'min-h-64 flex-1 border rounded-md bg-white p-4 flex items-center justify-center';
+
+/** Each section sits in its own gray box. */
+const SECTION = 'mr-10 rounded-lg border border-gray-300 bg-gray-100 p-4';
+
+/** Newest uploaded first; files created at the same moment by name. */
+function newestFirst(a: Accession, b: Accession): number {
+  return (
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+    a.name.localeCompare(b.name)
+  );
+}
+
 export function Accessions() {
   const [accessions, setAccessions] = useState<Accession[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  // Linked experiments with scans open Browse Scans; the rest open Experiments.
+  // Undefined until known; scanInfoError says why it never became known.
+  const [scannedExperimentIds, setScannedExperimentIds] = useState<
+    ReadonlySet<string> | undefined
+  >(undefined);
+  const [scanInfoError, setScanInfoError] = useState<string | null>(null);
+  const {
+    text,
+    plantMatches,
+    searchingPlants,
+    error: plantSearchError,
+  } = useAccessionSearch(search);
   // "?open=<id>": the file to open, when linked from the Experiments page.
   const [searchParams] = useSearchParams();
   const openId = searchParams.get('open');
@@ -34,10 +62,7 @@ export function Accessions() {
         return;
       }
 
-      const data = result.data as Accession[];
-      // Sort by name alphabetically
-      const sorted = data.sort((a, b) => a.name.localeCompare(b.name));
-      setAccessions(sorted);
+      setAccessions([...(result.data as Accession[])].sort(newestFirst));
     } catch (err) {
       console.error('Error fetching accessions:', err);
       setError('An unexpected error occurred while loading accessions');
@@ -46,22 +71,91 @@ export function Accessions() {
     }
   };
 
-  useEffect(() => {
-    fetchAccessions();
-  }, []);
-
-  const handleAccessionCreated = () => {
-    // Refresh the list after successful creation
-    fetchAccessions();
+  /** Which linked experiments have scans; a failure is logged and shown. */
+  const loadScannedExperiments = async () => {
+    let failure: string;
+    try {
+      const result = await window.electron.database.experiments.latestScans();
+      if (result.success && result.data) {
+        setScannedExperimentIds(
+          new Set(result.data.map((s) => s.experiment_id))
+        );
+        return;
+      }
+      failure = result.error || 'Unknown error';
+    } catch (err) {
+      failure = err instanceof Error ? err.message : 'Unknown error';
+    }
+    console.error(
+      '[Accessions] Could not load which experiments have scans:',
+      failure
+    );
+    setScanInfoError(failure);
   };
 
+  useEffect(() => {
+    fetchAccessions();
+    void loadScannedExperiments();
+  }, []);
+
+  // A file matches by its name here, or by its plants in the main process.
+  const shown =
+    text === ''
+      ? accessions
+      : accessions.filter(
+          (a) =>
+            a.name.toLowerCase().includes(text.toLowerCase()) ||
+            plantMatches.has(a.id)
+        );
+
   return (
-    <div className="p-6">
+    // The page fills the window: Upload keeps its height at the bottom and Browse
+    // takes the rest, its list growing with the window and scrolling.
+    <div className="flex min-h-full flex-col p-6">
       <h1 className="text-2xl font-bold mb-6">Accessions</h1>
 
-      {/* List Section */}
-      <div className="mb-8">
-        <h2 className="text-xs font-bold mb-2">Current Accessions</h2>
+      <section
+        className={`${SECTION} mb-6 flex min-h-64 flex-1 basis-0 flex-col`}
+        data-testid="browse-section"
+      >
+        <div className="mb-1 flex flex-wrap items-center gap-3">
+          <h2 className="text-xs font-bold">Browse Accession Files</h2>
+          <div className="relative w-full max-w-md">
+            <SearchIcon />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by file name, plant barcode or accession"
+              aria-label="Search accession files"
+              className="w-full rounded-md border border-gray-300 py-1.5 pl-9 pr-3 text-sm"
+            />
+          </div>
+          {text !== '' && !isLoading && !error && (
+            <span className="text-xs text-gray-600" data-testid="search-count">
+              {shown.length} of {accessions.length} files
+              {searchingPlants && ' · searching plants…'}
+            </span>
+          )}
+        </div>
+        <p className="mb-2 text-xs text-gray-600">
+          You can edit your files here: rename a file, change a plant&apos;s
+          accession, or delete a file.
+        </p>
+
+        {plantSearchError && (
+          <p className="mb-2 text-sm text-amber-700" role="status">
+            Plant barcodes and accessions couldn&apos;t be searched:{' '}
+            {plantSearchError}. File names are still searched.
+          </p>
+        )}
+
+        {scanInfoError && (
+          <p className="mb-2 text-sm text-amber-700" role="status">
+            Couldn&apos;t load which experiments have scans: {scanInfoError}.
+            Linked experiments open the Experiments page.
+          </p>
+        )}
 
         {/* Linked from the Experiments page to a file that has since been deleted. */}
         {!isLoading &&
@@ -74,43 +168,46 @@ export function Accessions() {
           )}
 
         {isLoading ? (
-          <div className="border rounded-md p-4 w-full max-w-2xl flex items-center justify-center min-h-32">
+          <div className={BOX}>
             <p className="text-sm text-gray-500">Loading accessions...</p>
           </div>
         ) : error ? (
-          <div className="border rounded-md p-4 w-full max-w-2xl flex items-center justify-center min-h-32 border-red-300 bg-red-50">
+          <div className={`${BOX} border-red-300 bg-red-50`}>
             <p className="text-sm text-red-600">{error}</p>
           </div>
         ) : accessions.length === 0 ? (
-          <div className="border rounded-md p-4 w-full max-w-2xl flex items-center justify-center min-h-32">
-            <p className="text-sm text-gray-500">No accessions yet</p>
+          <div className={BOX}>
+            <p className="text-sm text-gray-500">
+              No accession files yet. Upload one below.
+            </p>
           </div>
         ) : (
-          <div className="w-full max-w-2xl">
+          // Stays mounted while searching, so an opened file stays open and a file
+          // linked from Experiments isn't reopened on every pause in typing.
+          <div
+            className="min-h-0 flex-1 overflow-auto"
+            data-testid="accession-files"
+          >
             <AccessionList
-              accessions={accessions}
-              onUpdate={handleAccessionCreated}
+              accessions={shown}
+              onUpdate={fetchAccessions}
               openId={openId}
+              matchingPlants={text === '' ? undefined : plantMatches}
+              scannedExperimentIds={scannedExperimentIds}
+              emptyText={
+                searchingPlants
+                  ? 'Searching plants…'
+                  : 'No accession files match this search'
+              }
             />
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Create Section */}
-      <div className="mb-8">
-        <h2 className="text-xs font-bold mb-3">Add New Accession</h2>
-        <AccessionForm onSuccess={handleAccessionCreated} />
-      </div>
-
-      {/* File Upload Section */}
-      <div>
-        <h2 className="text-xs font-bold mb-3">
-          Upload Plant Mappings (Excel)
-        </h2>
-        <div className="w-full max-w-2xl">
-          <AccessionFileUpload onUploadComplete={handleAccessionCreated} />
-        </div>
-      </div>
+      <section className={SECTION} data-testid="upload-section">
+        <h2 className="text-xs font-bold mb-3">Upload Accession File</h2>
+        <AccessionFileUpload onUploadComplete={fetchAccessions} />
+      </section>
     </div>
   );
 }

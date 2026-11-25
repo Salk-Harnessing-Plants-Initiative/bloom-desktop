@@ -62,6 +62,7 @@ import { registerCylinderPlantHandlers } from './cylinder-plant-handlers';
 import { registerExperimentCameraSettingsHandlers } from './experiment-camera-settings-handlers';
 import { registerScanGroupsHandlers } from './scan-groups-handlers';
 import { registerExperimentRecencyHandlers } from './experiment-recency-handlers';
+import { registerAccessionSearchHandlers } from './accession-search-handlers';
 import {
   loadEnvConfig,
   saveEnvConfig,
@@ -1171,6 +1172,7 @@ app.on('ready', async () => {
     registerExperimentCameraSettingsHandlers({ ipcMain, db: getDatabase() });
     registerScanGroupsHandlers({ ipcMain, db: getDatabase() });
     registerExperimentRecencyHandlers({ ipcMain, db: getDatabase() });
+    registerAccessionSearchHandlers({ ipcMain, db: getDatabase() });
     registerScanUploadAllHandlers({
       ipcMain,
       db: getDatabase(),

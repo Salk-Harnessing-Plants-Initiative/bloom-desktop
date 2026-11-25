@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { AccessionList } from '../../../src/renderer/components/AccessionList';
 
 const mockGetMappings = vi.fn();
@@ -157,5 +158,169 @@ describe('AccessionList color palette', () => {
     const saveButton = screen.getByText('Save');
     expect(saveButton.className).toContain('bg-lime-700');
     expect(saveButton.className).not.toContain('bg-blue-500');
+  });
+});
+
+describe('AccessionList linked experiments', () => {
+  const realScroll = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = realScroll;
+  });
+  function Landed() {
+    const location = useLocation();
+    return <p data-testid="landed">{location.pathname + location.search}</p>;
+  }
+  const withExperiments = [
+    {
+      id: 'acc-1',
+      name: 'STL_soy_accessions.xlsx',
+      createdAt: new Date('2026-11-09'),
+      experiments: [
+        { id: 'exp-scanned', name: '2026-11-10 STL Soy' },
+        { id: 'exp-new', name: '2026-12-01 STL Soy W2' },
+      ],
+    },
+  ];
+  const renderAt = () =>
+    render(
+      <MemoryRouter initialEntries={['/accessions']}>
+        <Routes>
+          <Route
+            path="/accessions"
+            element={
+              <AccessionList
+                accessions={withExperiments}
+                onUpdate={vi.fn()}
+                openId="acc-1"
+                scannedExperimentIds={new Set(['exp-scanned'])}
+              />
+            }
+          />
+          <Route path="*" element={<Landed />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+  it('opens Browse Scans for an experiment with scans', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    renderAt();
+    fireEvent.click(
+      await screen.findByRole('link', { name: '2026-11-10 STL Soy' })
+    );
+    expect(screen.getByTestId('landed')).toHaveTextContent(
+      '/browse-scans?experiment=exp-scanned'
+    );
+  });
+
+  it('opens Experiments, searched for it, for an experiment not scanned yet', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    renderAt();
+    expect(await screen.findByText('(not scanned yet)')).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole('link', { name: '2026-12-01 STL Soy W2' })
+    );
+    expect(screen.getByTestId('landed')).toHaveTextContent(
+      '/experiments?search=2026-12-01%20STL%20Soy%20W2'
+    );
+  });
+});
+
+describe('AccessionList delete', () => {
+  const realScroll = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = realScroll;
+    vi.restoreAllMocks();
+  });
+  const file = {
+    id: 'acc-1',
+    name: 'STL_soy_accessions.xlsx',
+    createdAt: new Date('2026-11-09'),
+    experiments: [
+      { id: 'exp-scanned', name: '2026-11-10 STL Soy' },
+      { id: 'exp-new', name: '2026-12-01 STL Soy W2' },
+    ],
+  };
+  const renderWith = (scanned: string[]) => {
+    Element.prototype.scrollIntoView = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+    win.electron.database.accessions.delete = vi
+      .fn()
+      .mockResolvedValue({ success: true });
+    render(
+      <MemoryRouter>
+        <AccessionList
+          accessions={[file]}
+          onUpdate={vi.fn()}
+          openId="acc-1"
+          scannedExperimentIds={new Set(scanned)}
+        />
+      </MemoryRouter>
+    );
+    return win.electron.database.accessions.delete as ReturnType<typeof vi.fn>;
+  };
+
+  it('refuses a file whose experiments have scans, without asking or deleting', async () => {
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    const remove = renderWith(['exp-scanned']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(alertSpy).toHaveBeenCalledWith(
+      '"STL_soy_accessions.xlsx" can\'t be deleted: 2026-11-10 STL Soy has scans that used it.'
+    );
+    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('names the experiments that would be left without a file', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const remove = renderWith([]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Delete accession "STL_soy_accessions.xlsx"?\n\n2026-11-10 STL Soy, 2026-12-01 STL Soy W2 will be left without an accession file.'
+    );
+    expect(remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('AccessionList delete without scan info', () => {
+  const realScroll = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = realScroll;
+    vi.restoreAllMocks();
+  });
+
+  it('says who uses the file, and shows the main process refusal as it is', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const refusal =
+      "This accession file can't be deleted: experiments that use it have scans: 2026-11-10 STL Soy (24 scans).";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+    win.electron.database.accessions.delete = vi
+      .fn()
+      .mockResolvedValue({ success: false, error: refusal });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    render(
+      <MemoryRouter>
+        <AccessionList
+          accessions={[
+            {
+              id: 'acc-1',
+              name: 'STL_soy_accessions.xlsx',
+              createdAt: new Date('2026-11-09'),
+              experiments: [{ id: 'exp-1', name: '2026-11-10 STL Soy' }],
+            },
+          ]}
+          onUpdate={vi.fn()}
+          openId="acc-1"
+        />
+      </MemoryRouter>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Delete accession "STL_soy_accessions.xlsx"?\n\nIt is used by 2026-11-10 STL Soy.'
+    );
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(refusal));
   });
 });

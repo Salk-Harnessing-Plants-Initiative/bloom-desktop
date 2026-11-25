@@ -96,9 +96,9 @@ beforeEach(() => {
   };
 });
 
-function renderPage() {
+function renderPage(url = '/browse-scans') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
       <BrowseScans />
     </MemoryRouter>
   );
@@ -123,6 +123,15 @@ describe('BrowseScans delete flow', () => {
     expect(del.className).toContain('ml-4');
     expect(del.className).toContain('border-l');
     expect(del.closest('td')?.className).toContain('gap-3');
+  });
+
+  it('starts filtered to the experiment in ?experiment=, as linked from Accessions', async () => {
+    renderPage('/browse-scans?experiment=exp-7');
+    await waitFor(() =>
+      expect(mockList).toHaveBeenCalledWith(
+        expect.objectContaining({ experimentId: 'exp-7' })
+      )
+    );
   });
 
   it('opens a confirmation modal instead of window.confirm when Delete is clicked', async () => {

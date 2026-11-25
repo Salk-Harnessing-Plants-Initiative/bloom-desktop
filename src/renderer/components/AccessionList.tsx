@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { AccessionLinkedExperiments } from './AccessionLinkedExperiments';
+import { isAccessionDeleteRefusal } from '../../utils/accession-delete-refusal';
 
 interface Experiment {
   id: string;
@@ -23,12 +25,24 @@ interface AccessionListProps {
   onUpdate: () => void;
   /** A file to open and scroll to, e.g. when linked from the Experiments page. */
   openId?: string | null;
+  /** While searching: file id → how many of its plants match. */
+  matchingPlants?: ReadonlyMap<string, number>;
+  /**
+   * Experiments with scans: their links open Browse Scans, others Experiments.
+   * Undefined while unknown (loading, or failed to load).
+   */
+  scannedExperimentIds?: ReadonlySet<string>;
+  /** Shown when `accessions` is empty, e.g. while a search finds nothing. */
+  emptyText?: string;
 }
 
 export function AccessionList({
   accessions,
   onUpdate,
   openId,
+  matchingPlants,
+  scannedExperimentIds,
+  emptyText = 'No accessions yet',
 }: AccessionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -113,13 +127,34 @@ export function AccessionList({
   };
 
   const handleDelete = async (id: string, name: string) => {
+    const linked = accessions.find((a) => a.id === id)?.experiments ?? [];
+    const names = (list: typeof linked) => list.map((e) => e.name).join(', ');
+    // A file whose experiments have scans stays; the main process refuses it too.
+    const scanned = linked.filter((e) => scannedExperimentIds?.has(e.id));
+    if (scanned.length > 0) {
+      // eslint-disable-next-line no-alert
+      alert(
+        `"${name}" can't be deleted: ${names(scanned)} ${scanned.length === 1 ? 'has' : 'have'} scans that used it.`
+      );
+      return;
+    }
+    // Without scan info, say who uses it, not that they'd be left without a file.
+    const usedBy =
+      linked.length === 0
+        ? ''
+        : scannedExperimentIds
+          ? `\n\n${names(linked)} will be left without an accession file.`
+          : `\n\nIt is used by ${names(linked)}.`;
     // eslint-disable-next-line no-restricted-globals
-    const confirmed = confirm(`Delete accession "${name}"?`);
+    const confirmed = confirm(`Delete accession "${name}"?${usedBy}`);
     if (!confirmed) return;
 
     const result = await window.electron.database.accessions.delete(id);
     if (result.success) {
       onUpdate(); // Refresh list
+    } else if (isAccessionDeleteRefusal(result.error)) {
+      // eslint-disable-next-line no-alert
+      alert(result.error);
     } else {
       // eslint-disable-next-line no-alert
       alert(`Failed to delete accession: ${result.error || 'Unknown error'}`);
@@ -169,9 +204,7 @@ export function AccessionList({
   };
 
   if (accessions.length === 0) {
-    return (
-      <div className="text-sm text-gray-500 italic">No accessions yet</div>
-    );
+    return <div className="text-sm text-gray-500 italic">{emptyText}</div>;
   }
 
   return (
@@ -181,7 +214,7 @@ export function AccessionList({
           key={accession.id}
           id={`accession-${accession.id}`}
           data-testid="accession-item"
-          className="border border-gray-300 rounded-md"
+          className="border border-gray-300 rounded-md bg-white"
         >
           {/* Collapsed view */}
           <button
@@ -194,6 +227,16 @@ export function AccessionList({
                 <div className="text-xs text-gray-500">
                   Created: {new Date(accession.createdAt).toLocaleDateString()}
                 </div>
+                {matchingPlants?.has(accession.id) && (
+                  <div
+                    className="text-xs text-lime-800"
+                    data-testid={`plant-matches-${accession.id}`}
+                  >
+                    {matchingPlants.get(accession.id) === 1
+                      ? '1 plant matches'
+                      : `${matchingPlants.get(accession.id)} plants match`}
+                  </div>
+                )}
               </div>
               <div className="text-gray-400">
                 {expandedId === accession.id ? '▼' : '▶'}
@@ -238,28 +281,10 @@ export function AccessionList({
                 </div>
               ) : (
                 <>
-                  {/* Linked Experiments */}
-                  <div
-                    className="mt-2 text-sm bg-white border rounded p-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="font-semibold mb-1">
-                      Linked Experiments:
-                    </div>
-
-                    {accession.experiments &&
-                    accession.experiments.length > 0 ? (
-                      <ul className="list-disc list-inside">
-                        {accession.experiments.map((exp) => (
-                          <li key={exp.id}>{exp.name}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <div className="italic text-gray-400">
-                        No experiments linked
-                      </div>
-                    )}
-                  </div>
+                  <AccessionLinkedExperiments
+                    experiments={accession.experiments}
+                    scannedExperimentIds={scannedExperimentIds}
+                  />
 
                   {/* Mapping count */}
                   <div className="text-sm text-gray-600">

@@ -84,12 +84,7 @@ import {
   createTestBloomConfig,
   cleanupTestBloomConfig,
 } from './helpers/bloom-config';
-import {
-  validAccession,
-  createAccessionData,
-  unsortedAccessions,
-  sortedAccessions,
-} from '../fixtures/accessions';
+import { validAccession, createAccessionData } from '../fixtures/accessions';
 import { resetTestDatabase } from './helpers/test-database';
 
 // Import electron path
@@ -212,162 +207,87 @@ test.describe('Empty State Display', () => {
       window.getByRole('heading', { name: 'Accessions', exact: true })
     ).toBeVisible();
 
-    // Verify empty state message
     await expect(
-      window.locator('text=/No accessions|no accessions/i')
+      window.locator('text=No accession files yet. Upload one below.')
     ).toBeVisible({ timeout: 5000 });
 
-    // Verify create form is visible
-    await expect(window.locator('input[name="name"]')).toBeVisible();
+    // Files are added by upload; there is no name-only form.
+    await expect(
+      window.getByRole('heading', { name: 'Upload Accession File' })
+    ).toBeVisible();
+    await expect(window.locator('input[name="name"]')).toHaveCount(0);
     await expect(
       window.locator('button:has-text("Add Accession")')
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 });
 
 // ============================================
-// Create Accession Tests
+// Search Tests
 // ============================================
 
-test.describe('Create Accession', () => {
-  test('should create accession with valid name', async () => {
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    // Fill in name field
-    await window.fill('input[name="name"]', validAccession.name);
-
-    // Click submit button (check for either "Add" or "Create")
-    const addButton = window.locator('button:has-text("Add")');
-    const createButton = window.locator('button:has-text("Create")');
-    if (await addButton.isVisible()) {
-      await addButton.click();
-    } else if (await createButton.isVisible()) {
-      await createButton.click();
-    }
-
-    // Wait for success (list should update)
-    await expect(window.locator(`text=${validAccession.name}`)).toBeVisible({
-      timeout: 5000,
+test.describe('Search Accession Files', () => {
+  test('should find the file holding a plant barcode, with the plant count', async () => {
+    const soy = await prisma.accessions.create({
+      data: { name: 'STL_soy_accessions.xlsx' },
+    });
+    await prisma.accessions.create({ data: { name: 'KCS_lines.xlsx' } });
+    await prisma.plantAccessionMappings.createMany({
+      data: [
+        {
+          plant_barcode: 'STL-001',
+          accession_name: 'Williams 82',
+          accession_file_id: soy.id,
+        },
+        {
+          plant_barcode: 'STL-003',
+          accession_name: 'Col-0',
+          accession_file_id: soy.id,
+        },
+      ],
     });
 
-    // Verify in database
-    const accessions = await prisma.accessions.findMany();
-    expect(accessions).toHaveLength(1);
-    expect(accessions[0].name).toBe(validAccession.name);
+    await window.click('text=Accessions');
+    await expect(window.locator('text=KCS_lines.xlsx')).toBeVisible();
 
-    // Verify form was cleared
-    const nameInput = window.locator('input[name="name"]');
-    await expect(nameInput).toHaveValue('');
+    await window.fill('input[aria-label="Search accession files"]', 'stl-003');
+
+    await expect(
+      window.locator(`[data-testid="plant-matches-${soy.id}"]`)
+    ).toHaveText('1 plant matches');
+    await expect(window.locator('[data-testid="accession-item"]')).toHaveCount(
+      1
+    );
+    await expect(window.locator('[data-testid="search-count"]')).toContainText(
+      '1 of 2 files'
+    );
   });
 
-  test('should show validation error for empty name', async () => {
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    // Click submit without filling name (check for either button)
-    const addButton = window.locator('button:has-text("Add")');
-    const createButton = window.locator('button:has-text("Create")');
-    if (await addButton.isVisible()) {
-      await addButton.click();
-    } else if (await createButton.isVisible()) {
-      await createButton.click();
-    }
-
-    // Verify error message appears
-    await expect(
-      window.locator('text=/required|cannot be empty/i')
-    ).toBeVisible({ timeout: 3000 });
-
-    // Verify no database call was made
-    const accessions = await prisma.accessions.findMany();
-    expect(accessions).toHaveLength(0);
-  });
-
-  test('should clear validation error when typing', async () => {
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    // Trigger validation error (check for either button)
-    const addButton = window.locator('button:has-text("Add")');
-    const createButton = window.locator('button:has-text("Create")');
-    if (await addButton.isVisible()) {
-      await addButton.click();
-    } else if (await createButton.isVisible()) {
-      await createButton.click();
-    }
-    await expect(
-      window.locator('text=/required|cannot be empty/i')
-    ).toBeVisible();
-
-    // Start typing in name field
-    await window.fill('input[name="name"]', 'Test');
-
-    // Verify error is cleared
-    await expect(
-      window.locator('text=/required|cannot be empty/i')
-    ).not.toBeVisible({ timeout: 2000 });
-  });
-
-  test('should allow duplicate names', async () => {
-    await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    const duplicateName = 'Duplicate Name Test';
-
-    // Create first accession
-    await window.fill('input[name="name"]', duplicateName);
-    await window.click('button:has-text("Add Accession")');
-    await expect(window.locator(`text=${duplicateName}`)).toBeVisible();
-
-    // Create second accession with same name
-    await window.fill('input[name="name"]', duplicateName);
-    await window.click('button:has-text("Add Accession")');
-
-    // Wait for list to refresh and show BOTH duplicate entries
-    const nameLocator = window.locator(`text=${duplicateName}`);
-    await expect(nameLocator).toHaveCount(2, { timeout: 5000 });
-
-    // Verify both exist in database
-    const accessions = await prisma.accessions.findMany({
-      where: { name: duplicateName },
+  test('should find files by name, and say when nothing matches', async () => {
+    await prisma.accessions.create({
+      data: { name: 'STL_soy_accessions.xlsx' },
     });
-    expect(accessions).toHaveLength(2);
-    expect(accessions[0].id).not.toBe(accessions[1].id); // Different UUIDs
-  });
+    await prisma.accessions.create({ data: { name: 'KCS_lines.xlsx' } });
 
-  test.skip('should show loading state during creation', async () => {
     await window.click('text=Accessions');
+    await expect(window.locator('text=KCS_lines.xlsx')).toBeVisible();
+    const search = window.locator('input[aria-label="Search accession files"]');
+
+    await search.fill('kcs');
+    await expect(window.locator('[data-testid="accession-item"]')).toHaveCount(
+      1
+    );
+    await expect(window.locator('text=KCS_lines.xlsx')).toBeVisible();
+
+    await search.fill('nothing like this');
     await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
+      window.locator('text=No accession files match this search')
     ).toBeVisible();
 
-    await window.fill('input[name="name"]', validAccession.name);
-
-    const submitButton = window.locator('button:has-text("Add Accession")');
-
-    // Don't await the click - let it run in background so we can check loading state
-    const clickPromise = submitButton.click();
-
-    // Immediately check for loading state (should catch it during operation)
-    const isDisabled = await submitButton.isDisabled().catch(() => false);
-    const hasLoadingText = await window
-      .locator('text=/Creating/i')
-      .isVisible()
-      .catch(() => false);
-
-    expect(isDisabled || hasLoadingText).toBe(true);
-
-    // Now wait for operation to complete
-    await clickPromise;
+    await search.fill('');
+    await expect(window.locator('[data-testid="accession-item"]')).toHaveCount(
+      2
+    );
   });
 });
 
@@ -376,40 +296,37 @@ test.describe('Create Accession', () => {
 // ============================================
 
 test.describe('Accessions List Display', () => {
-  test('should display accessions sorted alphabetically by name', async () => {
-    // Create accessions in non-alphabetical order
-    for (const acc of unsortedAccessions) {
-      await prisma.accessions.create({ data: acc });
-    }
+  test('should list the newest uploaded file first', async () => {
+    await prisma.accessions.create({
+      data: {
+        name: 'Old_file.xlsx',
+        createdAt: new Date('2025-03-19T10:00:00Z'),
+      },
+    });
+    await prisma.accessions.create({
+      data: {
+        name: 'Newest_file.xlsx',
+        createdAt: new Date('2026-11-09T10:00:00Z'),
+      },
+    });
+    await prisma.accessions.create({
+      data: {
+        name: 'Middle_file.xlsx',
+        createdAt: new Date('2026-10-01T10:00:00Z'),
+      },
+    });
 
     await window.click('text=Accessions');
-    await expect(
-      window.getByRole('heading', { name: 'Accessions', exact: true })
-    ).toBeVisible();
-
-    // Wait for list to load
-    await expect(
-      window.locator(`text=${sortedAccessions[0].name}`)
-    ).toBeVisible({
+    await expect(window.locator('text=Old_file.xlsx')).toBeVisible({
       timeout: 5000,
     });
 
-    // Get all accession names from UI
-    const accessionElements = await window
+    const displayed = await window
       .locator('[data-testid="accession-item"]')
-      .all();
-    const displayedNames: string[] = [];
-
-    for (const element of accessionElements) {
-      const text = await element.textContent();
-      if (text) displayedNames.push(text.trim());
-    }
-
-    // Verify they appear in alphabetical order
-    const expectedNames = sortedAccessions.map((a) => a.name);
-    for (let i = 0; i < expectedNames.length; i++) {
-      expect(displayedNames[i]).toContain(expectedNames[i]);
-    }
+      .allTextContents();
+    expect(displayed[0]).toContain('Newest_file.xlsx');
+    expect(displayed[1]).toContain('Middle_file.xlsx');
+    expect(displayed[2]).toContain('Old_file.xlsx');
   });
 
   test('should show creation date for each accession', async () => {
@@ -798,6 +715,59 @@ test.describe('Inline Accession Name Editing', () => {
 // ============================================
 
 test.describe('Delete Accession', () => {
+  test('should refuse to delete a file whose experiment has scans', async () => {
+    const accession = await prisma.accessions.create({
+      data: { name: 'Scanned_file.xlsx' },
+    });
+    const experiment = await prisma.experiment.create({
+      data: {
+        name: 'Scanned Experiment',
+        species: 'Soybean',
+        accession_id: accession.id,
+      },
+    });
+    const phenotyper = await prisma.phenotyper.create({
+      data: { name: 'Delete Guard', email: 'delete-guard@example.com' },
+    });
+    await prisma.scan.create({
+      data: {
+        experiment_id: experiment.id,
+        phenotyper_id: phenotyper.id,
+        scanner_name: 'Scanner1',
+        plant_id: 'PLANT-001',
+        path: '/test/scans/PLANT-001',
+        num_frames: 72,
+        exposure_time: 100,
+        gain: 1.0,
+        brightness: 0.5,
+        contrast: 1.0,
+        gamma: 1.0,
+        seconds_per_rot: 7.0,
+        wave_number: 1,
+        plant_age_days: 14,
+      },
+    });
+
+    await window.click('text=Accessions');
+    await window.click(`text=${accession.name}`);
+    await expect(window.locator('text=(view scans)')).toBeVisible();
+
+    const dialogs: string[] = [];
+    window.once('dialog', async (dialog) => {
+      dialogs.push(`${dialog.type()}: ${dialog.message()}`);
+      await dialog.accept();
+    });
+    await window.click('button:has-text("Delete")');
+
+    await expect.poll(() => dialogs.length).toBe(1);
+    expect(dialogs[0]).toContain(
+      'alert: "Scanned_file.xlsx" can\'t be deleted'
+    );
+    expect(
+      await prisma.accessions.findUnique({ where: { id: accession.id } })
+    ).not.toBeNull();
+  });
+
   test('should delete accession with confirmation', async () => {
     const accession = await prisma.accessions.create({
       data: createAccessionData(),

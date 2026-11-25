@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { ExperimentSearchSelect } from '../components/ExperimentSearchSelect';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   ScanWithImageSummary,
   PaginatedScansResponse,
@@ -31,8 +31,12 @@ export function BrowseScans() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
 
-  // Filter state
-  const [experimentId, setExperimentId] = useState<string>('');
+  // Filter state; "?experiment=<id>" starts it on one experiment (linked from the
+  // Accessions page).
+  const [searchParams] = useSearchParams();
+  const [experimentId, setExperimentId] = useState<string>(
+    () => searchParams.get('experiment') ?? ''
+  );
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
 
