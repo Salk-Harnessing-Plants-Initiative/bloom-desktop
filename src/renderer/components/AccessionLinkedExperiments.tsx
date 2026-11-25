@@ -1,6 +1,7 @@
 /**
  * An opened accession file's linked experiments. One with scans links to Browse Scans
  * filtered to it; one not scanned yet links to Experiments with its name searched.
+ * While it's unknown which have scans, each links to Experiments with no label.
  */
 
 import { Link } from 'react-router-dom';
@@ -28,6 +29,7 @@ export function AccessionLinkedExperiments({
       {experiments && experiments.length > 0 ? (
         <ul className="list-disc list-inside">
           {experiments.map((exp) => {
+            const known = scannedExperimentIds !== undefined;
             const scanned = scannedExperimentIds?.has(exp.id) ?? false;
             return (
               <li key={exp.id}>
@@ -41,9 +43,11 @@ export function AccessionLinkedExperiments({
                 >
                   {exp.name}
                 </Link>{' '}
-                <span className="text-xs text-gray-500">
-                  {scanned ? '(view scans)' : '(not scanned yet)'}
-                </span>
+                {known && (
+                  <span className="text-xs text-gray-500">
+                    {scanned ? '(view scans)' : '(not scanned yet)'}
+                  </span>
+                )}
               </li>
             );
           })}

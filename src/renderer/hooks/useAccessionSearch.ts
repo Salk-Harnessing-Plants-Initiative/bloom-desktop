@@ -25,10 +25,7 @@ export function useAccessionSearch(search: string) {
 
   useEffect(() => {
     setError(null);
-    if (text === '') {
-      setMatches(null);
-      return;
-    }
+    if (text === '') return;
     let current = true;
     const timer = setTimeout(async () => {
       try {
@@ -59,8 +56,11 @@ export function useAccessionSearch(search: string) {
   return {
     /** The trimmed search text. */
     text,
-    /** Plant matches for the current text; empty until they arrive. */
-    plantMatches: matches?.text === text ? matches.byFile : NO_MATCHES,
+    /**
+     * Plant matches: for the current text once they arrive, and until then the last
+     * answer's, so the list doesn't empty out on every pause in typing.
+     */
+    plantMatches: text !== '' && matches ? matches.byFile : NO_MATCHES,
     /** True while the plant search for the current text hasn't answered. */
     searchingPlants: text !== '' && matches?.text !== text && !error,
     error,

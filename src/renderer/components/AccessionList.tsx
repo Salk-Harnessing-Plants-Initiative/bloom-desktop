@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AccessionLinkedExperiments } from './AccessionLinkedExperiments';
+import { isAccessionDeleteRefusal } from '../../utils/accession-delete-refusal';
 
 interface Experiment {
   id: string;
@@ -26,8 +27,13 @@ interface AccessionListProps {
   openId?: string | null;
   /** While searching: file id → how many of its plants match. */
   matchingPlants?: ReadonlyMap<string, number>;
-  /** Experiments with scans: their links open Browse Scans, others Experiments. */
+  /**
+   * Experiments with scans: their links open Browse Scans, others Experiments.
+   * Undefined while unknown (loading, or failed to load).
+   */
   scannedExperimentIds?: ReadonlySet<string>;
+  /** Shown when `accessions` is empty, e.g. while a search finds nothing. */
+  emptyText?: string;
 }
 
 export function AccessionList({
@@ -36,6 +42,7 @@ export function AccessionList({
   openId,
   matchingPlants,
   scannedExperimentIds,
+  emptyText = 'No accessions yet',
 }: AccessionListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -121,30 +128,33 @@ export function AccessionList({
 
   const handleDelete = async (id: string, name: string) => {
     const linked = accessions.find((a) => a.id === id)?.experiments ?? [];
+    const names = (list: typeof linked) => list.map((e) => e.name).join(', ');
     // A file whose experiments have scans stays; the main process refuses it too.
     const scanned = linked.filter((e) => scannedExperimentIds?.has(e.id));
     if (scanned.length > 0) {
       // eslint-disable-next-line no-alert
       alert(
-        `"${name}" can't be deleted: ${scanned
-          .map((e) => e.name)
-          .join(
-            ', '
-          )} ${scanned.length === 1 ? 'has' : 'have'} scans that used it.`
+        `"${name}" can't be deleted: ${names(scanned)} ${scanned.length === 1 ? 'has' : 'have'} scans that used it.`
       );
       return;
     }
-    const unlinked =
-      linked.length > 0
-        ? `\n\n${linked.map((e) => e.name).join(', ')} will be left without an accession file.`
-        : '';
+    // Without scan info, say who uses it, not that they'd be left without a file.
+    const usedBy =
+      linked.length === 0
+        ? ''
+        : scannedExperimentIds
+          ? `\n\n${names(linked)} will be left without an accession file.`
+          : `\n\nIt is used by ${names(linked)}.`;
     // eslint-disable-next-line no-restricted-globals
-    const confirmed = confirm(`Delete accession "${name}"?${unlinked}`);
+    const confirmed = confirm(`Delete accession "${name}"?${usedBy}`);
     if (!confirmed) return;
 
     const result = await window.electron.database.accessions.delete(id);
     if (result.success) {
       onUpdate(); // Refresh list
+    } else if (isAccessionDeleteRefusal(result.error)) {
+      // eslint-disable-next-line no-alert
+      alert(result.error);
     } else {
       // eslint-disable-next-line no-alert
       alert(`Failed to delete accession: ${result.error || 'Unknown error'}`);
@@ -194,9 +204,7 @@ export function AccessionList({
   };
 
   if (accessions.length === 0) {
-    return (
-      <div className="text-sm text-gray-500 italic">No accessions yet</div>
-    );
+    return <div className="text-sm text-gray-500 italic">{emptyText}</div>;
   }
 
   return (

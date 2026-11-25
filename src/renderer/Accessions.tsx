@@ -37,11 +37,17 @@ export function Accessions() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   // Linked experiments with scans open Browse Scans; the rest open Experiments.
+  // Undefined until known; scanInfoError says why it never became known.
   const [scannedExperimentIds, setScannedExperimentIds] = useState<
-    ReadonlySet<string>
-  >(new Set());
-  const { text, plantMatches, searchingPlants, ...plants } =
-    useAccessionSearch(search);
+    ReadonlySet<string> | undefined
+  >(undefined);
+  const [scanInfoError, setScanInfoError] = useState<string | null>(null);
+  const {
+    text,
+    plantMatches,
+    searchingPlants,
+    error: plantSearchError,
+  } = useAccessionSearch(search);
   // "?open=<id>": the file to open, when linked from the Experiments page.
   const [searchParams] = useSearchParams();
   const openId = searchParams.get('open');
@@ -65,21 +71,26 @@ export function Accessions() {
     }
   };
 
-  /** Without this, every linked experiment opens the Experiments page instead. */
+  /** Which linked experiments have scans; a failure is logged and shown. */
   const loadScannedExperiments = async () => {
+    let failure: string;
     try {
       const result = await window.electron.database.experiments.latestScans();
       if (result.success && result.data) {
         setScannedExperimentIds(
           new Set(result.data.map((s) => s.experiment_id))
         );
+        return;
       }
+      failure = result.error || 'Unknown error';
     } catch (err) {
-      console.error(
-        '[Accessions] Could not load which experiments have scans:',
-        err instanceof Error ? err.message : 'Unknown error'
-      );
+      failure = err instanceof Error ? err.message : 'Unknown error';
     }
+    console.error(
+      '[Accessions] Could not load which experiments have scans:',
+      failure
+    );
+    setScanInfoError(failure);
   };
 
   useEffect(() => {
@@ -132,10 +143,17 @@ export function Accessions() {
           accession, or delete a file.
         </p>
 
-        {plants.error && (
+        {plantSearchError && (
           <p className="mb-2 text-sm text-amber-700" role="status">
             Plant barcodes and accessions couldn&apos;t be searched:{' '}
-            {plants.error}. File names are still searched.
+            {plantSearchError}. File names are still searched.
+          </p>
+        )}
+
+        {scanInfoError && (
+          <p className="mb-2 text-sm text-amber-700" role="status">
+            Couldn&apos;t load which experiments have scans: {scanInfoError}.
+            Linked experiments open the Experiments page.
           </p>
         )}
 
@@ -157,17 +175,15 @@ export function Accessions() {
           <div className={`${BOX} border-red-300 bg-red-50`}>
             <p className="text-sm text-red-600">{error}</p>
           </div>
-        ) : shown.length === 0 ? (
+        ) : accessions.length === 0 ? (
           <div className={BOX}>
             <p className="text-sm text-gray-500">
-              {accessions.length === 0
-                ? 'No accession files yet. Upload one below.'
-                : searchingPlants
-                  ? 'Searching plants…'
-                  : 'No accession files match this search'}
+              No accession files yet. Upload one below.
             </p>
           </div>
         ) : (
+          // Stays mounted while searching, so an opened file stays open and a file
+          // linked from Experiments isn't reopened on every pause in typing.
           <div
             className="min-h-0 flex-1 overflow-auto"
             data-testid="accession-files"
@@ -178,6 +194,11 @@ export function Accessions() {
               openId={openId}
               matchingPlants={text === '' ? undefined : plantMatches}
               scannedExperimentIds={scannedExperimentIds}
+              emptyText={
+                searchingPlants
+                  ? 'Searching plants…'
+                  : 'No accession files match this search'
+              }
             />
           </div>
         )}

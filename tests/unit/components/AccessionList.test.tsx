@@ -282,3 +282,45 @@ describe('AccessionList delete', () => {
     expect(remove).not.toHaveBeenCalled();
   });
 });
+
+describe('AccessionList delete without scan info', () => {
+  const realScroll = Element.prototype.scrollIntoView;
+  afterEach(() => {
+    Element.prototype.scrollIntoView = realScroll;
+    vi.restoreAllMocks();
+  });
+
+  it('says who uses the file, and shows the main process refusal as it is', async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const refusal =
+      "This accession file can't be deleted: experiments that use it have scans: 2026-11-10 STL Soy (24 scans).";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+    win.electron.database.accessions.delete = vi
+      .fn()
+      .mockResolvedValue({ success: false, error: refusal });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    render(
+      <MemoryRouter>
+        <AccessionList
+          accessions={[
+            {
+              id: 'acc-1',
+              name: 'STL_soy_accessions.xlsx',
+              createdAt: new Date('2026-11-09'),
+              experiments: [{ id: 'exp-1', name: '2026-11-10 STL Soy' }],
+            },
+          ]}
+          onUpdate={vi.fn()}
+          openId="acc-1"
+        />
+      </MemoryRouter>
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Delete accession "STL_soy_accessions.xlsx"?\n\nIt is used by 2026-11-10 STL Soy.'
+    );
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(refusal));
+  });
+});

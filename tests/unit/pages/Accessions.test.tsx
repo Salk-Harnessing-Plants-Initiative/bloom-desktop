@@ -203,4 +203,53 @@ describe('Accessions page', () => {
     ).toBeInTheDocument();
     expect(fileNames()).toEqual(['KCS_lines.xlsx']);
   });
+
+  it('keeps an opened file open, without reloading it, through a barcode search', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const getMappings = (global.window as any).electron.database.accessions
+      .getMappings as ReturnType<typeof vi.fn>;
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByText('STL_soy_accessions.xlsx'));
+    await waitFor(() => expect(getMappings).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Linked Experiments:')).toBeInTheDocument();
+
+    // No file name contains the barcode, so the list waits on the plant search.
+    await user.type(box(), 'stl-003');
+    await waitFor(() =>
+      expect(fileNames()).toEqual(['STL_soy_accessions.xlsx'])
+    );
+    expect(screen.getByText('Linked Experiments:')).toBeInTheDocument();
+    expect(getMappings).toHaveBeenCalledTimes(1);
+  });
+
+  it("says when it can't tell which experiments have scans, and labels no link", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const win = global.window as any;
+    win.electron.database.experiments.latestScans = vi
+      .fn()
+      .mockResolvedValue({ success: false, error: 'database is locked' });
+    win.electron.database.accessions.list = vi.fn().mockResolvedValue({
+      success: true,
+      data: [
+        {
+          ...FILES[1],
+          experiments: [{ id: 'exp-1', name: '2026-11-10 STL Soy' }],
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPage();
+    expect(
+      await screen.findByText(
+        /Couldn.t load which experiments have scans: database is locked/
+      )
+    ).toBeInTheDocument();
+    await user.click(screen.getByText('STL_soy_accessions.xlsx'));
+    expect(
+      await screen.findByRole('link', { name: '2026-11-10 STL Soy' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText('(not scanned yet)')).not.toBeInTheDocument();
+    expect(screen.queryByText('(view scans)')).not.toBeInTheDocument();
+  });
 });

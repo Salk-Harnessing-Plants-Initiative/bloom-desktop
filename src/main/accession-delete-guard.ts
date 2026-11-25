@@ -4,6 +4,8 @@
  * scans would be gone, and the next Capture Scan for them would refuse every barcode.
  */
 
+import { accessionDeleteRefusalMessage } from '../utils/accession-delete-refusal';
+
 /** The part of the Prisma client used here, so tests can pass a fake. */
 export interface AccessionDeleteDbLike {
   experiment: {
@@ -24,8 +26,6 @@ export interface AccessionDeleteDbLike {
     >;
   };
 }
-
-const plural = (n: number) => (n === 1 ? '1 scan' : `${n} scans`);
 
 /**
  * Why the file can't be deleted, naming each experiment with scans; null when it
@@ -52,6 +52,5 @@ export async function accessionDeleteRefusal(
     .map((e) => ({ name: e.name, scans: e._count.scans + e._count.graviScans }))
     .filter((e) => e.scans > 0);
   if (scanned.length === 0) return null;
-  const list = scanned.map((e) => `${e.name} (${plural(e.scans)})`).join(', ');
-  return `This accession file can't be deleted: experiments that use it have scans: ${list}.`;
+  return accessionDeleteRefusalMessage(scanned);
 }
